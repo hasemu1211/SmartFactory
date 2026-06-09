@@ -4,3 +4,4 @@ pydantic-settings
 jsonschema
 python-dotenv
 python-multipart
+opencv-contrib-python-headless
