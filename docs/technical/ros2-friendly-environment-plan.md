@@ -2,7 +2,7 @@
 
 - Date: 2026-06-09
 - Scope: MVP1 Central PC bringup for WMS-lite, GUI, ROS2/Nav2, LDS-03, camera sources, and separate AI Server process/container.
-- Status: Planning baseline for later package scaffolding in `/home/codelab/ros2_ws/src`.
+- Status: Planning baseline plus initial `smartfactory_bringup` scaffold created in `/home/codelab/ros2_ws/src` on 2026-06-09.
 
 ## 1. Design goals
 
@@ -283,15 +283,26 @@ The ROS2-related Claude skills under `/home/codelab/ros2_ws/.claude/skills` are 
 
 ## 9. Immediate next scaffold tasks
 
-1. Create `smartfactory_bringup` launch package in `/home/codelab/ros2_ws/src`.
-2. Add `cameras.yaml`, `ai_server.env.example`, and `ros2_network.env.example`.
-3. Add `central_pc_bringup.launch.py`, `perception_sources.launch.py`, and `ai_server.launch.py` with placeholders and launch arguments.
-4. Add `smartfactory_ros_bridge` only after Main/WMS endpoint shape is ready.
-5. Run `colcon build --symlink-install` and commit the ROS2 workspace changes separately from this planning repository, unless the project is consolidated into one monorepo.
+Completed on 2026-06-09 in `/home/codelab/ros2_ws`:
+
+1. Created `smartfactory_bringup` launch package in `/home/codelab/ros2_ws/src`.
+2. Added `cameras.yaml`, `namespaces.yaml`, `ai_server.env.example`, and `ros2_network.env.example`.
+3. Added `central_pc_bringup.launch.py`, `perception_sources.launch.py`, `ai_server.launch.py`, `wms_bridge.launch.py`, and `nav2_fleet.launch.py` with conservative launch flags.
+4. Verified `colcon build --symlink-install --packages-select smartfactory_bringup`.
+5. Verified launch smoke test with all unavailable hardware/service flags disabled.
+6. Committed ROS2 workspace scaffold as `/home/codelab/ros2_ws` commit `8d9a28e` (`Add SmartFactory ROS2 bringup scaffold`).
+
+Next tasks:
+
+1. Add `smartfactory_ros_bridge` after Main/WMS endpoint shape is ready.
+2. Add actual global camera driver config after confirming `/dev/video*` mapping and calibration.
+3. Add robot Pi Camera relay implementation after deciding robot-side streaming path.
+4. Add namespaced TurtleBot3/Nav2 includes for `tb3_1` and `tb3_2` using LDS-03 scan topics.
+5. Add launch/integration tests once bridge nodes exist.
 
 ## 10. Acceptance criteria for ROS2-friendly setup
 
-- One command can start the MVP1 Central PC stack, with flags to disable unavailable hardware.
+- One command can start the MVP1 Central PC stack, with flags to disable unavailable hardware. Initial smoke test passed with all optional services disabled.
 - All robot and camera names match the API contract: `global_cam_01`, `tb3_1_picam`, `tb3_2_picam`, `tb3_1`, `tb3_2`.
 - AI Server can be started by launch as a separate process/container, not as an implicit in-process ROS dependency.
 - ROS2 camera topic changes do not force WMS/GUI API changes.
