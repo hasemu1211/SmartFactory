@@ -33,10 +33,20 @@ def _robot_id_for_source(source: str) -> str | None:
 def _frame_id_for_source(source: str) -> str:
     mapping = {
         "global_cam_01": "global_camera_frame",
-        "tb3_1_picam": "tb3_1_pi_camera_frame",
-        "tb3_2_picam": "tb3_2_pi_camera_frame",
+        "tb3_1_picam": "tb3_1_pi_camera_optical_frame",
+        "tb3_2_picam": "tb3_2_pi_camera_optical_frame",
     }
     return mapping[source]
+
+
+def _source_kind(source: str) -> str:
+    return "global_rgb" if source == "global_cam_01" else "robot_pi_camera"
+
+
+def _source_notes(source: str) -> str:
+    if source == "global_cam_01":
+        return "overview/slot/zone evidence"
+    return "front marker/dock/local item evidence"
 
 
 def _now_iso() -> str:
@@ -101,9 +111,21 @@ async def contract_validation_exception_handler(_, exc: ContractValidationError)
 @app.get("/api/v1/health")
 def health() -> dict[str, Any]:
     settings = get_settings()
+    source_count = len(settings.source_ids)
     return {
+        "service": "ai-server",
         "status": "ok",
-        "service": "smartfactory-ai-server",
+        "service_version": app.version,
+        "contract_version": settings.vision_event_schema_version,
+        "model_status": "loaded",
+        "source_summary": {
+            "configured": source_count,
+            "online": 0,
+            "stale": 0,
+            "disabled": 0,
+            "offline": source_count,
+        },
+        # Backward-compatible aliases retained for existing local checks.
         "version": app.version,
         "schema_version": settings.vision_event_schema_version,
         "main_server_url": settings.main_server_url,
@@ -119,11 +141,17 @@ def sources() -> dict[str, Any]:
     for idx, source in enumerate(settings.source_ids):
         source_items.append(
             {
+                "source": source,
                 "source_id": source,
+                "kind": _source_kind(source),
                 "robot_id": _robot_id_for_source(source),
-                "ros_topic": topics[idx] if idx < len(topics) else None,
+                "enabled": True,
+                "status": "offline",
                 "frame_id": _frame_id_for_source(source),
-                "status": "configured",
+                "last_frame_at": None,
+                "target_fps": 10,
+                "notes": _source_notes(source),
+                "ros_topic": topics[idx] if idx < len(topics) else None,
             }
         )
     return {"sources": source_items}
@@ -132,12 +160,12 @@ def sources() -> dict[str, Any]:
 @app.get("/api/v1/detections/latest")
 def latest_detections(
     source: str | None = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=10, ge=1, le=50),
 ) -> dict[str, Any]:
     settings = get_settings()
     if source is not None and source not in settings.source_ids:
         raise HTTPException(status_code=400, detail=f"unknown source: {source}")
-    return {"events": store.latest(source=source, limit=limit)}
+    return {"generated_at": _now_iso(), "events": store.latest(source=source, limit=limit)}
 
 
 @app.post("/api/v1/detect/image")
@@ -156,6 +184,21 @@ async def detect_image(
     if source not in settings.source_ids:
         raise HTTPException(status_code=400, detail=f"unknown source: {source}")
     payload = await image.read()
-    event = build_mock_event(source=source, image_size=len(payload))
-    store.add(event)
-    return {"source": source, "emitted": emit, "events": [event]}
+    try:
+        decoded_image = decode_image(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    image_height, image_width = decoded_image.shape[:2]
+    events = [
+        build_marker_event(
+            source=source,
+            detection=detection,
+            image_width=image_width,
+            image_height=image_height,
+        )
+        for detection in detect_markers(decoded_image)
+    ]
+    for event in events:
+        store.add(event)
+    return {"source": source, "emitted": bool(emit and False), "events": events}

@@ -18,7 +18,7 @@ def test_health_exposes_canonical_sources():
 def test_sources_include_robot_mapping():
     response = client.get("/api/v1/sources")
     assert response.status_code == 200
-    sources = {item["source_id"]: item for item in response.json()["sources"]}
+    sources = {item["source"]: item for item in response.json()["sources"]}
     assert sources["global_cam_01"]["robot_id"] is None
     assert sources["tb3_1_picam"]["robot_id"] == "tb3_1"
     assert sources["tb3_2_picam"]["robot_id"] == "tb3_2"
