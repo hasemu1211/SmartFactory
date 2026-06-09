@@ -14,13 +14,13 @@ def _png_bytes(image: np.ndarray) -> bytes:
 
 
 
-
 def _aruco_png_bytes(marker_id: int = 7) -> bytes:
     dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
     marker = cv2.aruco.generateImageMarker(dictionary, marker_id, 96)
     canvas = np.full((160, 160), 255, dtype=np.uint8)
     canvas[32:128, 32:128] = marker
     return _png_bytes(cv2.cvtColor(canvas, cv2.COLOR_GRAY2BGR))
+
 
 def test_health_exposes_canonical_sources():
     response = client.get("/api/v1/health")
@@ -93,6 +93,12 @@ def test_unknown_source_rejected():
     response = client.post(
         "/api/v1/detect/image",
         data={"source": "bad_cam"},
-        files={"image": ("frame.png", _png_bytes(np.full((32, 32, 3), 255, dtype=np.uint8)), "image/png")},
+        files={
+            "image": (
+                "frame.png",
+                _png_bytes(np.full((32, 32, 3), 255, dtype=np.uint8)),
+                "image/png",
+            )
+        },
     )
     assert response.status_code == 400
