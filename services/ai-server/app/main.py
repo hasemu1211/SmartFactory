@@ -190,15 +190,19 @@ async def detect_image(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     image_height, image_width = decoded_image.shape[:2]
+    started = perf_counter()
+    detections = detect_markers(decoded_image)
+    latency_ms = round((perf_counter() - started) * 1000.0, 3)
     events = [
         build_marker_event(
             source=source,
             detection=detection,
             image_width=image_width,
             image_height=image_height,
+            latency_ms=latency_ms,
         )
-        for detection in detect_markers(decoded_image)
+        for detection in detections
     ]
     for event in events:
         store.add(event)
-    return {"source": source, "emitted": bool(emit and False), "events": events}
+    return {"source": source, "emitted": emit, "events": events}
