@@ -10,8 +10,8 @@ from fastapi.responses import JSONResponse
 
 from .config import get_settings
 from .contracts import ContractValidationError, validate_vision_event
+from .detectors import MarkerDetection, decode_image, detect_aruco_markers
 from .event_store import InMemoryEventStore
-from .detectors import MarkerDetection, decode_image, detect_markers
 
 app = FastAPI(
     title="SmartFactory AI Server",
