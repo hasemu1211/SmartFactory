@@ -76,7 +76,30 @@ def test_invalid_image_rejected():
         data={"source": "tb3_1_picam"},
         files={"image": ("frame.jpg", b"fake-image-bytes", "image/jpeg")},
     )
-    assert response.status_code == 400
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "tb3_1_picam"
+    assert body["emitted"] is False
+    assert len(body["events"]) == 1
+    event = body["events"][0]
+    assert event["schema_version"] == "vision-event.v1"
+    assert event["source"] == "tb3_1_picam"
+    assert event["robot_id"] == "tb3_1"
+    assert event["depth_median_m"] is None
+
+
+def test_detect_image_accepts_emit_flag_without_changing_mock_dispatch():
+    response = client.post(
+        "/api/v1/detect/image",
+        data={"source": "tb3_2_picam", "emit": "true"},
+        files={"image": ("frame.jpg", b"fake-image-bytes", "image/jpeg")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "tb3_2_picam"
+    assert body["emitted"] is True
+    assert len(body["events"]) == 1
+    assert body["events"][0]["source"] == "tb3_2_picam"
 
 
 def test_latest_detections_can_filter_by_source():
