@@ -1,0 +1,30 @@
+# Local credentials
+.env.confluence.local
+.venv-tools/
+docs/confluence/captures/
+# Python / local env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# Local environment files
+.env.*.local
+!.env.example
+!*.env.example
+# AI/model/runtime artifacts
+models/weights/
+*.pt
+*.onnx
+*.engine
+runs/
+data/captures/
+data/frames/
+artifacts/
+venv/
+.env
+
+# Generated packages
+dist/
+docs/confluence/qa/*.png
