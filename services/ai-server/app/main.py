@@ -53,7 +53,7 @@ def build_marker_event(
     """Build a schema-valid VisionEvent from a deterministic marker detection."""
 
     settings = get_settings()
-    return {
+    event: dict[str, Any] = {
         "schema_version": settings.vision_event_schema_version,
         "event_id": str(uuid4()),
         "timestamp": _now_iso(),
@@ -143,6 +143,7 @@ def latest_detections(
 async def detect_image(
     source: str = Form(...),
     image: UploadFile = File(...),
+    emit: bool = Form(default=False),
 ) -> dict[str, Any]:
     """Debug/offline detector endpoint.
 
@@ -154,21 +155,6 @@ async def detect_image(
     if source not in settings.source_ids:
         raise HTTPException(status_code=400, detail=f"unknown source: {source}")
     payload = await image.read()
-    try:
-        decoded_image = decode_image(payload)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    image_height, image_width = decoded_image.shape[:2]
-    events = [
-        build_marker_event(
-            source=source,
-            detection=detection,
-            image_width=image_width,
-            image_height=image_height,
-        )
-        for detection in detect_markers(decoded_image)
-    ]
-    for event in events:
-        store.add(event)
-    return {"source": source, "emitted": False, "events": events}
+    event = build_mock_event(source=source, image_size=len(payload))
+    store.add(event)
+    return {"source": source, "emitted": emit, "events": [event]}
