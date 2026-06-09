@@ -65,3 +65,35 @@ def test_ai_test_script_clears_ros_pythonpath_contamination():
     assert "unset PYTHONPATH" in script
     assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1" in script
     assert "PYTHONNOUSERSITE=1" in script
+
+
+def test_ai_server_imports_do_not_require_ros2_yolo_or_torch_modules():
+    code = r'''
+import importlib
+import importlib.abc
+import sys
+
+blocked = {"torch", "ultralytics", "rclpy", "sensor_msgs", "cv_bridge"}
+
+class BlockForbidden(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split(".", 1)[0] in blocked:
+            raise AssertionError(f"forbidden import attempted: {fullname}")
+        return None
+
+sys.meta_path.insert(0, BlockForbidden())
+importlib.import_module("app.detectors")
+importlib.import_module("app.main")
+print("import guard ok")
+'''
+    import subprocess
+
+    result = subprocess.run(
+        [str(SERVICE_DIR / ".venv" / "bin" / "python"), "-c", code],
+        cwd=SERVICE_DIR,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "import guard ok" in result.stdout
