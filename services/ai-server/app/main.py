@@ -12,6 +12,7 @@ from .config import get_settings
 from .contracts import ContractValidationError, validate_vision_event
 from .detectors import MarkerDetection, decode_image, detect_aruco_markers
 from .event_store import InMemoryEventStore
+from .detectors import MarkerDetection, decode_image, detect_markers
 
 app = FastAPI(
     title="SmartFactory AI Server",
@@ -155,6 +156,21 @@ async def detect_image(
     if source not in settings.source_ids:
         raise HTTPException(status_code=400, detail=f"unknown source: {source}")
     payload = await image.read()
-    event = build_mock_event(source=source, image_size=len(payload))
-    store.add(event)
-    return {"source": source, "emitted": emit, "events": [event]}
+    try:
+        decoded_image = decode_image(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    image_height, image_width = decoded_image.shape[:2]
+    events = [
+        build_marker_event(
+            source=source,
+            detection=detection,
+            image_width=image_width,
+            image_height=image_height,
+        )
+        for detection in detect_markers(decoded_image)
+    ]
+    for event in events:
+        store.add(event)
+    return {"source": source, "emitted": False, "events": events}

@@ -51,8 +51,19 @@ def test_detect_image_returns_empty_events_for_frame_without_markers():
     body = response.json()
     assert body["source"] == "tb3_1_picam"
     assert body["emitted"] is False
-    assert len(body["events"]) == 1
-    event = body["events"][0]
+    assert body["events"] == []
+
+
+def test_detect_image_returns_contract_valid_marker_event():
+    response = client.post(
+        "/api/v1/detect/image",
+        data={"source": "tb3_1_picam"},
+        files={"image": ("aruco.png", _aruco_png_bytes(), "image/png")},
+    )
+    assert response.status_code == 200
+    events = response.json()["events"]
+    assert len(events) == 1
+    event = events[0]
     assert event["schema_version"] == "vision-event.v1"
     assert event["event_kind"] == "CONFIRMED"
     assert event["class_name"] == "aruco_marker"
