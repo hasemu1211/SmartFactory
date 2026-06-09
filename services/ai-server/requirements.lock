@@ -13,6 +13,8 @@ idna==3.18
 iniconfig==2.3.0
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
+numpy==2.4.6
+opencv-contrib-python-headless==4.13.0.92
 packaging==26.2
 pluggy==1.6.0
 pydantic==2.13.4
