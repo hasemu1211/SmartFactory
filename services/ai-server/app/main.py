@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from .config import get_settings
 from .contracts import ContractValidationError, validate_vision_event
 from .event_store import InMemoryEventStore
-from .detectors import MarkerDetection, decode_image, detect_aruco_markers
+from .detectors import MarkerDetection, decode_image, detect_markers
 
 app = FastAPI(
     title="SmartFactory AI Server",
@@ -43,7 +43,15 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat()
 
 
-def _base_event(source: str) -> dict[str, Any]:
+def build_marker_event(
+    *,
+    source: str,
+    detection: MarkerDetection,
+    image_width: int,
+    image_height: int,
+) -> dict[str, Any]:
+    """Build a schema-valid VisionEvent from a deterministic marker detection."""
+
     settings = get_settings()
     return {
         "schema_version": settings.vision_event_schema_version,
@@ -52,83 +60,26 @@ def _base_event(source: str) -> dict[str, Any]:
         "source": source,
         "robot_id": _robot_id_for_source(source),
         "frame_id": _frame_id_for_source(source),
-        "event_kind": "CANDIDATE",
-        "class_name": "unknown",
-        "confidence": 0.01,
-        "bbox_xyxy": [1, 1, 2, 2],
-        "marker_id": None,
+        "event_kind": "CONFIRMED",
+        "class_name": detection.class_name,
+        "confidence": detection.confidence,
+        "bbox_xyxy": detection.bbox_xyxy,
+        "marker_id": detection.marker_id,
         "zone": None,
         "roi_id": None,
         "track_id": None,
         "pose_estimate": None,
         "depth_median_m": None,
-        "wms_hint": None,
+        "wms_hint": "TAG_DETECTED",
         "metadata": {
             "n_frame_count": 1,
             "policy_version": settings.policy_version,
-            "model": settings.model_name,
-            "image_width": None,
-            "image_height": None,
+            "model": detection.detector,
+            "image_width": image_width,
+            "image_height": image_height,
             "latency_ms": None,
         },
     }
-
-
-def build_marker_event(
-    source: str,
-    detection: MarkerDetection,
-    *,
-    image_width: int,
-    image_height: int,
-    latency_ms: float,
-) -> dict[str, Any]:
-    """Build a schema-valid VisionEvent from a deterministic ArUco detection."""
-
-    event = _base_event(source)
-    event.update(
-        {
-            "event_kind": "CONFIRMED",
-            "class_name": "aruco_marker",
-            "confidence": detection.confidence,
-            "bbox_xyxy": detection.bbox_xyxy,
-            "marker_id": detection.marker_id,
-            "wms_hint": "TAG_DETECTED",
-            "metadata": {
-                **event["metadata"],
-                "image_width": image_width,
-                "image_height": image_height,
-                "latency_ms": latency_ms,
-            },
-        }
-    )
-    validate_vision_event(event)
-    return event
-
-
-def build_no_marker_event(
-    source: str,
-    *,
-    image_width: int,
-    image_height: int,
-    latency_ms: float,
-) -> dict[str, Any]:
-    """Build a contract-valid event for a decoded frame with no marker evidence."""
-
-    event = _base_event(source)
-    event.update(
-        {
-            "event_kind": "CANDIDATE",
-            "class_name": "unknown",
-            "confidence": 0.0,
-            "bbox_xyxy": [0, 0, image_width, image_height],
-            "metadata": {
-                **event["metadata"],
-                "image_width": image_width,
-                "image_height": image_height,
-                "latency_ms": latency_ms,
-            },
-        }
-    )
     validate_vision_event(event)
     return event
 
@@ -195,43 +146,29 @@ async def detect_image(
 ) -> dict[str, Any]:
     """Debug/offline detector endpoint.
 
-    Runs deterministic OpenCV ArUco marker detection while preserving contract
-    validation and the legacy single-event response alias.
+    The endpoint decodes uploaded images, runs deterministic marker detectors,
+    and returns contract-valid VisionEvents for detections.
     """
 
     settings = get_settings()
     if source not in settings.source_ids:
         raise HTTPException(status_code=400, detail=f"unknown source: {source}")
     payload = await image.read()
-    started_at = perf_counter()
-    decoded = decode_image(payload)
-    if decoded is None:
-        raise HTTPException(status_code=400, detail="image could not be decoded")
+    try:
+        decoded_image = decode_image(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    height, width = decoded.shape[:2]
-    detections = detect_aruco_markers(decoded)
-    latency_ms = round((perf_counter() - started_at) * 1000.0, 3)
-    if detections:
-        events = [
-            build_marker_event(
-                source=source,
-                detection=detection,
-                image_width=width,
-                image_height=height,
-                latency_ms=latency_ms,
-            )
-            for detection in detections
-        ]
-    else:
-        events = [
-            build_no_marker_event(
-                source=source,
-                image_width=width,
-                image_height=height,
-                latency_ms=latency_ms,
-            )
-        ]
-
+    image_height, image_width = decoded_image.shape[:2]
+    events = [
+        build_marker_event(
+            source=source,
+            detection=detection,
+            image_width=image_width,
+            image_height=image_height,
+        )
+        for detection in detect_markers(decoded_image)
+    ]
     for event in events:
         store.add(event)
-    return {"event": events[0], "events": events}
+    return {"source": source, "emitted": False, "events": events}
