@@ -7,7 +7,6 @@ from generated_fixtures import (
     aruco_png_bytes,
     blank_png_bytes,
     multi_aruco_png_bytes,
-    qr_png_bytes,
 )
 
 client = TestClient(app)
@@ -77,25 +76,6 @@ def test_generated_fixture_decode_rejects_non_image_bytes():
 
     assert response.status_code == 400
     assert "decodable image" in response.json()["detail"]
-
-
-def test_generated_qr_fixture_emits_contract_valid_event():
-    payload = "TB3_DOCK_A"
-    response = client.post(
-        "/api/v1/detect/image",
-        data={"source": "tb3_1_picam"},
-        files={"image": ("generated-qr.png", qr_png_bytes(payload), "image/png")},
-    )
-
-    assert response.status_code == 200
-    events = response.json()["events"]
-    assert len(events) == 1
-    event = events[0]
-    validate_vision_event(event)
-    assert event["class_name"] == "qr_marker"
-    assert event["marker_id"] == payload
-    assert event["metadata"]["model"] == "opencv-qr"
-    assert event["wms_hint"] == "TAG_DETECTED"
 
 
 def test_generated_multi_marker_fixture_returns_all_markers_in_stable_order():

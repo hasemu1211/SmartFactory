@@ -25,21 +25,6 @@ def aruco_png_bytes(marker_id: int = 7, *, marker_size: int = 96, padding: int =
     return png_bytes(cv2.cvtColor(canvas, cv2.COLOR_GRAY2BGR))
 
 
-def qr_png_bytes(payload: str = "TB3_DOCK_A", *, scale: int = 8, padding: int = 24) -> bytes:
-    """Generate a deterministic QR fixture image entirely in test code."""
-
-    encoder = cv2.QRCodeEncoder_create()
-    qr = encoder.encode(payload)
-    qr = cv2.resize(qr, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
-    canvas = np.full(
-        (qr.shape[0] + (padding * 2), qr.shape[1] + (padding * 2)),
-        255,
-        dtype=np.uint8,
-    )
-    canvas[padding : padding + qr.shape[0], padding : padding + qr.shape[1]] = qr
-    return png_bytes(cv2.cvtColor(canvas, cv2.COLOR_GRAY2BGR))
-
-
 def multi_aruco_png_bytes(marker_ids: tuple[int, int] = (4, 5)) -> bytes:
     """Generate a deterministic two-marker ArUco fixture with non-overlapping boxes."""
 

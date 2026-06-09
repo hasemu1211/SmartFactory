@@ -37,6 +37,6 @@ cd /home/codelab/Desktop/Project/SmartFactory
 - `POST /api/v1/detect/image`
 
 `POST /api/v1/detect/image` decodes uploaded images with OpenCV and emits
-contract-valid `VisionEvent` objects for deterministic ArUco/QR marker
-detections. Frames without markers return an empty `events` array. YOLO/Torch
+contract-valid `VisionEvent` objects for deterministic ArUco marker
+detections. Frames without ArUco markers return an empty `events` array. QR, AprilTag, YOLO/Torch
 object detection is intentionally not part of this MVP1 marker-detection slice.

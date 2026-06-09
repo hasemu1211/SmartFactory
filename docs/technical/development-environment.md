@@ -127,7 +127,7 @@ git checkout -b feature/ai-server-marker-detection
 
 Recommended next tasks:
 
-1. Add real OpenCV ArUco/QR detection behind the existing `/api/v1/detect/image` endpoint.
+1. Extend beyond the current OpenCV ArUco-only detector only after a new scope decision: QR/AprilTag or YOLO candidate detection behind the existing `/api/v1/detect/image` endpoint.
 2. Add camera-frame adapter or snapshot path without making AI Server directly depend on ROS2.
 3. Add WMS ingest client for `POST {MAIN_SERVER_URL}/api/v1/vision/events`.
 4. Add ROS2 `smartfactory_ros_bridge` package once WMS task/state endpoints are ready.
