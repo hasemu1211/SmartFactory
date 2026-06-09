@@ -68,44 +68,8 @@ def _detect_aruco(image: np.ndarray) -> Iterable[MarkerDetection]:
     return detections
 
 
-def _detect_qr(image: np.ndarray) -> Iterable[MarkerDetection]:
-    detector = cv2.QRCodeDetector()
-    detections: list[MarkerDetection] = []
-
-    ok, decoded_info, points, _ = detector.detectAndDecodeMulti(image)
-    if ok and points is not None:
-        for decoded, qr_points in zip(decoded_info, points, strict=False):
-            if not decoded:
-                continue
-            bbox = _bbox_from_points(qr_points)
-            if bbox[0] < bbox[2] and bbox[1] < bbox[3]:
-                detections.append(
-                    MarkerDetection(
-                        class_name="qr_marker",
-                        marker_id=decoded,
-                        bbox_xyxy=bbox,
-                        detector="opencv-qr",
-                    )
-                )
-        return detections
-
-    decoded, qr_points, _ = detector.detectAndDecode(image)
-    if decoded and qr_points is not None:
-        bbox = _bbox_from_points(qr_points)
-        if bbox[0] < bbox[2] and bbox[1] < bbox[3]:
-            detections.append(
-                MarkerDetection(
-                    class_name="qr_marker",
-                    marker_id=decoded,
-                    bbox_xyxy=bbox,
-                    detector="opencv-qr",
-                )
-            )
-    return detections
-
-
 def detect_markers(image: np.ndarray) -> list[MarkerDetection]:
-    """Detect deterministic 2D markers without YOLO/Torch or ROS2 dependencies."""
+    """Detect deterministic ArUco markers without YOLO/Torch or ROS2 dependencies."""
 
-    detections = [*_detect_aruco(image), *_detect_qr(image)]
+    detections = list(_detect_aruco(image))
     return sorted(detections, key=lambda item: (item.class_name, item.marker_id, item.bbox_xyxy))
