@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     camera_sources: str = "global_cam_01,tb3_1_picam,tb3_2_picam"
     ros_image_topics: str = "/global_camera/image_raw,/tb3_1/pi_camera/image_raw,/tb3_2/pi_camera/image_raw"
     vision_event_schema_version: str = "vision-event.v1"
-    model_name: str = "mock-mvp1-detector"
+    model_name: str = "opencv-marker-detector"
     policy_version: str = "mvp1"
     contract_schema_path: Path = Field(
         default=REPO_ROOT / "docs" / "contracts" / "vision-event.schema.json"

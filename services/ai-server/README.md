@@ -36,6 +36,7 @@ cd /home/codelab/Desktop/Project/SmartFactory
 - `GET /api/v1/detections/latest`
 - `POST /api/v1/detect/image`
 
-`POST /api/v1/detect/image` currently returns a mock `VisionEvent` that passes
-the canonical JSON Schema. Real OpenCV/YOLO detection will replace the mock
-in the next phase.
+`POST /api/v1/detect/image` decodes uploaded images with OpenCV and emits
+contract-valid `VisionEvent` objects for deterministic ArUco/QR marker
+detections. Frames without markers return an empty `events` array. YOLO/Torch
+object detection is intentionally not part of this MVP1 marker-detection slice.

@@ -1,80 +1,111 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Iterable
 
 import cv2
 import numpy as np
 
 
-ARUCO_DICTIONARY_NAME = "DICT_4X4_50"
-
-
 @dataclass(frozen=True)
 class MarkerDetection:
-    """Deterministic marker detection result in image pixel coordinates."""
+    """Deterministic 2D marker detection result from an uploaded frame."""
 
+    class_name: str
     marker_id: str
     bbox_xyxy: list[float]
-    center_xy: tuple[float, float]
-    corners_xy: list[list[float]]
-    dictionary: str = ARUCO_DICTIONARY_NAME
     confidence: float = 1.0
+    detector: str = "opencv"
 
 
-def decode_image(payload: bytes) -> np.ndarray | None:
+def decode_image(image_bytes: bytes) -> np.ndarray:
     """Decode uploaded image bytes into an OpenCV BGR image."""
 
-    if not payload:
-        return None
-    encoded = np.frombuffer(payload, dtype=np.uint8)
-    image = cv2.imdecode(encoded, cv2.IMREAD_COLOR)
+    image_array = np.frombuffer(image_bytes, dtype=np.uint8)
+    image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError("uploaded image is not a decodable image")
     return image
 
 
-def _aruco_detector() -> Any:
-    aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-    parameters = cv2.aruco.DetectorParameters()
-    if hasattr(cv2.aruco, "ArucoDetector"):
-        return cv2.aruco.ArucoDetector(aruco_dict, parameters)
-    return aruco_dict, parameters
+def _bbox_from_points(points: np.ndarray) -> list[float]:
+    pts = points.reshape(-1, 2).astype(float)
+    x_min = float(np.min(pts[:, 0]))
+    y_min = float(np.min(pts[:, 1]))
+    x_max = float(np.max(pts[:, 0]))
+    y_max = float(np.max(pts[:, 1]))
+    return [x_min, y_min, x_max, y_max]
 
 
-def detect_aruco_markers(image: np.ndarray) -> list[MarkerDetection]:
-    """Detect DICT_4X4_50 ArUco markers without ROS2/runtime side effects.
+def _detect_aruco(image: np.ndarray) -> Iterable[MarkerDetection]:
+    aruco = getattr(cv2, "aruco", None)
+    if aruco is None:
+        return []
 
-    Results are sorted by numeric marker ID and then bbox origin so API responses
-    remain stable for generated fixtures and repeated uploads.
-    """
-
-    detector = _aruco_detector()
-    if hasattr(detector, "detectMarkers"):
-        corners, ids, _ = detector.detectMarkers(image)
-    else:
-        aruco_dict, parameters = detector
-        corners, ids, _ = cv2.aruco.detectMarkers(image, aruco_dict, parameters=parameters)
+    dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
+    if hasattr(aruco, "ArucoDetector"):
+        parameters = aruco.DetectorParameters()
+        corners, ids, _ = aruco.ArucoDetector(dictionary, parameters).detectMarkers(image)
+    else:  # pragma: no cover - compatibility path for older OpenCV builds
+        parameters = aruco.DetectorParameters_create()
+        corners, ids, _ = aruco.detectMarkers(image, dictionary, parameters=parameters)
 
     if ids is None:
         return []
 
     detections: list[MarkerDetection] = []
-    for marker_id, marker_corners in zip(ids.flatten().tolist(), corners, strict=True):
-        points = np.asarray(marker_corners, dtype=np.float32).reshape(4, 2)
-        x_min = float(points[:, 0].min())
-        y_min = float(points[:, 1].min())
-        x_max = float(points[:, 0].max())
-        y_max = float(points[:, 1].max())
-        center = (float(points[:, 0].mean()), float(points[:, 1].mean()))
-        detections.append(
-            MarkerDetection(
-                marker_id=str(int(marker_id)),
-                bbox_xyxy=[x_min, y_min, x_max, y_max],
-                center_xy=center,
-                corners_xy=[[float(x), float(y)] for x, y in points.tolist()],
+    for marker_corners, marker_id in zip(corners, ids.flatten(), strict=False):
+        bbox = _bbox_from_points(marker_corners)
+        if bbox[0] < bbox[2] and bbox[1] < bbox[3]:
+            detections.append(
+                MarkerDetection(
+                    class_name="aruco_marker",
+                    marker_id=f"ARUCO_4X4_50_{int(marker_id)}",
+                    bbox_xyxy=bbox,
+                    detector="opencv-aruco-4x4-50",
+                )
             )
-        )
+    return detections
 
-    return sorted(
-        detections,
-        key=lambda item: (int(item.marker_id), item.bbox_xyxy[1], item.bbox_xyxy[0]),
-    )
+
+def _detect_qr(image: np.ndarray) -> Iterable[MarkerDetection]:
+    detector = cv2.QRCodeDetector()
+    detections: list[MarkerDetection] = []
+
+    ok, decoded_info, points, _ = detector.detectAndDecodeMulti(image)
+    if ok and points is not None:
+        for decoded, qr_points in zip(decoded_info, points, strict=False):
+            if not decoded:
+                continue
+            bbox = _bbox_from_points(qr_points)
+            if bbox[0] < bbox[2] and bbox[1] < bbox[3]:
+                detections.append(
+                    MarkerDetection(
+                        class_name="qr_marker",
+                        marker_id=decoded,
+                        bbox_xyxy=bbox,
+                        detector="opencv-qr",
+                    )
+                )
+        return detections
+
+    decoded, qr_points, _ = detector.detectAndDecode(image)
+    if decoded and qr_points is not None:
+        bbox = _bbox_from_points(qr_points)
+        if bbox[0] < bbox[2] and bbox[1] < bbox[3]:
+            detections.append(
+                MarkerDetection(
+                    class_name="qr_marker",
+                    marker_id=decoded,
+                    bbox_xyxy=bbox,
+                    detector="opencv-qr",
+                )
+            )
+    return detections
+
+
+def detect_markers(image: np.ndarray) -> list[MarkerDetection]:
+    """Detect deterministic 2D markers without YOLO/Torch or ROS2 dependencies."""
+
+    detections = [*_detect_aruco(image), *_detect_qr(image)]
+    return sorted(detections, key=lambda item: (item.class_name, item.marker_id, item.bbox_xyxy))
