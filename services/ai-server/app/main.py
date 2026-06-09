@@ -10,9 +10,8 @@ from fastapi.responses import JSONResponse
 
 from .config import get_settings
 from .contracts import ContractValidationError, validate_vision_event
-from .detectors import MarkerDetection, decode_image, detect_aruco_markers
-from .event_store import InMemoryEventStore
 from .detectors import MarkerDetection, decode_image, detect_markers
+from .event_store import InMemoryEventStore
 
 app = FastAPI(
     title="SmartFactory AI Server",
@@ -50,6 +49,7 @@ def build_marker_event(
     detection: MarkerDetection,
     image_width: int,
     image_height: int,
+    latency_ms: float | None = None,
 ) -> dict[str, Any]:
     """Build a schema-valid VisionEvent from a deterministic marker detection."""
 
@@ -78,7 +78,7 @@ def build_marker_event(
             "model": detection.detector,
             "image_width": image_width,
             "image_height": image_height,
-            "latency_ms": None,
+            "latency_ms": latency_ms,
         },
     }
     validate_vision_event(event)
@@ -162,15 +162,19 @@ async def detect_image(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     image_height, image_width = decoded_image.shape[:2]
+    started = perf_counter()
+    detections = detect_markers(decoded_image)
+    latency_ms = round((perf_counter() - started) * 1000.0, 3)
     events = [
         build_marker_event(
             source=source,
             detection=detection,
             image_width=image_width,
             image_height=image_height,
+            latency_ms=latency_ms,
         )
-        for detection in detect_markers(decoded_image)
+        for detection in detections
     ]
     for event in events:
         store.add(event)
-    return {"source": source, "emitted": False, "events": events}
+    return {"source": source, "emitted": emit, "events": events}
