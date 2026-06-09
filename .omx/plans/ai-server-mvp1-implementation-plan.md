@@ -247,6 +247,20 @@ A Critic review returned `REVISE` because the first draft was directionally soun
 - Added valid and invalid fixtures under `docs/contracts/fixtures/`.
 - Marked the research document as background where it conflicts with canonical contract files.
 
+
+## 10.5 ROS2-friendly environment addendum
+
+A dedicated ROS2-friendly environment plan was added at `docs/technical/ros2-friendly-environment-plan.md`.
+
+Key decisions:
+
+- Use `/home/codelab/ros2_ws` as the ROS2 workspace and keep this repository as the API/contract/planning source unless the project is intentionally consolidated into a monorepo.
+- Add a launch-only `smartfactory_bringup` package for Central PC orchestration.
+- Keep the AI Server as a separate process/container launched by ROS2 bringup, not a hard `rclpy` dependency inside the AI service.
+- Use stable ROS names for MVP1 camera topics: `/global_camera/image_raw`, `/tb3_1/pi_camera/image_raw`, `/tb3_2/pi_camera/image_raw`.
+- Add thin ROS packages only where needed: `smartfactory_ros_bridge`, `smartfactory_perception_ros`, and optional `smartfactory_msgs` after the JSON contract is stable.
+- Imported local ROS2-related Claude skills into the Codex skills directory for future use: ROS2 development, robot bringup, robot perception, ROS2-web integration, robotics testing, Docker ROS2, software principles, design patterns, and security.
+
 ## 10. Recommended OMX next step
 
 No additional user decision is required before planning. Recommended workflow:
