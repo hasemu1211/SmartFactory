@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+jsonschema
+python-dotenv
+python-multipart
