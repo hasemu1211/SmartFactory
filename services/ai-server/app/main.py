@@ -14,6 +14,7 @@ from .detectors import MarkerDetection, decode_image, detect_markers
 from .docking import CameraIntrinsics, MarkerPose, estimate_marker_pose
 from .event_store import InMemoryEventStore
 from .pose_profiles import ArucoPoseProfile, PoseProfileError, get_pose_profile
+from .source_health import InMemorySourceHealthTracker
 from .wms_client import emit_vision_events
 
 app = FastAPI(
@@ -22,6 +23,7 @@ app = FastAPI(
     description="API-first MVP1 AI Server. Emits evidence only; WMS owns decisions.",
 )
 store = InMemoryEventStore()
+source_health = InMemorySourceHealthTracker()
 
 
 def _robot_id_for_source(source: str) -> str | None:
@@ -52,8 +54,12 @@ def _source_notes(source: str) -> str:
     return "front marker/dock/local item evidence"
 
 
+def _now_dt() -> datetime:
+    return datetime.now(timezone.utc).astimezone()
+
+
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).astimezone().isoformat()
+    return _now_dt().isoformat()
 
 
 def _pose_confidence(pose: MarkerPose) -> float:
@@ -254,20 +260,19 @@ async def contract_validation_exception_handler(_, exc: ContractValidationError)
 @app.get("/api/v1/health")
 def health() -> dict[str, Any]:
     settings = get_settings()
-    source_count = len(settings.source_ids)
+    source_summary = source_health.summary(
+        settings.source_ids,
+        now=_now_dt(),
+        stale_after_s=settings.source_stale_after_s,
+        offline_after_s=settings.source_offline_after_s,
+    )
     return {
         "service": "ai-server",
         "status": "ok",
         "service_version": app.version,
         "contract_version": settings.vision_event_schema_version,
         "model_status": "loaded",
-        "source_summary": {
-            "configured": source_count,
-            "online": 0,
-            "stale": 0,
-            "disabled": 0,
-            "offline": source_count,
-        },
+        "source_summary": source_summary,
         # Backward-compatible aliases retained for existing local checks.
         "version": app.version,
         "schema_version": settings.vision_event_schema_version,
@@ -281,18 +286,32 @@ def sources() -> dict[str, Any]:
     settings = get_settings()
     topics = settings.image_topics
     source_items = []
+    now = _now_dt()
     for idx, source in enumerate(settings.source_ids):
+        health_snapshot = source_health.snapshot(
+            source,
+            now=now,
+            stale_after_s=settings.source_stale_after_s,
+            offline_after_s=settings.source_offline_after_s,
+        )
         source_items.append(
             {
                 "source": source,
                 "source_id": source,
                 "kind": _source_kind(source),
                 "robot_id": _robot_id_for_source(source),
-                "enabled": True,
-                "status": "offline",
+                "enabled": health_snapshot.enabled,
+                "status": health_snapshot.status,
                 "frame_id": _frame_id_for_source(source),
-                "last_frame_at": None,
-                "target_fps": 10,
+                "last_frame_at": health_snapshot.last_frame_at,
+                "last_frame_age_s": health_snapshot.last_frame_age_s,
+                "last_event_at": health_snapshot.last_event_at,
+                "last_event_kind": health_snapshot.last_event_kind,
+                "last_event_id": health_snapshot.last_event_id,
+                "last_marker_id": health_snapshot.last_marker_id,
+                "frame_count": health_snapshot.frame_count,
+                "event_count": health_snapshot.event_count,
+                "target_fps": settings.source_target_fps,
                 "notes": _source_notes(source),
                 "ros_topic": topics[idx] if idx < len(topics) else None,
             }
@@ -338,6 +357,7 @@ async def detect_image(
         decoded_image = decode_image(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    source_health.record_frame(source, at=_now_dt())
 
     pose_request = _optional_pose_request(
         pose_profile=pose_profile,
@@ -368,6 +388,7 @@ async def detect_image(
     ]
     for event in events:
         store.add(event)
+        source_health.record_event(event)
 
     emit_disabled = bool(emit and not settings.wms_emit_enabled)
     emit_results: list[dict[str, Any]] = []

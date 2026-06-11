@@ -61,7 +61,8 @@ Response `200`:
     "configured": 3,
     "online": 2,
     "stale": 1,
-    "disabled": 0
+    "disabled": 0,
+    "offline": 0
   }
 }
 ```
@@ -83,8 +84,16 @@ Response `200`:
       "status": "online | stale | offline | disabled",
       "frame_id": "global_camera_frame",
       "last_frame_at": "2026-06-09T15:30:00+09:00",
+      "last_frame_age_s": 0.25,
+      "last_event_at": "2026-06-09T15:30:00+09:00",
+      "last_event_kind": "CONFIRMED",
+      "last_event_id": "11111111-1111-4111-8111-111111111111",
+      "last_marker_id": "ARUCO_4X4_50_7",
+      "frame_count": 42,
+      "event_count": 3,
       "target_fps": 10,
-      "notes": "overview/slot/zone evidence"
+      "notes": "overview/slot/zone evidence",
+      "ros_topic": "/global_camera/image_raw"
     },
     {
       "source": "tb3_1_picam",
@@ -94,12 +103,26 @@ Response `200`:
       "status": "online",
       "frame_id": "tb3_1_pi_camera_optical_frame",
       "last_frame_at": "2026-06-09T15:30:00+09:00",
+      "last_frame_age_s": 0.12,
+      "last_event_at": null,
+      "last_event_kind": null,
+      "last_event_id": null,
+      "last_marker_id": null,
+      "frame_count": 10,
+      "event_count": 0,
       "target_fps": 10,
-      "notes": "front marker/dock/local item evidence"
+      "notes": "front marker/dock/local item evidence",
+      "ros_topic": "/tb3_1/pi_camera/image_raw"
     }
   ]
 }
 ```
+
+Source status is freshness-based. A configured source is `offline` until a
+valid frame is decoded. After a frame, it is `online` until
+`SOURCE_STALE_AFTER_S`, then `stale` until `SOURCE_OFFLINE_AFTER_S`, then
+`offline` again. `last_event_*` fields update only when a detection event is
+generated; marker-free frames still refresh `last_frame_at` and `frame_count`.
 
 ### `GET /api/v1/detections/latest?source=global_cam_01&limit=10`
 

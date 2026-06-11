@@ -18,12 +18,66 @@ def test_health_exposes_canonical_sources():
 
 
 def test_sources_include_robot_mapping():
+    main_module.source_health.reset()
     response = client.get("/api/v1/sources")
     assert response.status_code == 200
     sources = {item["source"]: item for item in response.json()["sources"]}
     assert sources["global_cam_01"]["robot_id"] is None
     assert sources["tb3_1_picam"]["robot_id"] == "tb3_1"
     assert sources["tb3_2_picam"]["robot_id"] == "tb3_2"
+    assert sources["tb3_1_picam"]["status"] == "offline"
+    assert sources["tb3_1_picam"]["last_frame_at"] is None
+    assert sources["tb3_1_picam"]["last_event_at"] is None
+    assert sources["tb3_1_picam"]["frame_count"] == 0
+    assert sources["tb3_1_picam"]["event_count"] == 0
+
+
+def test_detect_image_updates_source_health_for_blank_frame():
+    main_module.source_health.reset()
+
+    response = client.post(
+        "/api/v1/detect/image",
+        data={"source": "tb3_1_picam"},
+        files={"image": ("frame.png", blank_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    sources_response = client.get("/api/v1/sources")
+    sources = {item["source"]: item for item in sources_response.json()["sources"]}
+    tb3_1 = sources["tb3_1_picam"]
+    assert tb3_1["status"] == "online"
+    assert tb3_1["last_frame_at"] is not None
+    assert tb3_1["last_frame_age_s"] is not None
+    assert tb3_1["last_event_at"] is None
+    assert tb3_1["frame_count"] == 1
+    assert tb3_1["event_count"] == 0
+
+    health = client.get("/api/v1/health").json()["source_summary"]
+    assert health["configured"] == 3
+    assert health["online"] == 1
+    assert health["offline"] == 2
+
+
+def test_detect_image_updates_source_health_for_marker_event():
+    main_module.source_health.reset()
+
+    response = client.post(
+        "/api/v1/detect/image",
+        data={"source": "tb3_1_picam"},
+        files={"image": ("aruco.png", aruco_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    event = response.json()["events"][0]
+    sources = {item["source"]: item for item in client.get("/api/v1/sources").json()["sources"]}
+    tb3_1 = sources["tb3_1_picam"]
+    assert tb3_1["status"] == "online"
+    assert tb3_1["frame_count"] == 1
+    assert tb3_1["event_count"] == 1
+    assert tb3_1["last_event_at"] == event["timestamp"]
+    assert tb3_1["last_event_id"] == event["event_id"]
+    assert tb3_1["last_event_kind"] == "CONFIRMED"
+    assert tb3_1["last_marker_id"] == "ARUCO_4X4_50_7"
 
 
 def test_detect_image_returns_empty_events_for_frame_without_markers():
