@@ -13,6 +13,14 @@ Thin ROS2 camera snapshot adapter for the SmartFactory AI Server.
 - Does **not** make WMS decisions.
 - Does **not** depend on YOLO/Torch.
 
+It also includes a passive central-PC ArUco pose monitor for docking tuning:
+
+- Subscribes to raw or compressed ROS camera topics.
+- Reuses AI Server pure logic (`app.detectors` + `app.docking`) to compute
+  marker pose, docking error, FPS, marker-lost and stale state.
+- Logs advisory-only correction values for sign/gain tuning.
+- Creates no command publishers and **never publishes `/cmd_vel`**.
+
 For TurtleBot3 Pi Camera streams, prefer compressed transport. In live testing,
 `/camera/image_raw/compressed` was ~30 Hz while `/camera/image_raw` was ~13 Hz.
 
@@ -51,6 +59,43 @@ ros2 run smartfactory_perception_ros image_snapshot_client --ros-args \
   -p request_timeout_sec:=1.0 \
   -p emit:=false
 ```
+
+## Passive ArUco pose monitor
+
+Use this for robot-available passive tuning or central-PC synthetic checks. It
+does not contact AI Server and does not move the robot.
+
+Direct run example:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source /home/codelab/turtlebot3_ws/install/setup.bash
+export SMARTFACTORY_AI_SERVER_PYTHONPATH=/home/codelab/Desktop/Project/SmartFactory/services/ai-server
+ros2 run smartfactory_perception_ros aruco_pose_monitor --ros-args \
+  -p image_topic:=/camera/image_raw/compressed \
+  -p image_transport:=compressed \
+  -p target_marker_id:=ARUCO_4X4_50_0 \
+  -p marker_size_m:=0.08 \
+  -p camera_fx:=600.0 \
+  -p camera_fy:=600.0 \
+  -p camera_cx:=320.0 \
+  -p camera_cy:=240.0 \
+  -p target_distance_m:=0.45
+```
+
+Launch-file example, disabled unless explicitly enabled:
+
+```bash
+ros2 launch smartfactory_perception_ros aruco_pose_monitor.launch.py \
+  use_aruco_pose_monitor:=true \
+  image_topic:=/camera/image_raw/compressed \
+  image_transport:=compressed \
+  target_marker_id:=ARUCO_4X4_50_0
+```
+
+Calibration values above are placeholders from the tuning template. Before any
+permission-gated active docking, replace them with measured camera intrinsics
+and station-specific target offsets.
 
 The launch file is conservative: all snapshot clients are disabled unless
 `use_ai_snapshot_clients:=true`, and individual adapters are gated by

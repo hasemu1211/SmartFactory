@@ -159,37 +159,37 @@ The following items are implemented and covered by synthetic/API tests:
    - copy-per-session tuning config
    - AI Server pose profile config
    - passive tuning session helper
-5. Synthetic tests:
+5. Central-PC passive ArUco pose monitor skeleton:
+   - ROS-compatible raw/compressed image adapter
+   - reuses `app.detectors` and `app.docking` for marker pose/error
+   - logs pose, FPS, marker-lost, stale state, and advisory-only corrections
+   - does not create a `/cmd_vel` publisher
+6. Synthetic tests:
    - projected ArUco corners with known pose
    - left/right/near/far/yaw docking errors
    - marker-lost/aligned command outputs
    - lift ROI count with inside/outside/partial objects
    - segmentation mask overlap behavior
    - lift sensor + count stability pickup verification
+   - passive ArUco monitor marker-found/lost/stale/FPS/compressed-frame coverage
 
 ### 6.2 Remaining work that does not require physical tuning
 
 These items can be handled one by one without a real robot or real camera:
 
-1. **Central-PC passive ArUco pose monitor skeleton**
-   - subscribe/read image frames through a ROS-compatible adapter or test double
-   - compute ArUco pose/error using existing `app.docking`
-   - print/log pose, FPS, marker-lost/stale state
-   - must not publish `/cmd_vel`
-   - validate with synthetic image/frame tests
-2. **Source health/staleness model**
+1. **Source health/staleness model**
    - track `last_frame_at`, last event time, source online/stale/offline state
    - expose meaningful health in AI Server/source endpoints
    - validate with fake clocks/event-store tests
-3. **Lift ROI evidence API/contract design**
+2. **Lift ROI evidence API/contract design**
    - decide whether count/segmentation summaries use `vision-event.v2` or a separate endpoint
    - keep `vision-event.v1` strict and do not force mask/count fields into it
    - validate with schema fixtures before implementation
-4. **Detector/segmenter interface seam**
+3. **Detector/segmenter interface seam**
    - define internal result types for detection boxes and instance masks
    - add mock/synthetic tests first
    - defer actual model choice until class/data needs are confirmed
-5. **Observability/persistence improvements**
+4. **Observability/persistence improvements**
    - request IDs, structured logs, bounded event retention, metrics
    - no robot dependency
 
