@@ -136,6 +136,20 @@ Request: `multipart/form-data`
 | `source` | yes | source ID to evaluate as |
 | `image` | yes | image file |
 | `emit` | no | `false` default; if `true`, AI Server may POST accepted events to Main Server |
+| `marker_size_m` | no | positive marker size in meters; required with camera intrinsics to compute optional ArUco pose |
+| `camera_fx` | no | camera focal length x in pixels; required for optional ArUco pose |
+| `camera_fy` | no | camera focal length y in pixels; required for optional ArUco pose |
+| `camera_cx` | no | camera principal point x in pixels; required for optional ArUco pose |
+| `camera_cy` | no | camera principal point y in pixels; required for optional ArUco pose |
+| `camera_dist_coeffs` | no | optional comma-separated OpenCV distortion coefficients for optional ArUco pose |
+
+When all marker/camera calibration fields are provided, ArUco marker events may include
+`pose_estimate.method=ARUCO_POSE`. In MVP1 this is camera-frame planar docking
+evidence: `pose_estimate.x` is lateral offset in meters, `pose_estimate.y` is
+forward marker distance in meters, and `pose_estimate.yaw` is marker face yaw in
+radians. If calibration fields are omitted, `pose_estimate` remains `null`.
+Partial calibration input is rejected with HTTP `400` so the server does not emit
+ambiguous pose estimates.
 
 Emission is disabled by default at runtime. `emit=true` only requests emission;
 the server attempts outbound WMS ingest only when `WMS_EMIT_ENABLED=true`.

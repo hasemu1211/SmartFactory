@@ -46,6 +46,8 @@ def test_detect_aruco_marker_from_generated_fixture():
     x1, y1, x2, y2 = detection.bbox_xyxy
     assert 0 <= x1 < x2 <= image.shape[1]
     assert 0 <= y1 < y2 <= image.shape[0]
+    assert len(detection.corners_xy) == 4
+    assert all(len(corner) == 2 for corner in detection.corners_xy)
 
 
 def test_detect_aruco_markers_returns_empty_for_blank_frame():
