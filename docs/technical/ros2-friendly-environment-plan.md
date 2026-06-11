@@ -2,7 +2,7 @@
 
 - Date: 2026-06-09
 - Scope: MVP1 Central PC bringup for WMS-lite, GUI, ROS2/Nav2, LDS-03, camera sources, and separate AI Server process/container.
-- Status: Planning baseline plus initial `smartfactory_bringup` scaffold created in `/home/codelab/ros2_ws/src` on 2026-06-09.
+- Status: Planning baseline updated 2026-06-11. `smartfactory_bringup` runs from `/home/codelab/turtlebot3_ws/src`; raw-image `smartfactory_perception_ros` snapshot adapter source is tracked under `ros2/smartfactory_perception_ros` and symlinked into the TurtleBot3 workspace.
 
 ## 1. Design goals
 
@@ -14,10 +14,10 @@
 
 ## 2. Recommended workspace layout
 
-Use `/home/codelab/ros2_ws` as the ROS2 workspace and keep this SmartFactory repository as the contract/planning source unless the project is intentionally converted into a monorepo.
+Use `/home/codelab/turtlebot3_ws` as the ROS2 runtime workspace so TurtleBot3/Nav2/LDS-03 packages and SmartFactory bringup share one overlay. Keep this SmartFactory repository as the contract/planning source and track new SmartFactory-owned ROS packages under `ros2/`, symlinked into the workspace when needed.
 
 ```text
-/home/codelab/ros2_ws/
+/home/codelab/turtlebot3_ws/
   src/
     smartfactory_bringup/             # launch-only package for Central PC and robot bringup
       package.xml
@@ -54,11 +54,9 @@ Use `/home/codelab/ros2_ws` as the ROS2 workspace and keep this SmartFactory rep
       smartfactory_perception_ros/
         __init__.py
         camera_health_monitor.py        # publishes source health/stale status
-        image_snapshot_client.py        # optional debug snapshot to AI Server
-      launch/
-        camera_health.launch.py
-      config/
-        source_ids.yaml
+        image_snapshot_client.py        # raw Image snapshot adapter to AI Server
+      # v1 source is tracked in SmartFactory repo at ros2/smartfactory_perception_ros
+      # and symlinked into /home/codelab/turtlebot3_ws/src
 
     smartfactory_msgs/                  # optional once message contracts are stable
       package.xml
@@ -74,7 +72,7 @@ Use `/home/codelab/ros2_ws` as the ROS2 workspace and keep this SmartFactory rep
 
 - `services/ai-server` should not depend on `rclpy` for MVP1 unless a deliberate ROS bridge process is introduced.
 - `smartfactory_ros_bridge` may depend on `rclpy`, `nav2_msgs`, `geometry_msgs`, and HTTP clients, but not on Torch/YOLO.
-- `smartfactory_perception_ros` may depend on `sensor_msgs`, `image_transport`, `cv_bridge`, and camera drivers, but model inference stays in the AI Server.
+- `smartfactory_perception_ros` may depend on `rclpy`, `sensor_msgs`, `cv_bridge`, OpenCV, and `python3-requests`, but model inference stays in the AI Server. V1 supports raw `sensor_msgs/Image`; add compressed transport later only if deployment needs it.
 - `smartfactory_msgs` is optional. The canonical cross-team payload remains `docs/contracts/vision-event.schema.json`.
 
 ## 3. Canonical ROS names for MVP1
@@ -106,6 +104,7 @@ use_robot_picams:=true
 use_ai_server:=true
 use_wms_bridge:=true
 use_nav2:=true
+use_ai_snapshot_clients:=false
 robot_names:=[tb3_1,tb3_2]
 ai_server_host:=127.0.0.1
 ai_server_port:=8100
@@ -233,7 +232,7 @@ MODEL_PATH=models/mvp1-detector.pt
 Install with `rosdep` where possible:
 
 ```bash
-cd /home/codelab/ros2_ws
+cd /home/codelab/turtlebot3_ws
 rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install
 ```
@@ -262,7 +261,7 @@ The AI Server may read camera frames through a small adapter, but heavy AI depen
 ## 7. Testing and QA plan
 
 1. Contract validation: `python3 scripts/validate_contracts.py` from this repository.
-2. ROS package build: `colcon build --symlink-install` in `/home/codelab/ros2_ws`.
+2. ROS package build: `colcon build --symlink-install` in `/home/codelab/turtlebot3_ws`; `make ros-build-bringup` currently builds `smartfactory_bringup smartfactory_perception_ros`.
 3. Launch smoke test: `ros2 launch smartfactory_bringup central_pc_bringup.launch.py use_ai_server:=false use_nav2:=false`.
 4. Topic smoke test: verify camera topics exist with `ros2 topic list` and `ros2 topic hz`.
 5. API smoke test: AI Server `/api/v1/health` and Main Server `/api/v1/vision/events`.
@@ -271,7 +270,7 @@ The AI Server may read camera frames through a small adapter, but heavy AI depen
 
 ## 8. Skill import and future usage
 
-The ROS2-related Claude skills under `/home/codelab/ros2_ws/.claude/skills` are useful project knowledge. Import/use them selectively:
+The ROS2-related skills are useful project knowledge. Import/use them selectively:
 
 - `ros2-development` for packages, launch files, QoS, colcon, ament.
 - `robot-bringup` for layered launch, systemd, device checks, production startup.
@@ -283,22 +282,25 @@ The ROS2-related Claude skills under `/home/codelab/ros2_ws/.claude/skills` are 
 
 ## 9. Immediate next scaffold tasks
 
-Completed on 2026-06-09 in `/home/codelab/ros2_ws`:
+Completed/updated through 2026-06-11 in `/home/codelab/turtlebot3_ws`:
 
-1. Created `smartfactory_bringup` launch package in `/home/codelab/ros2_ws/src`.
+1. Created/migrated `smartfactory_bringup` launch package in `/home/codelab/turtlebot3_ws/src`.
 2. Added `cameras.yaml`, `namespaces.yaml`, `ai_server.env.example`, and `ros2_network.env.example`.
 3. Added `central_pc_bringup.launch.py`, `perception_sources.launch.py`, `ai_server.launch.py`, `wms_bridge.launch.py`, and `nav2_fleet.launch.py` with conservative launch flags.
-4. Verified `colcon build --symlink-install --packages-select smartfactory_bringup`.
+4. Verified `colcon build --symlink-install --packages-select smartfactory_bringup smartfactory_perception_ros`.
 5. Verified launch smoke test with all unavailable hardware/service flags disabled.
-6. Committed ROS2 workspace scaffold as `/home/codelab/ros2_ws` commit `8d9a28e` (`Add SmartFactory ROS2 bringup scaffold`).
+6. Initial ROS2 workspace scaffold was recorded earlier as commit `8d9a28e` before TurtleBot3 workspace consolidation.
+7. Added raw `sensor_msgs/Image` snapshot adapter package `smartfactory_perception_ros` and default-off `ai_snapshot_clients.launch.py`.
+8. Verified local no-robot E2E: generated ArUco ROS Image -> snapshot client -> AI Server `/api/v1/detect/image` -> latest detection.
 
 Next tasks:
 
-1. Add `smartfactory_ros_bridge` after Main/WMS endpoint shape is ready.
-2. Add actual global camera driver config after confirming `/dev/video*` mapping and calibration.
-3. Add robot Pi Camera relay implementation after deciding robot-side streaming path.
-4. Add namespaced TurtleBot3/Nav2 includes for `tb3_1` and `tb3_2` using LDS-03 scan topics.
-5. Add launch/integration tests once bridge nodes exist.
+1. Add actual global camera driver config after confirming `/dev/video*` mapping and calibration.
+2. Add robot Pi Camera relay implementation after deciding robot-side streaming path.
+3. Add source health/staleness reporting for snapshot streams.
+4. Add `smartfactory_ros_bridge` after Main/WMS task/state endpoint shape is ready.
+5. Add namespaced TurtleBot3/Nav2 includes for `tb3_1` and `tb3_2` using LDS-03 scan topics.
+6. Add launch/integration tests once bridge nodes exist.
 
 ## 10. Acceptance criteria for ROS2-friendly setup
 

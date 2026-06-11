@@ -80,6 +80,8 @@ ROS2 bringup side:
 
 - ROS2 workspace root: `/home/codelab/turtlebot3_ws` after 2026-06-11 migration.
 - Package scaffold: `/home/codelab/turtlebot3_ws/src/smartfactory_bringup`
+- ROS2 snapshot adapter package: `/home/codelab/turtlebot3_ws/src/smartfactory_perception_ros` symlinked to tracked repo source `ros2/smartfactory_perception_ros`
+- Local `smartfactory_bringup` in `/home/codelab/turtlebot3_ws/src` includes default-off `ai_snapshot_clients.launch.py`; the adapter package also provides a standalone `ros2 launch smartfactory_perception_ros ai_snapshot_clients.launch.py`.
 - Previous copy moved aside at `/home/codelab/ros2_ws/src/smartfactory_bringup.migrated-backup-20260611` to avoid duplicate overlay confusion.
 - ROS2 workspace commit recorded earlier: `8d9a28e Add SmartFactory ROS2 bringup scaffold`
 - Rebuild command from SmartFactory repo: `make ros-build-bringup`
@@ -120,6 +122,14 @@ Validated again on 2026-06-11 Asia/Seoul after WMS ingest client implementation:
 
 - `./scripts/test_ai_server.sh -q`: `33 passed, 1 warning` and contract fixtures behaved as expected.
 
+Validated again on 2026-06-11 Asia/Seoul after ROS2 snapshot adapter implementation:
+
+- `make ros-build-bringup`: builds `smartfactory_bringup` and `smartfactory_perception_ros` successfully.
+- `colcon test --packages-select smartfactory_perception_ros --event-handlers console_direct+`: `10 passed`.
+- `make ros-launch-smoke`: succeeds with `use_ai_snapshot_clients:=false`.
+- Local no-robot E2E smoke: generated ArUco ROS `sensor_msgs/Image` -> `image_snapshot_client` -> AI Server `/api/v1/detect/image` -> latest detection contained `ARUCO_4X4_50_7`.
+- `./scripts/test_ai_server.sh -q`: `33 passed, 1 warning` and contract fixtures behaved as expected.
+
 Optional manual API smoke test:
 
 ```bash
@@ -129,12 +139,13 @@ curl http://127.0.0.1:8001/api/v1/health
 
 ## Recommended next work
 
-1. Add camera-frame adapter/snapshot ingestion while keeping AI Server decoupled from ROS2 imports.
-2. Add ROS2 bridge only after WMS task/state endpoints are stable.
-3. Add QR/AprilTag/YOLO only after a new scope decision; do not silently reintroduce QR tests into this ArUco-only branch.
-4. Add docker-compose/systemd launch assets if the team wants a reproducible Central-PC deployment.
-5. Consider persistence/observability after API contract stabilizes: structured logs, request IDs, metrics, and bounded event retention.
-6. Later, if production policy requires it, revisit best-effort WMS emission and decide whether some WMS failures should become hard failures or durable retry-queue entries.
+1. Add real camera source bringup/relay: confirm `/dev/video*` for `global_cam_01` and robot Pi camera stream path for `tb3_1_picam`/`tb3_2_picam`.
+2. Add source health/staleness reporting across snapshot adapter, AI Server, and Main/WMS.
+3. Add ROS2 bridge only after WMS task/state endpoints are stable.
+4. Add QR/AprilTag/YOLO only after a new scope decision; do not silently reintroduce QR tests into this ArUco-only branch.
+5. Add docker-compose/systemd launch assets if the team wants a reproducible Central-PC deployment.
+6. Consider persistence/observability after API contract stabilizes: structured logs, request IDs, metrics, and bounded event retention.
+7. Later, if production policy requires it, revisit best-effort WMS emission and decide whether some WMS failures should become hard failures or durable retry-queue entries.
 
 ## Recovery checklist for the next assistant
 
