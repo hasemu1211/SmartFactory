@@ -1,8 +1,9 @@
 # SmartFactory Development Environment
 
 - Date: 2026-06-09
+- Updated: 2026-06-11
 - Primary repository: `/home/codelab/Desktop/Project/SmartFactory`
-- ROS2 workspace: `/home/codelab/ros2_ws`
+- ROS2 workspace: `/home/codelab/turtlebot3_ws`
 - ROS2 distro detected: Jazzy at `/opt/ros/jazzy`
 
 ## Git status
@@ -17,16 +18,12 @@ def836f Add ROS2-friendly environment plan
 a841cd9 Plan AI server API contract baseline
 ```
 
-The ROS2 workspace `/home/codelab/ros2_ws` is also a Git repository. The initial
-SmartFactory bringup package was committed there as:
-
-```text
-8d9a28e Add SmartFactory ROS2 bringup scaffold
-```
-
-Note: `/home/codelab/ros2_ws` already had unrelated dirty/untracked files before
-this work. Keep SmartFactory bringup changes in small commits to avoid mixing old
-workspace cleanup with project implementation.
+SmartFactory ROS2 runtime now defaults to `/home/codelab/turtlebot3_ws`.
+`smartfactory_bringup` lives directly under that workspace, and
+`smartfactory_perception_ros` is symlinked from the tracked repo source
+`ros2/smartfactory_perception_ros` into `/home/codelab/turtlebot3_ws/src`.
+The old active bringup copy under `/home/codelab/ros2_ws/src` was moved aside as
+`smartfactory_bringup.migrated-backup-20260611`.
 
 ## AI Server environment
 
@@ -83,7 +80,7 @@ This validates all `docs/contracts/fixtures/*.json` against
 The launch scaffold lives in:
 
 ```text
-/home/codelab/ros2_ws/src/smartfactory_bringup
+/home/codelab/turtlebot3_ws/src/smartfactory_bringup
 ```
 
 Build:
@@ -127,7 +124,7 @@ git checkout -b feature/ai-server-marker-detection
 
 Recommended next tasks:
 
-1. Extend beyond the current OpenCV ArUco-only detector only after a new scope decision: QR/AprilTag or YOLO candidate detection behind the existing `/api/v1/detect/image` endpoint.
-2. Add camera-frame adapter or snapshot path without making AI Server directly depend on ROS2.
-3. Add WMS ingest client for `POST {MAIN_SERVER_URL}/api/v1/vision/events`.
-4. Add ROS2 `smartfactory_ros_bridge` package once WMS task/state endpoints are ready.
+1. Confirm real camera source bringup/relay for `global_cam_01`, `tb3_1_picam`, and `tb3_2_picam`.
+2. Add source health/staleness reporting for camera snapshots.
+3. Add ROS2 `smartfactory_ros_bridge` package once WMS task/state endpoints are ready.
+4. Extend beyond OpenCV ArUco-only only after a new scope decision: QR/AprilTag or YOLO candidate detection behind the existing `/api/v1/detect/image` endpoint.
