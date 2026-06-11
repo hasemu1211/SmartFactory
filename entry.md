@@ -58,8 +58,10 @@ AI Server package:
   - Async best-effort HTTP client for `POST {MAIN_SERVER_URL}/api/v1/vision/events`; treats HTTP 200/202 as success and reports non-2xx/timeout/transport failures in `emit_results`.
 - `services/ai-server/app/docking.py`
   - Robot-free pure math helpers for ArUco/marker docking: camera intrinsics, solvePnP marker pose, docking error, alignment tolerance, bounded differential-drive command proposal, and stable-alignment window counting.
-  - Used by `/api/v1/detect/image` only when marker size and camera intrinsics are provided, filling `pose_estimate.method=ARUCO_POSE` in `VisionEvent v1`.
+  - Used by `/api/v1/detect/image` only when `pose_profile` or marker size/camera intrinsics are provided, filling `pose_estimate.method=ARUCO_POSE` in `VisionEvent v1`.
   - This is not a ROS publisher and must not directly publish `/cmd_vel`.
+- `services/ai-server/app/pose_profiles.py`
+  - JSON profile loader for named ArUco pose calibration/tuning data. Default path is `config/perception/aruco_pose_profiles.example.json` via `ARUCO_POSE_PROFILES_PATH`.
 - `services/ai-server/app/lift_roi.py`
   - Robot-free pure evaluation helpers for lift ROI load evidence: bbox/ROI overlap, optional instance mask overlap, stable count checks, pickup verification, and dropoff verification.
   - This is evidence/policy helper logic; WMS/Main remains final task/inventory state owner.
@@ -88,6 +90,8 @@ Contracts/docs/scripts:
 - `docs/technical/ros2-friendly-environment-plan.md`
 - `config/perception/docking_tuning.example.yaml`
   - Copy-per-session template for marker IDs, marker size, camera intrinsics, station target offsets, tolerances, gains/speed caps, and lift ROI polygons.
+- `config/perception/aruco_pose_profiles.example.json`
+  - AI Server-readable named pose profiles for robot-free/passive tuning. Values are tuning/config data and should be edited per station/camera after passive measurement.
 - `scripts/prepare_docking_tuning_session.sh`
   - Creates `.omx/reports/docking-tuning/<timestamp>/`, copies the tuning config template, and prints safe passive ROS commands. `--passive-check` runs topic list/type/hz only and never publishes motion commands.
 - `scripts/setup_ai_server_env.sh`
@@ -169,6 +173,11 @@ Validated again on 2026-06-11 Asia/Seoul after optional ArUco pose integration:
 
 - `./scripts/test_ai_server.sh -q`: `49 passed, 1 warning` and contract fixtures behaved as expected.
 - Default marker events remain compatible with `pose_estimate=null`; optional calibration form fields produce contract-valid `ARUCO_POSE` payloads.
+
+Validated again on 2026-06-11 Asia/Seoul after named ArUco pose profile support:
+
+- `./scripts/test_ai_server.sh -q`: `56 passed, 1 warning` and contract fixtures behaved as expected.
+- `/api/v1/detect/image` accepts `pose_profile`; profile/source/marker mismatch keeps `pose_estimate=null`; unknown profiles or mixing profile+manual intrinsics return HTTP 400.
 
 Optional manual API smoke test:
 

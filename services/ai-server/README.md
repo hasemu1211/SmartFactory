@@ -41,11 +41,17 @@ contract-valid `VisionEvent` objects for deterministic ArUco marker
 detections. Frames without ArUco markers return an empty `events` array.
 
 For robot-free docking development, the endpoint can optionally compute
-`pose_estimate.method=ARUCO_POSE` when the request also provides
-`marker_size_m`, `camera_fx`, `camera_fy`, `camera_cx`, and `camera_cy`
-(`camera_dist_coeffs` is optional). Without those calibration inputs,
-`pose_estimate` remains `null`. QR, AprilTag, YOLO/Torch object detection is
-intentionally not part of this MVP1 marker-detection slice.
+`pose_estimate.method=ARUCO_POSE` in two ways:
+
+1. provide `pose_profile`, loaded from `ARUCO_POSE_PROFILES_PATH`
+   (default `config/perception/aruco_pose_profiles.example.json`); or
+2. provide manual `marker_size_m`, `camera_fx`, `camera_fy`, `camera_cx`, and
+   `camera_cy` (`camera_dist_coeffs` is optional).
+
+Without those calibration inputs, `pose_estimate` remains `null`. Profile values
+are tuning/config data; restart the server after editing the profile file. QR,
+AprilTag, YOLO/Torch object detection is intentionally not part of this MVP1
+marker-detection slice.
 
 ## Optional WMS ingest emission
 
