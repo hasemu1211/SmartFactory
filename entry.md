@@ -34,6 +34,17 @@
 - Team context snapshot:
   - `.omx/context/ai-server-marker-detection-20260609T071419Z.md`
 
+## Execution lanes snapshot
+
+| Lane | Status | Meaning | Next action |
+| --- | --- | --- | --- |
+| A. Completed robot-free stack | Done | AI Server evidence API, ArUco detection, optional pose/profile support, pure docking math, lift ROI evaluator, synthetic tests, tuning prep assets | Keep as stable base; validate with `./scripts/test_ai_server.sh -q` |
+| B. Remaining no-physical-tuning work | Open | Work that can be implemented now without robot/camera availability | Start with central-PC passive ArUco pose monitor skeleton |
+| C. Robot-available passive tuning | Waiting for hardware window | Requires robot/camera availability but no active motion | Use `docs/robot/docking-tuning-runbook.md`; measure topics/FPS/pose noise; no `/cmd_vel` |
+| D. Permission-gated active tuning | Blocked until explicit approval | Any low-speed motion command or robot-side change | Ask user first; enforce marker-loss/stale timeout stop |
+
+Main plan pointer: `docs/technical/perception-control-plan.md`.
+
 ## Current implementation summary
 
 AI Server package:
@@ -107,7 +118,8 @@ ROS2 bringup side:
 - ROS2 snapshot adapter package: `/home/codelab/turtlebot3_ws/src/smartfactory_perception_ros` symlinked to tracked repo source `ros2/smartfactory_perception_ros`
 - Local `smartfactory_bringup` in `/home/codelab/turtlebot3_ws/src` includes default-off `ai_snapshot_clients.launch.py`; the adapter package also provides a standalone `ros2 launch smartfactory_perception_ros ai_snapshot_clients.launch.py`.
 - Previous copy moved aside at `/home/codelab/ros2_ws/src/smartfactory_bringup.migrated-backup-20260611` to avoid duplicate overlay confusion.
-- ROS2 workspace commit recorded earlier: `8d9a28e Add SmartFactory ROS2 bringup scaffold`
+- Historical ROS2 workspace commit recorded earlier: `8d9a28e Add SmartFactory ROS2 bringup scaffold`
+  - Note: this is retained as historical handoff context and may not be directly verifiable from the current tracked repo alone.
 - Rebuild command from SmartFactory repo: `make ros-build-bringup`
 
 ## Environment conventions
@@ -188,20 +200,60 @@ curl http://127.0.0.1:8100/api/v1/health
 
 ## Recommended next work
 
-1. Add a ROS-side/central-PC high-rate docking node around `app.docking` when ready; do not use 0.5s HTTP snapshots for closed-loop precision parking.
-2. Define config files for marker size, camera intrinsics, station target offsets, docking tolerances, and speed/gain limits.
-3. Add API/event contract planning for count/segmentation summaries. Do not force mask/count fields into `vision-event.v1` without schema planning.
-4. Add source health/staleness reporting across snapshot adapter, AI Server, and Main/WMS.
-5. If a robot becomes available mid-work, open a separate tuning lane:
-   - passive first: bringup/camera only, subscribe/measure FPS, latency, ArUco pose noise, no `/cmd_vel`;
-   - low-speed tuning only after explicit permission, with marker-loss/timeout stop conditions.
-6. Repeat the validated Robot1 PiCam compressed QA on Robot2 when it is available; Robot1 `tb3_1_picam` is already live-validated through AI Server.
-7. Add real camera source bringup/relay for `global_cam_01` when the global camera is ready.
-8. Add ROS2 bridge only after WMS task/state endpoints are stable.
-9. Add QR/AprilTag/YOLO/segmentation only after a new scope decision; segmentation is preferred for robust lift count/drop verification, while semantic segmentation is mainly for static zone masks.
-10. Add docker-compose/systemd launch assets if the team wants a reproducible Central-PC deployment.
-11. Consider persistence/observability after API contract stabilizes: structured logs, request IDs, metrics, and bounded event retention.
-12. Later, if production policy requires it, revisit best-effort WMS emission and decide whether some WMS failures should become hard failures or durable retry-queue entries.
+Use `docs/technical/perception-control-plan.md` as the main plan pointer. It now separates:
+
+- completed robot-free base,
+- remaining work that does **not** require physical tuning,
+- robot-available passive tuning,
+- permission-gated low-speed active tuning.
+
+### 1. No-physical-tuning work that can start now
+
+1. Add a central-PC **passive ArUco pose monitor skeleton** around `app.docking`.
+   - Must not publish `/cmd_vel`.
+   - Validate with synthetic image/frame tests.
+   - Later, when a robot is available, the same monitor becomes the passive tuning tool.
+2. Add source health/staleness reporting.
+   - Track `last_frame_at`, last event time, source online/stale/offline.
+   - Replace placeholder health values in AI Server/source endpoints.
+3. Add API/event contract planning for count/segmentation summaries.
+   - Do not force mask/count fields into `vision-event.v1`.
+   - Decide between `vision-event.v2` and a separate ROI/count endpoint.
+4. Add detector/segmenter interface seams with mock/synthetic tests.
+   - Actual YOLO/segmentation model choice remains a later scope decision.
+5. Add observability/persistence improvements after API contract stabilizes.
+   - structured logs, request IDs, metrics, bounded event retention.
+6. Add docker-compose/systemd launch assets if the team wants reproducible Central-PC deployment.
+
+### 2. Physical robot/camera available, passive only
+
+1. Open the standalone tuning lane from `docs/robot/docking-tuning-runbook.md`.
+2. Run passive checks only:
+   - robot bringup/camera,
+   - central PC topic list/type/hz,
+   - ArUco pose FPS/noise/loss measurements,
+   - no `/cmd_vel`.
+3. Update copied session config/profile values:
+   - marker size,
+   - camera intrinsics,
+   - station target offsets,
+   - docking tolerances.
+4. Repeat validated Robot1 PiCam compressed QA on Robot2 only when Robot2 is available and not in use.
+5. Add real camera source bringup/relay for `global_cam_01` when the global camera is ready.
+
+### 3. Permission-gated tuning, not normal development
+
+1. Low-speed active docking tuning.
+   - publish bounded low-speed commands only after explicit permission,
+   - stop on marker loss, stale frames, timeout, operator stop, or obstacle/person entry.
+2. Any robot-side file/config/package/system/network change.
+3. Touching Robot2 while another person is using it.
+4. Switching from detection-only to a real YOLO/segmentation model if it changes deployment dependencies or runtime behavior.
+
+### 4. Later integration decisions
+
+1. Add ROS2 bridge only after WMS task/state endpoints are stable.
+2. Revisit best-effort WMS emission only if production policy requires durable retries or hard failure behavior.
 
 ## Recovery checklist for the next assistant
 

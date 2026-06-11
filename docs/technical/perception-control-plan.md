@@ -133,6 +133,70 @@ AND object remains after robot backs away
 
 The first implementation slice avoids real robot and physical camera dependencies.
 
+### 6.1 Completed robot-free base
+
+The following items are implemented and covered by synthetic/API tests:
+
+1. Pure ArUco docking math helpers:
+   - camera intrinsics dataclass
+   - solvePnP-based marker pose estimation
+   - docking error calculation
+   - bounded differential-drive command proposal
+   - alignment/tolerance check
+   - stable alignment window counting
+2. Pure lift ROI evaluator:
+   - bbox center/ROI overlap checks
+   - optional mask overlap checks
+   - count stability checks
+   - pickup/dropoff policy helper results
+3. AI Server optional ArUco pose evidence:
+   - `pose_estimate.method=ARUCO_POSE` can be emitted by `/api/v1/detect/image`
+   - manual calibration fields are supported
+   - named `pose_profile` config is supported
+   - profile/source/marker mismatch keeps `pose_estimate=null`
+4. Standalone tuning preparation:
+   - tuning runbook
+   - copy-per-session tuning config
+   - AI Server pose profile config
+   - passive tuning session helper
+5. Synthetic tests:
+   - projected ArUco corners with known pose
+   - left/right/near/far/yaw docking errors
+   - marker-lost/aligned command outputs
+   - lift ROI count with inside/outside/partial objects
+   - segmentation mask overlap behavior
+   - lift sensor + count stability pickup verification
+
+### 6.2 Remaining work that does not require physical tuning
+
+These items can be handled one by one without a real robot or real camera:
+
+1. **Central-PC passive ArUco pose monitor skeleton**
+   - subscribe/read image frames through a ROS-compatible adapter or test double
+   - compute ArUco pose/error using existing `app.docking`
+   - print/log pose, FPS, marker-lost/stale state
+   - must not publish `/cmd_vel`
+   - validate with synthetic image/frame tests
+2. **Source health/staleness model**
+   - track `last_frame_at`, last event time, source online/stale/offline state
+   - expose meaningful health in AI Server/source endpoints
+   - validate with fake clocks/event-store tests
+3. **Lift ROI evidence API/contract design**
+   - decide whether count/segmentation summaries use `vision-event.v2` or a separate endpoint
+   - keep `vision-event.v1` strict and do not force mask/count fields into it
+   - validate with schema fixtures before implementation
+4. **Detector/segmenter interface seam**
+   - define internal result types for detection boxes and instance masks
+   - add mock/synthetic tests first
+   - defer actual model choice until class/data needs are confirmed
+5. **Observability/persistence improvements**
+   - request IDs, structured logs, bounded event retention, metrics
+   - no robot dependency
+
+### 6.3 Historical implementation checklist
+
+This was the original implementation checklist for the first robot-free base:
+
 1. Add pure ArUco docking math helpers:
    - camera intrinsics dataclass
    - solvePnP-based marker pose estimation
@@ -163,14 +227,14 @@ Ready-to-use tuning assets:
 - AI Server pose profile template: `config/perception/aruco_pose_profiles.example.json`
 - Session helper: `scripts/prepare_docking_tuning_session.sh`
 
-### Passive tuning, no robot command
+### C. Passive robot-available tuning — no motion
 
 - Robot runs bringup/camera only.
 - Central PC subscribes to camera topic.
 - Measure camera FPS, latency, ArUco pose noise, marker-lost behavior.
 - No `/cmd_vel` publication.
 
-### Low-speed tuning, requires explicit permission
+### D. Permission-gated active tuning
 
 - Publish only bounded low-speed commands.
 - Stop on marker loss, timeout, stale frames, E-stop/manual stop.
