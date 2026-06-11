@@ -48,6 +48,7 @@ AI Server package:
   - Optional best-effort WMS emission is available when request `emit=true` and `WMS_EMIT_ENABLED=true`; local detection still succeeds if WMS emission fails.
 - `services/ai-server/app/detectors.py`
   - OpenCV image decode and deterministic ArUco `DICT_4X4_50` marker detection.
+  - Preserves ArUco corner coordinates so optional pose estimation can be computed when calibration input is provided.
   - No QR/YOLO/Torch/ROS2 dependency.
 - `services/ai-server/app/contracts.py`
   - JSON schema validation wrapper.
@@ -57,6 +58,7 @@ AI Server package:
   - Async best-effort HTTP client for `POST {MAIN_SERVER_URL}/api/v1/vision/events`; treats HTTP 200/202 as success and reports non-2xx/timeout/transport failures in `emit_results`.
 - `services/ai-server/app/docking.py`
   - Robot-free pure math helpers for ArUco/marker docking: camera intrinsics, solvePnP marker pose, docking error, alignment tolerance, bounded differential-drive command proposal, and stable-alignment window counting.
+  - Used by `/api/v1/detect/image` only when marker size and camera intrinsics are provided, filling `pose_estimate.method=ARUCO_POSE` in `VisionEvent v1`.
   - This is not a ROS publisher and must not directly publish `/cmd_vel`.
 - `services/ai-server/app/lift_roi.py`
   - Robot-free pure evaluation helpers for lift ROI load evidence: bbox/ROI overlap, optional instance mask overlap, stable count checks, pickup verification, and dropoff verification.
@@ -162,6 +164,11 @@ Validated again on 2026-06-11 Asia/Seoul after standalone docking tuning prep:
 
 - `bash -n scripts/prepare_docking_tuning_session.sh`: OK.
 - `./scripts/prepare_docking_tuning_session.sh --print-commands`: creates a timestamped `.omx/reports/docking-tuning/` session folder, copies `docking_tuning.yaml`, and prints passive-only ROS commands.
+
+Validated again on 2026-06-11 Asia/Seoul after optional ArUco pose integration:
+
+- `./scripts/test_ai_server.sh -q`: `49 passed, 1 warning` and contract fixtures behaved as expected.
+- Default marker events remain compatible with `pose_estimate=null`; optional calibration form fields produce contract-valid `ARUCO_POSE` payloads.
 
 Optional manual API smoke test:
 

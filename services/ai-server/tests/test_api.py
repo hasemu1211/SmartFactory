@@ -157,6 +157,64 @@ def test_detect_image_reports_wms_failure_without_failing_detection(monkeypatch)
     assert body["emit_results"][0]["status_code"] == 503
 
 
+
+
+def test_detect_image_can_emit_optional_aruco_pose_estimate():
+    response = client.post(
+        "/api/v1/detect/image",
+        data={
+            "source": "tb3_1_picam",
+            "marker_size_m": "0.08",
+            "camera_fx": "600",
+            "camera_fy": "600",
+            "camera_cx": "80",
+            "camera_cy": "80",
+            "camera_dist_coeffs": "0,0,0,0,0",
+        },
+        files={"image": ("aruco.png", aruco_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    events = response.json()["events"]
+    assert len(events) == 1
+    pose = events[0]["pose_estimate"]
+    assert pose is not None
+    assert pose["method"] == "ARUCO_POSE"
+    assert abs(pose["x"]) < 0.02
+    assert 0.45 < pose["y"] < 0.60
+    assert abs(pose["yaw"]) < 0.10
+    assert 0.0 <= pose["confidence"] <= 1.0
+
+
+def test_detect_image_rejects_partial_aruco_pose_calibration():
+    response = client.post(
+        "/api/v1/detect/image",
+        data={"source": "tb3_1_picam", "marker_size_m": "0.08"},
+        files={"image": ("aruco.png", aruco_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 400
+    assert "ArUco pose requires" in response.json()["detail"]
+
+
+def test_detect_image_rejects_invalid_pose_numbers():
+    response = client.post(
+        "/api/v1/detect/image",
+        data={
+            "source": "tb3_1_picam",
+            "marker_size_m": "-0.08",
+            "camera_fx": "600",
+            "camera_fy": "600",
+            "camera_cx": "80",
+            "camera_cy": "80",
+        },
+        files={"image": ("aruco.png", aruco_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "marker_size_m must be positive"
+
+
 def test_invalid_image_rejected():
     response = client.post(
         "/api/v1/detect/image",

@@ -151,6 +151,13 @@ def estimate_marker_pose(
 
     rotation, _ = cv2.Rodrigues(rvec)
     marker_normal = rotation @ np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    # Planar marker pose can flip the normal direction depending on corner
+    # convention/solver ambiguity. For docking, yaw should describe the marker
+    # face alignment, so normalize the normal to face generally toward +Z in
+    # the camera-forward convention before extracting yaw. This maps both
+    # fronto-parallel normal directions to yaw ~= 0 instead of sometimes pi.
+    if marker_normal[2] < 0:
+        marker_normal = -marker_normal
     yaw_rad = float(atan2(marker_normal[0], marker_normal[2]))
 
     projected, _ = cv2.projectPoints(

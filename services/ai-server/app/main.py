@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from .config import get_settings
 from .contracts import ContractValidationError, validate_vision_event
 from .detectors import MarkerDetection, decode_image, detect_markers
+from .docking import CameraIntrinsics, MarkerPose, estimate_marker_pose
 from .event_store import InMemoryEventStore
 from .wms_client import emit_vision_events
 
@@ -54,6 +55,24 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat()
 
 
+def _pose_confidence(pose: MarkerPose) -> float:
+    # Reprojection error near 0 px should be high confidence. At >=5 px,
+    # keep the pose as weak evidence rather than pretending it is certain.
+    return round(max(0.0, min(1.0, 1.0 - (pose.reprojection_error_px / 5.0))), 3)
+
+
+def _pose_estimate_payload(pose: MarkerPose) -> dict[str, Any]:
+    return {
+        "method": "ARUCO_POSE",
+        # Camera-frame planar convention for docking evidence:
+        # x = lateral offset in meters, y = forward distance in meters.
+        "x": pose.lateral_m,
+        "y": pose.distance_m,
+        "yaw": pose.yaw_rad,
+        "confidence": _pose_confidence(pose),
+    }
+
+
 def build_marker_event(
     *,
     source: str,
@@ -61,6 +80,7 @@ def build_marker_event(
     image_width: int,
     image_height: int,
     latency_ms: float | None = None,
+    pose: MarkerPose | None = None,
 ) -> dict[str, Any]:
     """Build a schema-valid VisionEvent from a deterministic marker detection."""
 
@@ -80,7 +100,7 @@ def build_marker_event(
         "zone": None,
         "roi_id": None,
         "track_id": None,
-        "pose_estimate": None,
+        "pose_estimate": _pose_estimate_payload(pose) if pose is not None else None,
         "depth_median_m": None,
         "wms_hint": "TAG_DETECTED",
         "metadata": {
@@ -94,6 +114,73 @@ def build_marker_event(
     }
     validate_vision_event(event)
     return event
+
+
+def _parse_dist_coeffs(value: str | None) -> tuple[float, ...]:
+    if value is None or value.strip() == "":
+        return ()
+    try:
+        return tuple(float(part.strip()) for part in value.split(",") if part.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="camera_dist_coeffs must be comma-separated numbers") from exc
+
+
+def _optional_pose_request(
+    *,
+    marker_size_m: float | None,
+    camera_fx: float | None,
+    camera_fy: float | None,
+    camera_cx: float | None,
+    camera_cy: float | None,
+    camera_dist_coeffs: str | None,
+) -> tuple[float, CameraIntrinsics] | None:
+    fields = [marker_size_m, camera_fx, camera_fy, camera_cx, camera_cy]
+    if all(value is None for value in fields) and not camera_dist_coeffs:
+        return None
+    if any(value is None for value in fields):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "ArUco pose requires marker_size_m, camera_fx, camera_fy, "
+                "camera_cx, and camera_cy together"
+            ),
+        )
+    assert marker_size_m is not None
+    assert camera_fx is not None
+    assert camera_fy is not None
+    assert camera_cx is not None
+    assert camera_cy is not None
+    if marker_size_m <= 0:
+        raise HTTPException(status_code=400, detail="marker_size_m must be positive")
+    if camera_fx <= 0 or camera_fy <= 0:
+        raise HTTPException(status_code=400, detail="camera_fx and camera_fy must be positive")
+    return (
+        marker_size_m,
+        CameraIntrinsics(
+            fx=camera_fx,
+            fy=camera_fy,
+            cx=camera_cx,
+            cy=camera_cy,
+            dist_coeffs=_parse_dist_coeffs(camera_dist_coeffs),
+        ),
+    )
+
+
+def _estimate_detection_pose(
+    detection: MarkerDetection,
+    pose_request: tuple[float, CameraIntrinsics] | None,
+) -> MarkerPose | None:
+    if pose_request is None or not detection.corners_xy:
+        return None
+    marker_size_m, intrinsics = pose_request
+    try:
+        return estimate_marker_pose(
+            detection.corners_xy,
+            marker_size_m=marker_size_m,
+            intrinsics=intrinsics,
+        )
+    except ValueError:
+        return None
 
 
 @app.exception_handler(ContractValidationError)
@@ -174,6 +261,12 @@ async def detect_image(
     source: str = Form(...),
     image: UploadFile = File(...),
     emit: bool = Form(default=False),
+    marker_size_m: float | None = Form(default=None),
+    camera_fx: float | None = Form(default=None),
+    camera_fy: float | None = Form(default=None),
+    camera_cx: float | None = Form(default=None),
+    camera_cy: float | None = Form(default=None),
+    camera_dist_coeffs: str | None = Form(default=None),
 ) -> dict[str, Any]:
     """Debug/offline detector endpoint.
 
@@ -190,6 +283,15 @@ async def detect_image(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    pose_request = _optional_pose_request(
+        marker_size_m=marker_size_m,
+        camera_fx=camera_fx,
+        camera_fy=camera_fy,
+        camera_cx=camera_cx,
+        camera_cy=camera_cy,
+        camera_dist_coeffs=camera_dist_coeffs,
+    )
+
     image_height, image_width = decoded_image.shape[:2]
     started = perf_counter()
     detections = detect_markers(decoded_image)
@@ -201,6 +303,7 @@ async def detect_image(
             image_width=image_width,
             image_height=image_height,
             latency_ms=latency_ms,
+            pose=_estimate_detection_pose(detection, pose_request),
         )
         for detection in detections
     ]

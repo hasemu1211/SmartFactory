@@ -14,6 +14,7 @@ class MarkerDetection:
     class_name: str
     marker_id: str
     bbox_xyxy: list[float]
+    corners_xy: tuple[tuple[float, float], ...] = ()
     confidence: float = 1.0
     detector: str = "opencv"
 
@@ -26,6 +27,11 @@ def decode_image(image_bytes: bytes) -> np.ndarray:
     if image is None:
         raise ValueError("uploaded image is not a decodable image")
     return image
+
+
+def _corners_from_points(points: np.ndarray) -> tuple[tuple[float, float], ...]:
+    pts = points.reshape(-1, 2).astype(float)
+    return tuple((float(x), float(y)) for x, y in pts)
 
 
 def _bbox_from_points(points: np.ndarray) -> list[float]:
@@ -62,6 +68,7 @@ def _detect_aruco(image: np.ndarray) -> Iterable[MarkerDetection]:
                     class_name="aruco_marker",
                     marker_id=f"ARUCO_4X4_50_{int(marker_id)}",
                     bbox_xyxy=bbox,
+                    corners_xy=_corners_from_points(marker_corners),
                     detector="opencv-aruco-4x4-50",
                 )
             )
