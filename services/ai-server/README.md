@@ -40,6 +40,12 @@ cd /home/codelab/Desktop/Project/SmartFactory
 contract-valid `VisionEvent` objects for deterministic ArUco marker
 detections. Frames without ArUco markers return an empty `events` array.
 
+`GET /api/v1/sources` reports source freshness from successfully decoded
+frames, not only marker detections. A valid blank frame updates
+`last_frame_at`, `frame_count`, and `online/stale/offline` status; marker
+events additionally update `last_event_at`, `event_count`, and last event
+metadata.
+
 For robot-free docking development, the endpoint can optionally compute
 `pose_estimate.method=ARUCO_POSE` in two ways:
 
@@ -70,6 +76,14 @@ WMS_EMIT_ENABLED=true
 WMS_EMIT_TIMEOUT_S=2.0
 WMS_EMIT_RETRIES=0
 WMS_VISION_EVENTS_PATH=/api/v1/vision/events
+```
+
+Source health thresholds are environment configurable:
+
+```env
+SOURCE_TARGET_FPS=10.0
+SOURCE_STALE_AFTER_S=2.0
+SOURCE_OFFLINE_AFTER_S=30.0
 ```
 
 `emit=true` on `POST /api/v1/detect/image` only requests emission. The endpoint

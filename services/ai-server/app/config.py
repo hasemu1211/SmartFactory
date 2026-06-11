@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     wms_emit_timeout_s: float = 2.0
     wms_emit_retries: int = 0
     wms_vision_events_path: str = "/api/v1/vision/events"
+    source_target_fps: float = 10.0
+    source_stale_after_s: float = 2.0
+    source_offline_after_s: float = 30.0
     contract_schema_path: Path = Field(
         default=REPO_ROOT / "docs" / "contracts" / "vision-event.schema.json"
     )

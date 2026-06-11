@@ -38,8 +38,8 @@
 
 | Lane | Status | Meaning | Next action |
 | --- | --- | --- | --- |
-| A. Completed robot-free stack | Done | AI Server evidence API, ArUco detection, optional pose/profile support, pure docking math, lift ROI evaluator, passive ArUco pose monitor skeleton, synthetic tests, tuning prep assets | Keep as stable base; validate with `./scripts/test_ai_server.sh -q` and ROS package tests |
-| B. Remaining no-physical-tuning work | Open | Work that can be implemented now without robot/camera availability | Next: source health/staleness model |
+| A. Completed robot-free stack | Done | AI Server evidence API, ArUco detection, optional pose/profile support, source health/staleness, pure docking math, lift ROI evaluator, passive ArUco pose monitor skeleton, synthetic tests, tuning prep assets | Keep as stable base; validate with `./scripts/test_ai_server.sh -q` and ROS package tests |
+| B. Remaining no-physical-tuning work | Open | Work that can be implemented now without robot/camera availability | Next: lift ROI evidence API/contract design |
 | C. Robot-available passive tuning | Waiting for hardware window | Requires robot/camera availability but no active motion | Use `docs/robot/docking-tuning-runbook.md`; measure topics/FPS/pose noise; no `/cmd_vel` |
 | D. Permission-gated active tuning | Blocked until explicit approval | Any low-speed motion command or robot-side change | Ask user first; enforce marker-loss/stale timeout stop |
 
@@ -64,7 +64,9 @@ AI Server package:
 - `services/ai-server/app/contracts.py`
   - JSON schema validation wrapper.
 - `services/ai-server/app/config.py`
-  - Source IDs and environment-driven settings, including WMS emit toggles.
+  - Source IDs and environment-driven settings, including WMS emit toggles and source health freshness thresholds.
+- `services/ai-server/app/source_health.py`
+  - Thread-safe source freshness tracker. Valid decoded frames update `last_frame_at`/`frame_count`; marker events additionally update `last_event_at`/`event_count`/last event metadata. Status is `online`, `stale`, `offline`, or `disabled` based on configurable thresholds.
 - `services/ai-server/app/wms_client.py`
   - Async best-effort HTTP client for `POST {MAIN_SERVER_URL}/api/v1/vision/events`; treats HTTP 200/202 as success and reports non-2xx/timeout/transport failures in `emit_results`.
 - `services/ai-server/app/docking.py`
@@ -199,6 +201,12 @@ Validated again on 2026-06-11 Asia/Seoul after central-PC passive ArUco pose mon
 - `source /opt/ros/jazzy/setup.bash && cd ros2 && colcon test --packages-select smartfactory_perception_ros --event-handlers console_direct+`: `20 passed`.
 - `./scripts/test_ai_server.sh -q`: `56 passed, 1 warning` and contract fixtures behaved as expected.
 
+Validated again on 2026-06-11 Asia/Seoul after AI Server source health/staleness model:
+
+- `./scripts/test_ai_server.sh -q`: `62 passed, 1 warning` and contract fixtures behaved as expected.
+- Added fake-clock unit coverage for online/stale/offline/disabled transitions.
+- Added API coverage proving marker-free valid frames refresh source health and marker events update last event metadata.
+
 Optional manual API smoke test:
 
 ```bash
@@ -217,13 +225,10 @@ Use `docs/technical/perception-control-plan.md` as the main plan pointer. It now
 
 ### 1. No-physical-tuning work that can start now
 
-1. Add source health/staleness reporting.
-   - Track `last_frame_at`, last event time, source online/stale/offline.
-   - Replace placeholder health values in AI Server/source endpoints.
-2. Add API/event contract planning for count/segmentation summaries.
+1. Add API/event contract planning for count/segmentation summaries.
    - Do not force mask/count fields into `vision-event.v1`.
    - Decide between `vision-event.v2` and a separate ROI/count endpoint.
-4. Add detector/segmenter interface seams with mock/synthetic tests.
+2. Add detector/segmenter interface seams with mock/synthetic tests.
    - Actual YOLO/segmentation model choice remains a later scope decision.
 5. Add observability/persistence improvements after API contract stabilizes.
    - structured logs, request IDs, metrics, bounded event retention.

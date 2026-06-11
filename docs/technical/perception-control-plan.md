@@ -164,7 +164,12 @@ The following items are implemented and covered by synthetic/API tests:
    - reuses `app.detectors` and `app.docking` for marker pose/error
    - logs pose, FPS, marker-lost, stale state, and advisory-only corrections
    - does not create a `/cmd_vel` publisher
-6. Synthetic tests:
+6. Source health/staleness model:
+   - tracks valid decoded frames separately from marker events
+   - exposes online/stale/offline/disabled summary in health endpoints
+   - exposes `last_frame_at`, frame count, `last_event_at`, event count, and last event metadata per source
+   - thresholds are environment-configurable
+7. Synthetic tests:
    - projected ArUco corners with known pose
    - left/right/near/far/yaw docking errors
    - marker-lost/aligned command outputs
@@ -172,24 +177,21 @@ The following items are implemented and covered by synthetic/API tests:
    - segmentation mask overlap behavior
    - lift sensor + count stability pickup verification
    - passive ArUco monitor marker-found/lost/stale/FPS/compressed-frame coverage
+   - fake-clock source health online/stale/offline/disabled transitions
 
 ### 6.2 Remaining work that does not require physical tuning
 
 These items can be handled one by one without a real robot or real camera:
 
-1. **Source health/staleness model**
-   - track `last_frame_at`, last event time, source online/stale/offline state
-   - expose meaningful health in AI Server/source endpoints
-   - validate with fake clocks/event-store tests
-2. **Lift ROI evidence API/contract design**
+1. **Lift ROI evidence API/contract design**
    - decide whether count/segmentation summaries use `vision-event.v2` or a separate endpoint
    - keep `vision-event.v1` strict and do not force mask/count fields into it
    - validate with schema fixtures before implementation
-3. **Detector/segmenter interface seam**
+2. **Detector/segmenter interface seam**
    - define internal result types for detection boxes and instance masks
    - add mock/synthetic tests first
    - defer actual model choice until class/data needs are confirmed
-4. **Observability/persistence improvements**
+3. **Observability/persistence improvements**
    - request IDs, structured logs, bounded event retention, metrics
    - no robot dependency
 
