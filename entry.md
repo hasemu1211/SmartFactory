@@ -55,12 +55,22 @@ AI Server package:
   - Source IDs and environment-driven settings, including WMS emit toggles.
 - `services/ai-server/app/wms_client.py`
   - Async best-effort HTTP client for `POST {MAIN_SERVER_URL}/api/v1/vision/events`; treats HTTP 200/202 as success and reports non-2xx/timeout/transport failures in `emit_results`.
+- `services/ai-server/app/docking.py`
+  - Robot-free pure math helpers for ArUco/marker docking: camera intrinsics, solvePnP marker pose, docking error, alignment tolerance, bounded differential-drive command proposal, and stable-alignment window counting.
+  - This is not a ROS publisher and must not directly publish `/cmd_vel`.
+- `services/ai-server/app/lift_roi.py`
+  - Robot-free pure evaluation helpers for lift ROI load evidence: bbox/ROI overlap, optional instance mask overlap, stable count checks, pickup verification, and dropoff verification.
+  - This is evidence/policy helper logic; WMS/Main remains final task/inventory state owner.
 - `services/ai-server/tests/generated_fixtures.py`
   - Deterministic generated ArUco/blank image fixtures.
 - `services/ai-server/tests/test_api.py`
   - API behavior tests.
+- `services/ai-server/tests/test_docking.py`
+  - Synthetic projected marker tests for pose recovery, docking error, marker-lost/aligned stop behavior, bounded turn commands, and stable alignment counting.
 - `services/ai-server/tests/test_generated_fixtures.py`
   - Generated fixture and contract-validation tests.
+- `services/ai-server/tests/test_lift_roi.py`
+  - Synthetic lift ROI tests for inside/outside/partial detections, instance-mask overlap, stable counts, pickup verification, and dropoff verification.
 - `services/ai-server/tests/test_wms_client.py`
   - WMS URL building, HTTP 200/202 success, non-2xx failure, and timeout result tests.
 
@@ -69,6 +79,8 @@ Contracts/docs/scripts:
 - `docs/contracts/vision-event.schema.json`
 - `docs/contracts/ai-server-api.md`
 - `docs/technical/development-environment.md`
+- `docs/technical/perception-control-plan.md`
+  - User-approved robot-free-first plan: split slow AI Server evidence loop from faster future ROS docking control loop; use ArUco as pose-based precision docking primitive; use lift sensor + ROI/segmentation evidence for pickup; keep dropoff MVP as lower/drop + backoff + WMS state success; keep robot-side changes minimal.
 - `docs/technical/ros2-friendly-environment-plan.md`
 - `scripts/setup_ai_server_env.sh`
 - `scripts/run_ai_server.sh`
@@ -135,6 +147,11 @@ Validated again on 2026-06-11 Asia/Seoul after ROS2 snapshot adapter implementat
   - AI Server latest detections contained `ARUCO_4X4_50_0` events for `tb3_1_picam` during the marker window.
 - `./scripts/test_ai_server.sh -q`: `33 passed, 1 warning` and contract fixtures behaved as expected.
 
+Validated again on 2026-06-11 Asia/Seoul after perception-control pure logic implementation:
+
+- `./scripts/test_ai_server.sh`: `46 passed, 1 warning` and contract fixtures behaved as expected.
+- Added robot-free synthetic coverage for ArUco docking math and lift ROI load/pickup/dropoff evidence helpers.
+
 Optional manual API smoke test:
 
 ```bash
@@ -144,14 +161,20 @@ curl http://127.0.0.1:8100/api/v1/health
 
 ## Recommended next work
 
-1. Repeat the validated Robot1 PiCam compressed QA on Robot2 when it is available; Robot1 `tb3_1_picam` is already live-validated through AI Server.
-2. Add real camera source bringup/relay for `global_cam_01` when the global camera is ready.
-3. Add source health/staleness reporting across snapshot adapter, AI Server, and Main/WMS.
-4. Add ROS2 bridge only after WMS task/state endpoints are stable.
-5. Add QR/AprilTag/YOLO only after a new scope decision; do not silently reintroduce QR tests into this ArUco-only branch.
-6. Add docker-compose/systemd launch assets if the team wants a reproducible Central-PC deployment.
-7. Consider persistence/observability after API contract stabilizes: structured logs, request IDs, metrics, and bounded event retention.
-8. Later, if production policy requires it, revisit best-effort WMS emission and decide whether some WMS failures should become hard failures or durable retry-queue entries.
+1. Add a ROS-side/central-PC high-rate docking node around `app.docking` when ready; do not use 0.5s HTTP snapshots for closed-loop precision parking.
+2. Define config files for marker size, camera intrinsics, station target offsets, docking tolerances, and speed/gain limits.
+3. Add API/event contract planning for count/segmentation summaries. Do not force mask/count fields into `vision-event.v1` without schema planning.
+4. Add source health/staleness reporting across snapshot adapter, AI Server, and Main/WMS.
+5. If a robot becomes available mid-work, open a separate tuning lane:
+   - passive first: bringup/camera only, subscribe/measure FPS, latency, ArUco pose noise, no `/cmd_vel`;
+   - low-speed tuning only after explicit permission, with marker-loss/timeout stop conditions.
+6. Repeat the validated Robot1 PiCam compressed QA on Robot2 when it is available; Robot1 `tb3_1_picam` is already live-validated through AI Server.
+7. Add real camera source bringup/relay for `global_cam_01` when the global camera is ready.
+8. Add ROS2 bridge only after WMS task/state endpoints are stable.
+9. Add QR/AprilTag/YOLO/segmentation only after a new scope decision; segmentation is preferred for robust lift count/drop verification, while semantic segmentation is mainly for static zone masks.
+10. Add docker-compose/systemd launch assets if the team wants a reproducible Central-PC deployment.
+11. Consider persistence/observability after API contract stabilizes: structured logs, request IDs, metrics, and bounded event retention.
+12. Later, if production policy requires it, revisit best-effort WMS emission and decide whether some WMS failures should become hard failures or durable retry-queue entries.
 
 ## Recovery checklist for the next assistant
 
@@ -160,4 +183,5 @@ curl http://127.0.0.1:8100/api/v1/health
 3. Do not resume `smartfactory-ai-serve-ff431175`; it was intentionally shut down.
 4. Use `/home/codelab/turtlebot3_ws` as the default ROS2 workspace for `smartfactory_bringup`; do not reintroduce an active duplicate under `/home/codelab/ros2_ws/src`.
 5. Run validation commands above before further edits.
-6. Preserve the ArUco-only scope unless the user explicitly changes it.
+6. Preserve the ArUco-only detector API scope unless the user explicitly changes it; `app.docking` is pure docking math, not a new live detector API.
+7. Preserve the key design decision: AI Server evidence loop can be slower, but precision docking requires a faster future central-PC ROS loop; robot should remain bringup/camera-only unless user permits robot-side changes.
