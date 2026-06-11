@@ -9,7 +9,10 @@ setup(
     data_files=[
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', ['launch/ai_snapshot_clients.launch.py']),
+        ('share/' + package_name + '/launch', [
+            'launch/ai_snapshot_clients.launch.py',
+            'launch/aruco_pose_monitor.launch.py',
+        ]),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -21,6 +24,7 @@ setup(
     entry_points={
         'console_scripts': [
             'image_snapshot_client = smartfactory_perception_ros.image_snapshot_client:main',
+            'aruco_pose_monitor = smartfactory_perception_ros.aruco_pose_monitor:main',
         ],
     },
 )

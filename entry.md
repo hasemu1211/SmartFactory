@@ -38,8 +38,8 @@
 
 | Lane | Status | Meaning | Next action |
 | --- | --- | --- | --- |
-| A. Completed robot-free stack | Done | AI Server evidence API, ArUco detection, optional pose/profile support, pure docking math, lift ROI evaluator, synthetic tests, tuning prep assets | Keep as stable base; validate with `./scripts/test_ai_server.sh -q` |
-| B. Remaining no-physical-tuning work | Open | Work that can be implemented now without robot/camera availability | Start with central-PC passive ArUco pose monitor skeleton |
+| A. Completed robot-free stack | Done | AI Server evidence API, ArUco detection, optional pose/profile support, pure docking math, lift ROI evaluator, passive ArUco pose monitor skeleton, synthetic tests, tuning prep assets | Keep as stable base; validate with `./scripts/test_ai_server.sh -q` and ROS package tests |
+| B. Remaining no-physical-tuning work | Open | Work that can be implemented now without robot/camera availability | Next: source health/staleness model |
 | C. Robot-available passive tuning | Waiting for hardware window | Requires robot/camera availability but no active motion | Use `docs/robot/docking-tuning-runbook.md`; measure topics/FPS/pose noise; no `/cmd_vel` |
 | D. Permission-gated active tuning | Blocked until explicit approval | Any low-speed motion command or robot-side change | Ask user first; enforce marker-loss/stale timeout stop |
 
@@ -117,6 +117,7 @@ ROS2 bringup side:
 - Package scaffold: `/home/codelab/turtlebot3_ws/src/smartfactory_bringup`
 - ROS2 snapshot adapter package: `/home/codelab/turtlebot3_ws/src/smartfactory_perception_ros` symlinked to tracked repo source `ros2/smartfactory_perception_ros`
 - Local `smartfactory_bringup` in `/home/codelab/turtlebot3_ws/src` includes default-off `ai_snapshot_clients.launch.py`; the adapter package also provides a standalone `ros2 launch smartfactory_perception_ros ai_snapshot_clients.launch.py`.
+- `smartfactory_perception_ros` now also provides `aruco_pose_monitor`, a passive central-PC monitor that subscribes to raw/compressed images, reuses AI Server pure ArUco/docking logic, logs pose/error/FPS/lost/stale state, and never publishes `/cmd_vel`.
 - Previous copy moved aside at `/home/codelab/ros2_ws/src/smartfactory_bringup.migrated-backup-20260611` to avoid duplicate overlay confusion.
 - Historical ROS2 workspace commit recorded earlier: `8d9a28e Add SmartFactory ROS2 bringup scaffold`
   - Note: this is retained as historical handoff context and may not be directly verifiable from the current tracked repo alone.
@@ -191,6 +192,13 @@ Validated again on 2026-06-11 Asia/Seoul after named ArUco pose profile support:
 - `./scripts/test_ai_server.sh -q`: `56 passed, 1 warning` and contract fixtures behaved as expected.
 - `/api/v1/detect/image` accepts `pose_profile`; profile/source/marker mismatch keeps `pose_estimate=null`; unknown profiles or mixing profile+manual intrinsics return HTTP 400.
 
+Validated again on 2026-06-11 Asia/Seoul after central-PC passive ArUco pose monitor skeleton:
+
+- `cd ros2/smartfactory_perception_ros && pytest -q`: `20 passed`.
+- `source /opt/ros/jazzy/setup.bash && cd ros2 && colcon build --symlink-install --packages-select smartfactory_perception_ros --event-handlers console_direct+`: build OK; `aruco_pose_monitor` console script installed in the repo-local overlay. Colcon warned that the same package also exists in `/home/codelab/turtlebot3_ws/install`, so use the intended overlay/source order when running.
+- `source /opt/ros/jazzy/setup.bash && cd ros2 && colcon test --packages-select smartfactory_perception_ros --event-handlers console_direct+`: `20 passed`.
+- `./scripts/test_ai_server.sh -q`: `56 passed, 1 warning` and contract fixtures behaved as expected.
+
 Optional manual API smoke test:
 
 ```bash
@@ -209,14 +217,10 @@ Use `docs/technical/perception-control-plan.md` as the main plan pointer. It now
 
 ### 1. No-physical-tuning work that can start now
 
-1. Add a central-PC **passive ArUco pose monitor skeleton** around `app.docking`.
-   - Must not publish `/cmd_vel`.
-   - Validate with synthetic image/frame tests.
-   - Later, when a robot is available, the same monitor becomes the passive tuning tool.
-2. Add source health/staleness reporting.
+1. Add source health/staleness reporting.
    - Track `last_frame_at`, last event time, source online/stale/offline.
    - Replace placeholder health values in AI Server/source endpoints.
-3. Add API/event contract planning for count/segmentation summaries.
+2. Add API/event contract planning for count/segmentation summaries.
    - Do not force mask/count fields into `vision-event.v1`.
    - Decide between `vision-event.v2` and a separate ROI/count endpoint.
 4. Add detector/segmenter interface seams with mock/synthetic tests.
