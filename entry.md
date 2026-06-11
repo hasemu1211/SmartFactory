@@ -78,10 +78,16 @@ Contracts/docs/scripts:
 
 - `docs/contracts/vision-event.schema.json`
 - `docs/contracts/ai-server-api.md`
+- `docs/robot/docking-tuning-runbook.md`
+  - Standalone tuning runbook for whenever a robot becomes available. Default lane is passive observation only: robot bringup/camera, central PC ROS topic inspection, no `/cmd_vel`.
 - `docs/technical/development-environment.md`
 - `docs/technical/perception-control-plan.md`
   - User-approved robot-free-first plan: split slow AI Server evidence loop from faster future ROS docking control loop; use ArUco as pose-based precision docking primitive; use lift sensor + ROI/segmentation evidence for pickup; keep dropoff MVP as lower/drop + backoff + WMS state success; keep robot-side changes minimal.
 - `docs/technical/ros2-friendly-environment-plan.md`
+- `config/perception/docking_tuning.example.yaml`
+  - Copy-per-session template for marker IDs, marker size, camera intrinsics, station target offsets, tolerances, gains/speed caps, and lift ROI polygons.
+- `scripts/prepare_docking_tuning_session.sh`
+  - Creates `.omx/reports/docking-tuning/<timestamp>/`, copies the tuning config template, and prints safe passive ROS commands. `--passive-check` runs topic list/type/hz only and never publishes motion commands.
 - `scripts/setup_ai_server_env.sh`
 - `scripts/run_ai_server.sh`
 - `scripts/test_ai_server.sh`
@@ -151,6 +157,11 @@ Validated again on 2026-06-11 Asia/Seoul after perception-control pure logic imp
 
 - `./scripts/test_ai_server.sh`: `46 passed, 1 warning` and contract fixtures behaved as expected.
 - Added robot-free synthetic coverage for ArUco docking math and lift ROI load/pickup/dropoff evidence helpers.
+
+Validated again on 2026-06-11 Asia/Seoul after standalone docking tuning prep:
+
+- `bash -n scripts/prepare_docking_tuning_session.sh`: OK.
+- `./scripts/prepare_docking_tuning_session.sh --print-commands`: creates a timestamped `.omx/reports/docking-tuning/` session folder, copies `docking_tuning.yaml`, and prints passive-only ROS commands.
 
 Optional manual API smoke test:
 

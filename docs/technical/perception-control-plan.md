@@ -156,6 +156,12 @@ The first implementation slice avoids real robot and physical camera dependencie
 
 If a robot becomes available mid-work, do not rewrite the design. Open a separate tuning lane.
 
+Ready-to-use tuning assets:
+
+- Runbook: `docs/robot/docking-tuning-runbook.md`
+- Config template: `config/perception/docking_tuning.example.yaml`
+- Session helper: `scripts/prepare_docking_tuning_session.sh`
+
 ### Passive tuning, no robot command
 
 - Robot runs bringup/camera only.
