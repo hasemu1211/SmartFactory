@@ -137,12 +137,17 @@ Request: `multipart/form-data`
 | `image` | yes | image file |
 | `emit` | no | `false` default; if `true`, AI Server may POST accepted events to Main Server |
 
+Emission is disabled by default at runtime. `emit=true` only requests emission;
+the server attempts outbound WMS ingest only when `WMS_EMIT_ENABLED=true`.
+
 Response `200`:
 
 ```json
 {
   "source": "tb3_1_picam",
   "emitted": false,
+  "emit_disabled": true,
+  "emit_results": [],
   "events": [
     { "schema_version": "vision-event.v1", "event_id": "22222222-2222-4222-8222-222222222222" }
   ]
@@ -150,6 +155,39 @@ Response `200`:
 ```
 
 `events[]` items must be full `VisionEvent` objects.
+
+`emitted` is an outcome flag, not an echo of the request flag. It is `true`
+only when all of the following are true:
+
+- request field `emit=true`
+- runtime setting `WMS_EMIT_ENABLED=true`
+- at least one event was generated
+- every attempted WMS ingest returned HTTP `200` or `202`
+
+Otherwise `emitted` is `false`. WMS ingest failure must not fail this endpoint;
+the local detection result remains useful evidence.
+
+When emission is enabled and attempted, `emit_results[]` contains one item per
+event:
+
+```json
+{
+  "event_id": "22222222-2222-4222-8222-222222222222",
+  "attempted": true,
+  "ok": true,
+  "status_code": 202,
+  "error": null,
+  "response": {
+    "accepted": true,
+    "duplicate": false,
+    "wms_processing_status": "queued"
+  }
+}
+```
+
+`response` is parsed JSON when the WMS response body is JSON; otherwise it is
+`null`. For transport errors, timeouts, and non-2xx responses, `ok` is `false`
+and `error` contains a short diagnostic string.
 
 ## Main Server/WMS-lite endpoints consumed by AI Server
 

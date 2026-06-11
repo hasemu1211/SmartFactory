@@ -40,3 +40,28 @@ cd /home/codelab/Desktop/Project/SmartFactory
 contract-valid `VisionEvent` objects for deterministic ArUco marker
 detections. Frames without ArUco markers return an empty `events` array. QR, AprilTag, YOLO/Torch
 object detection is intentionally not part of this MVP1 marker-detection slice.
+
+## Optional WMS ingest emission
+
+The AI Server can optionally POST generated `VisionEvent` evidence to the
+Main/WMS ingest endpoint:
+
+```text
+POST {MAIN_SERVER_URL}/api/v1/vision/events
+```
+
+Runtime emission is disabled by default. To enable it for local integration:
+
+```env
+MAIN_SERVER_URL=http://127.0.0.1:8000
+WMS_EMIT_ENABLED=true
+WMS_EMIT_TIMEOUT_S=2.0
+WMS_EMIT_RETRIES=0
+WMS_VISION_EVENTS_PATH=/api/v1/vision/events
+```
+
+`emit=true` on `POST /api/v1/detect/image` only requests emission. The endpoint
+returns `emitted=true` only when WMS emission is enabled, at least one event was
+generated, and every attempted WMS POST returned HTTP `200` or `202`. WMS
+failures are best-effort integration failures: image detection still returns
+HTTP `200` with local `events` and per-event `emit_results`.

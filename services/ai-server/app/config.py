@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     vision_event_schema_version: str = "vision-event.v1"
     model_name: str = "opencv-marker-detector"
     policy_version: str = "mvp1"
+    wms_emit_enabled: bool = False
+    wms_emit_timeout_s: float = 2.0
+    wms_emit_retries: int = 0
+    wms_vision_events_path: str = "/api/v1/vision/events"
     contract_schema_path: Path = Field(
         default=REPO_ROOT / "docs" / "contracts" / "vision-event.schema.json"
     )

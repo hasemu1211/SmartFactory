@@ -12,6 +12,7 @@ from .config import get_settings
 from .contracts import ContractValidationError, validate_vision_event
 from .detectors import MarkerDetection, decode_image, detect_markers
 from .event_store import InMemoryEventStore
+from .wms_client import emit_vision_events
 
 app = FastAPI(
     title="SmartFactory AI Server",
@@ -205,4 +206,21 @@ async def detect_image(
     ]
     for event in events:
         store.add(event)
-    return {"source": source, "emitted": emit, "events": events}
+
+    emit_disabled = bool(emit and not settings.wms_emit_enabled)
+    emit_results: list[dict[str, Any]] = []
+    if emit and settings.wms_emit_enabled and events:
+        emit_results = await emit_vision_events(events, settings=settings)
+    emitted = bool(
+        emit
+        and settings.wms_emit_enabled
+        and events
+        and all(result["ok"] for result in emit_results)
+    )
+    return {
+        "source": source,
+        "emitted": emitted,
+        "emit_disabled": emit_disabled,
+        "emit_results": emit_results,
+        "events": events,
+    }

@@ -44,20 +44,25 @@ AI Server package:
   - `GET /api/v1/sources`
   - `GET /api/v1/detections/latest`
   - `POST /api/v1/detect/image`
-  - Upload endpoint validates source, rejects invalid image bytes with HTTP 400, runs ArUco detection, builds contract-valid `VisionEvent` objects, stores events in memory, and returns `{source, emitted, events}`.
+  - Upload endpoint validates source, rejects invalid image bytes with HTTP 400, runs ArUco detection, builds contract-valid `VisionEvent` objects, stores events in memory, and returns `{source, emitted, emit_disabled, emit_results, events}`.
+  - Optional best-effort WMS emission is available when request `emit=true` and `WMS_EMIT_ENABLED=true`; local detection still succeeds if WMS emission fails.
 - `services/ai-server/app/detectors.py`
   - OpenCV image decode and deterministic ArUco `DICT_4X4_50` marker detection.
   - No QR/YOLO/Torch/ROS2 dependency.
 - `services/ai-server/app/contracts.py`
   - JSON schema validation wrapper.
 - `services/ai-server/app/config.py`
-  - Source IDs and environment-driven settings.
+  - Source IDs and environment-driven settings, including WMS emit toggles.
+- `services/ai-server/app/wms_client.py`
+  - Async best-effort HTTP client for `POST {MAIN_SERVER_URL}/api/v1/vision/events`; treats HTTP 200/202 as success and reports non-2xx/timeout/transport failures in `emit_results`.
 - `services/ai-server/tests/generated_fixtures.py`
   - Deterministic generated ArUco/blank image fixtures.
 - `services/ai-server/tests/test_api.py`
   - API behavior tests.
 - `services/ai-server/tests/test_generated_fixtures.py`
   - Generated fixture and contract-validation tests.
+- `services/ai-server/tests/test_wms_client.py`
+  - WMS URL building, HTTP 200/202 success, non-2xx failure, and timeout result tests.
 
 Contracts/docs/scripts:
 
@@ -111,6 +116,10 @@ Validated again on 2026-06-11 Asia/Seoul after ROS workspace migration:
 - `make ros-build-bringup`: builds from `/home/codelab/turtlebot3_ws` successfully.
 - `./scripts/test_ai_server.sh -q`: `26 passed, 1 warning` and contract fixtures behaved as expected.
 
+Validated again on 2026-06-11 Asia/Seoul after WMS ingest client implementation:
+
+- `./scripts/test_ai_server.sh -q`: `33 passed, 1 warning` and contract fixtures behaved as expected.
+
 Optional manual API smoke test:
 
 ```bash
@@ -120,12 +129,12 @@ curl http://127.0.0.1:8001/api/v1/health
 
 ## Recommended next work
 
-1. If Main/WMS endpoint contract is available, implement an outbound WMS ingest client for `POST {MAIN_SERVER_URL}/api/v1/vision/events`.
-2. Add camera-frame adapter/snapshot ingestion while keeping AI Server decoupled from ROS2 imports.
-3. Add ROS2 bridge only after WMS task/state endpoints are stable.
-4. Add QR/AprilTag/YOLO only after a new scope decision; do not silently reintroduce QR tests into this ArUco-only branch.
-5. Add docker-compose/systemd launch assets if the team wants a reproducible Central-PC deployment.
-6. Consider persistence/observability after API contract stabilizes: structured logs, request IDs, metrics, and bounded event retention.
+1. Add camera-frame adapter/snapshot ingestion while keeping AI Server decoupled from ROS2 imports.
+2. Add ROS2 bridge only after WMS task/state endpoints are stable.
+3. Add QR/AprilTag/YOLO only after a new scope decision; do not silently reintroduce QR tests into this ArUco-only branch.
+4. Add docker-compose/systemd launch assets if the team wants a reproducible Central-PC deployment.
+5. Consider persistence/observability after API contract stabilizes: structured logs, request IDs, metrics, and bounded event retention.
+6. Later, if production policy requires it, revisit best-effort WMS emission and decide whether some WMS failures should become hard failures or durable retry-queue entries.
 
 ## Recovery checklist for the next assistant
 
