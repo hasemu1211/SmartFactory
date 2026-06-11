@@ -73,8 +73,9 @@ Contracts/docs/scripts:
 
 ROS2 bringup side:
 
-- ROS2 workspace root: `/home/codelab/ros2_ws`
-- Package scaffold: `/home/codelab/ros2_ws/src/smartfactory_bringup`
+- ROS2 workspace root: `/home/codelab/turtlebot3_ws` after 2026-06-11 migration.
+- Package scaffold: `/home/codelab/turtlebot3_ws/src/smartfactory_bringup`
+- Previous copy moved aside at `/home/codelab/ros2_ws/src/smartfactory_bringup.migrated-backup-20260611` to avoid duplicate overlay confusion.
 - ROS2 workspace commit recorded earlier: `8d9a28e Add SmartFactory ROS2 bringup scaffold`
 - Rebuild command from SmartFactory repo: `make ros-build-bringup`
 
@@ -105,6 +106,11 @@ Validated on 2026-06-09 Asia/Seoul before final handoff:
 - `./scripts/test_ai_server.sh -q`: `26 passed, 1 warning` plus contract fixtures behaved as expected.
 - `make ros-build-bringup`: `smartfactory_bringup` finished successfully.
 
+Validated again on 2026-06-11 Asia/Seoul after ROS workspace migration:
+
+- `make ros-build-bringup`: builds from `/home/codelab/turtlebot3_ws` successfully.
+- `./scripts/test_ai_server.sh -q`: `26 passed, 1 warning` and contract fixtures behaved as expected.
+
 Optional manual API smoke test:
 
 ```bash
@@ -126,5 +132,6 @@ curl http://127.0.0.1:8001/api/v1/health
 1. Read this file first.
 2. Confirm branch: `git status --short --branch`.
 3. Do not resume `smartfactory-ai-serve-ff431175`; it was intentionally shut down.
-4. Run validation commands above before further edits.
+4. Use `/home/codelab/turtlebot3_ws` as the default ROS2 workspace for `smartfactory_bringup`; do not reintroduce an active duplicate under `/home/codelab/ros2_ws/src`.
+5. Run validation commands above before further edits.
 5. Preserve the ArUco-only scope unless the user explicitly changes it.
