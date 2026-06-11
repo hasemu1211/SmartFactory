@@ -1,7 +1,9 @@
-"""Launch raw ROS image snapshot clients that POST frames to the AI Server.
+"""Launch ROS image snapshot clients that POST frames to the AI Server.
 
 This layer is intentionally disabled by default. It is a ROS-side adapter only:
-no inference, no WMS policy, and no robot control.
+no inference, no WMS policy, and no robot control. Robot PiCam defaults use
+sensor_msgs/CompressedImage because the TurtleBot3 camera.launch.py compressed
+stream runs close to camera frame rate while raw can be substantially slower.
 """
 
 from launch import LaunchDescription
@@ -19,7 +21,7 @@ def _enabled_with(snapshot_flag, source_flag):
     )
 
 
-def _snapshot_node(*, name, source_id, image_topic, condition):
+def _snapshot_node(*, name, source_id, image_topic, image_transport, condition):
     return Node(
         condition=condition,
         package='smartfactory_perception_ros',
@@ -29,6 +31,7 @@ def _snapshot_node(*, name, source_id, image_topic, condition):
         parameters=[{
             'source_id': source_id,
             'image_topic': image_topic,
+            'image_transport': image_transport,
             'ai_server_url': LaunchConfiguration('ai_server_url'),
             'emit': LaunchConfiguration('ai_snapshot_emit'),
             'snapshot_period_sec': LaunchConfiguration('ai_snapshot_period_sec'),
@@ -50,7 +53,10 @@ def generate_launch_description():
         DeclareLaunchArgument('use_ai_server', default_value='false'),
         DeclareLaunchArgument('use_wms_bridge', default_value='false'),
         DeclareLaunchArgument('use_nav2', default_value='false'),
-        DeclareLaunchArgument('repo_root', default_value='/home/codelab/Desktop/Project/SmartFactory'),
+        DeclareLaunchArgument(
+            'repo_root',
+            default_value='/home/codelab/Desktop/Project/SmartFactory',
+        ),
         DeclareLaunchArgument('ai_server_host', default_value='127.0.0.1'),
         DeclareLaunchArgument('ai_server_port', default_value='8100'),
         DeclareLaunchArgument('main_server_url', default_value='http://127.0.0.1:8000'),
@@ -58,26 +64,44 @@ def generate_launch_description():
         DeclareLaunchArgument('ai_snapshot_period_sec', default_value='1.0'),
         DeclareLaunchArgument('ai_snapshot_timeout_sec', default_value='1.0'),
         DeclareLaunchArgument('ai_snapshot_emit', default_value='false'),
+        DeclareLaunchArgument('global_cam_image_topic', default_value='/global_camera/image_raw'),
+        DeclareLaunchArgument('global_cam_image_transport', default_value='raw'),
+        DeclareLaunchArgument(
+            'tb3_1_picam_image_topic',
+            default_value='/tb3_1/pi_camera/image_raw/compressed',
+        ),
+        DeclareLaunchArgument('tb3_1_picam_image_transport', default_value='compressed'),
+        DeclareLaunchArgument(
+            'tb3_2_picam_image_topic',
+            default_value='/tb3_2/pi_camera/image_raw/compressed',
+        ),
+        DeclareLaunchArgument('tb3_2_picam_image_transport', default_value='compressed'),
         LogInfo(
             condition=UnlessCondition(use_ai_snapshot_clients),
-            msg='[SmartFactory] AI snapshot clients disabled. Enable with use_ai_snapshot_clients:=true.',
+            msg=(
+                '[SmartFactory] AI snapshot clients disabled. '
+                'Enable with use_ai_snapshot_clients:=true.'
+            ),
         ),
         _snapshot_node(
             name='global_cam_01_snapshot_client',
             source_id='global_cam_01',
-            image_topic='/global_camera/image_raw',
+            image_topic=LaunchConfiguration('global_cam_image_topic'),
+            image_transport=LaunchConfiguration('global_cam_image_transport'),
             condition=_enabled_with(use_ai_snapshot_clients, use_global_camera),
         ),
         _snapshot_node(
             name='tb3_1_picam_snapshot_client',
             source_id='tb3_1_picam',
-            image_topic='/tb3_1/pi_camera/image_raw',
+            image_topic=LaunchConfiguration('tb3_1_picam_image_topic'),
+            image_transport=LaunchConfiguration('tb3_1_picam_image_transport'),
             condition=_enabled_with(use_ai_snapshot_clients, use_robot_picams),
         ),
         _snapshot_node(
             name='tb3_2_picam_snapshot_client',
             source_id='tb3_2_picam',
-            image_topic='/tb3_2/pi_camera/image_raw',
+            image_topic=LaunchConfiguration('tb3_2_picam_image_topic'),
+            image_transport=LaunchConfiguration('tb3_2_picam_image_transport'),
             condition=_enabled_with(use_ai_snapshot_clients, use_robot_picams),
         ),
     ])

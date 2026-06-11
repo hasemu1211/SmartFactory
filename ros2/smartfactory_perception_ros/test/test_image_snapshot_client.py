@@ -5,11 +5,12 @@ import pytest
 import requests
 from cv_bridge import CvBridge
 import rclpy
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import CompressedImage, Image
 
 from smartfactory_perception_ros.image_snapshot_client import (
     ImageSnapshotClient,
     build_detect_url,
+    encode_compressed_image_message,
     encode_image_message,
     post_snapshot,
 )
@@ -52,6 +53,20 @@ def make_image_msg(width=16, height=12) -> Image:
     return msg
 
 
+
+def make_compressed_image_msg(width=16, height=12, image_format="jpeg") -> CompressedImage:
+    import cv2
+
+    image = np.zeros((height, width, 3), dtype=np.uint8)
+    image[:, :, 2] = 255
+    extension = ".jpg" if "jpeg" in image_format or "jpg" in image_format else ".png"
+    ok, encoded = cv2.imencode(extension, image)
+    assert ok
+    msg = CompressedImage()
+    msg.format = image_format
+    msg.data = encoded.tobytes()
+    return msg
+
 def test_build_detect_url_normalizes_slashes():
     assert (
         build_detect_url("http://127.0.0.1:8100/", "/api/v1/detect/image")
@@ -68,6 +83,27 @@ def test_encode_image_message_encodes_raw_image_to_jpeg_bytes():
     assert content_type == "image/jpeg"
     assert payload.startswith(b"\xff\xd8")
 
+
+
+def test_encode_compressed_image_message_passes_jpeg_bytes_through():
+    msg = make_compressed_image_msg(image_format="bgr8; jpeg compressed bgr8")
+
+    filename, content_type, payload = encode_compressed_image_message(msg, image_format="png")
+
+    assert filename == "snapshot.jpg"
+    assert content_type == "image/jpeg"
+    assert payload == bytes(msg.data)
+    assert payload.startswith(b"\xff\xd8")
+
+
+def test_encode_compressed_image_message_decodes_unknown_format_to_requested_format():
+    msg = make_compressed_image_msg(image_format="custom-transport")
+
+    filename, content_type, payload = encode_compressed_image_message(msg, image_format="png")
+
+    assert filename == "snapshot.png"
+    assert content_type == "image/png"
+    assert payload.startswith(b"\x89PNG")
 
 def test_post_snapshot_sends_expected_multipart_payload():
     session = FakeSession(FakeResponse(200, {"events": [{"event_id": "evt-1"}]}))
@@ -186,6 +222,27 @@ def test_node_timer_posts_again_after_new_image_arrives():
         assert len(session.calls) == 2
         assert node.diagnostics["received_frames"] == 2
         assert node.diagnostics["post_attempts"] == 2
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+def test_node_timer_posts_compressed_image_without_reencoding_jpeg():
+    rclpy.init(args=["--ros-args", "-p", "image_transport:=compressed"])
+    session = FakeSession(FakeResponse(200, {"events": []}))
+    node = ImageSnapshotClient(session=session)
+    try:
+        msg = make_compressed_image_msg(image_format="jpeg")
+        node._on_compressed_image(msg)
+        node._on_timer()
+        assert len(session.calls) == 1
+        assert node.diagnostics["received_frames"] == 1
+        assert node.diagnostics["post_attempts"] == 1
+        assert session.calls[0]["files"]["image"] == (
+            "snapshot.jpg",
+            bytes(msg.data),
+            "image/jpeg",
+        )
     finally:
         node.destroy_node()
         rclpy.shutdown()
