@@ -13,6 +13,7 @@ from .contracts import ContractValidationError, validate_vision_event
 from .detectors import MarkerDetection, decode_image, detect_markers
 from .docking import CameraIntrinsics, MarkerPose, estimate_marker_pose
 from .event_store import InMemoryEventStore
+from .pose_profiles import ArucoPoseProfile, PoseProfileError, get_pose_profile
 from .wms_client import emit_vision_events
 
 app = FastAPI(
@@ -125,7 +126,10 @@ def _parse_dist_coeffs(value: str | None) -> tuple[float, ...]:
         raise HTTPException(status_code=400, detail="camera_dist_coeffs must be comma-separated numbers") from exc
 
 
-def _optional_pose_request(
+PoseRequest = tuple[float, CameraIntrinsics] | ArucoPoseProfile
+
+
+def _manual_pose_fields_present(
     *,
     marker_size_m: float | None,
     camera_fx: float | None,
@@ -133,7 +137,50 @@ def _optional_pose_request(
     camera_cx: float | None,
     camera_cy: float | None,
     camera_dist_coeffs: str | None,
-) -> tuple[float, CameraIntrinsics] | None:
+) -> bool:
+    return any(
+        value is not None
+        for value in [
+            marker_size_m,
+            camera_fx,
+            camera_fy,
+            camera_cx,
+            camera_cy,
+            camera_dist_coeffs,
+        ]
+    )
+
+
+def _optional_pose_request(
+    *,
+    pose_profile: str | None,
+    marker_size_m: float | None,
+    camera_fx: float | None,
+    camera_fy: float | None,
+    camera_cx: float | None,
+    camera_cy: float | None,
+    camera_dist_coeffs: str | None,
+) -> PoseRequest | None:
+    settings = get_settings()
+    manual_present = _manual_pose_fields_present(
+        marker_size_m=marker_size_m,
+        camera_fx=camera_fx,
+        camera_fy=camera_fy,
+        camera_cx=camera_cx,
+        camera_cy=camera_cy,
+        camera_dist_coeffs=camera_dist_coeffs,
+    )
+    if pose_profile is not None and pose_profile.strip():
+        if manual_present:
+            raise HTTPException(
+                status_code=400,
+                detail="pose_profile cannot be combined with manual camera calibration fields",
+            )
+        try:
+            return get_pose_profile(pose_profile, path=settings.aruco_pose_profiles_path)
+        except PoseProfileError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     fields = [marker_size_m, camera_fx, camera_fy, camera_cx, camera_cy]
     if all(value is None for value in fields) and not camera_dist_coeffs:
         return None
@@ -167,12 +214,20 @@ def _optional_pose_request(
 
 
 def _estimate_detection_pose(
+    *,
+    source: str,
     detection: MarkerDetection,
-    pose_request: tuple[float, CameraIntrinsics] | None,
+    pose_request: PoseRequest | None,
 ) -> MarkerPose | None:
     if pose_request is None or not detection.corners_xy:
         return None
-    marker_size_m, intrinsics = pose_request
+    if isinstance(pose_request, ArucoPoseProfile):
+        if not pose_request.applies_to(source=source, marker_id=detection.marker_id):
+            return None
+        marker_size_m = pose_request.marker_size_m
+        intrinsics = pose_request.intrinsics
+    else:
+        marker_size_m, intrinsics = pose_request
     try:
         return estimate_marker_pose(
             detection.corners_xy,
@@ -261,6 +316,7 @@ async def detect_image(
     source: str = Form(...),
     image: UploadFile = File(...),
     emit: bool = Form(default=False),
+    pose_profile: str | None = Form(default=None),
     marker_size_m: float | None = Form(default=None),
     camera_fx: float | None = Form(default=None),
     camera_fy: float | None = Form(default=None),
@@ -284,6 +340,7 @@ async def detect_image(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     pose_request = _optional_pose_request(
+        pose_profile=pose_profile,
         marker_size_m=marker_size_m,
         camera_fx=camera_fx,
         camera_fy=camera_fy,
@@ -303,7 +360,9 @@ async def detect_image(
             image_width=image_width,
             image_height=image_height,
             latency_ms=latency_ms,
-            pose=_estimate_detection_pose(detection, pose_request),
+            pose=_estimate_detection_pose(
+                source=source, detection=detection, pose_request=pose_request
+            ),
         )
         for detection in detections
     ]

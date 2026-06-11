@@ -159,6 +159,61 @@ def test_detect_image_reports_wms_failure_without_failing_detection(monkeypatch)
 
 
 
+
+
+def test_detect_image_can_emit_aruco_pose_from_named_profile():
+    response = client.post(
+        "/api/v1/detect/image",
+        data={"source": "tb3_1_picam", "pose_profile": "tb3_1_lab_marker_7"},
+        files={"image": ("aruco.png", aruco_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    pose = response.json()["events"][0]["pose_estimate"]
+    assert pose is not None
+    assert pose["method"] == "ARUCO_POSE"
+    assert abs(pose["x"]) < 0.02
+    assert 0.45 < pose["y"] < 0.60
+
+
+def test_detect_image_rejects_pose_profile_with_manual_calibration_mix():
+    response = client.post(
+        "/api/v1/detect/image",
+        data={
+            "source": "tb3_1_picam",
+            "pose_profile": "tb3_1_lab_marker_7",
+            "marker_size_m": "0.08",
+        },
+        files={"image": ("aruco.png", aruco_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 400
+    assert "pose_profile cannot be combined" in response.json()["detail"]
+
+
+def test_detect_image_unknown_pose_profile_is_bad_request():
+    response = client.post(
+        "/api/v1/detect/image",
+        data={"source": "tb3_1_picam", "pose_profile": "missing_profile"},
+        files={"image": ("aruco.png", aruco_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 400
+    assert "unknown pose_profile" in response.json()["detail"]
+
+
+def test_detect_image_pose_profile_marker_mismatch_keeps_pose_null():
+    response = client.post(
+        "/api/v1/detect/image",
+        data={"source": "tb3_1_picam", "pose_profile": "tb3_1_picam_marker_0_placeholder"},
+        files={"image": ("aruco.png", aruco_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["events"][0]["marker_id"] == "ARUCO_4X4_50_7"
+    assert response.json()["events"][0]["pose_estimate"] is None
+
+
 def test_detect_image_can_emit_optional_aruco_pose_estimate():
     response = client.post(
         "/api/v1/detect/image",

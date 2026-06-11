@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     contract_schema_path: Path = Field(
         default=REPO_ROOT / "docs" / "contracts" / "vision-event.schema.json"
     )
+    aruco_pose_profiles_path: Path = Field(
+        default=REPO_ROOT / "config" / "perception" / "aruco_pose_profiles.example.json"
+    )
 
     @property
     def source_ids(self) -> list[str]:

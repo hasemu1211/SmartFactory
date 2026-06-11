@@ -81,6 +81,26 @@ Hard gates:
 - stale frame timeout means immediate stop,
 - no active tuning while people are in the path.
 
+## 3.1 Pose profile config
+
+AI Server can compute optional ArUco pose evidence using named profiles from:
+
+```text
+config/perception/aruco_pose_profiles.example.json
+```
+
+Use this for computer-only or passive tuning sessions so the API request only
+needs `pose_profile=<name>`. Keep these values as tuning data:
+
+- marker size,
+- camera intrinsics,
+- source binding,
+- expected marker ID,
+- station target offset notes.
+
+Do not treat placeholder intrinsics as active docking calibration. After editing
+the profile file, restart the AI Server because profiles are cached in process.
+
 ## 4. Passive session setup
 
 Use the helper script from repo root:

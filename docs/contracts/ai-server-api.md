@@ -136,6 +136,7 @@ Request: `multipart/form-data`
 | `source` | yes | source ID to evaluate as |
 | `image` | yes | image file |
 | `emit` | no | `false` default; if `true`, AI Server may POST accepted events to Main Server |
+| `pose_profile` | no | named profile from `ARUCO_POSE_PROFILES_PATH`; cannot be combined with manual calibration fields |
 | `marker_size_m` | no | positive marker size in meters; required with camera intrinsics to compute optional ArUco pose |
 | `camera_fx` | no | camera focal length x in pixels; required for optional ArUco pose |
 | `camera_fy` | no | camera focal length y in pixels; required for optional ArUco pose |
@@ -143,13 +144,20 @@ Request: `multipart/form-data`
 | `camera_cy` | no | camera principal point y in pixels; required for optional ArUco pose |
 | `camera_dist_coeffs` | no | optional comma-separated OpenCV distortion coefficients for optional ArUco pose |
 
-When all marker/camera calibration fields are provided, ArUco marker events may include
-`pose_estimate.method=ARUCO_POSE`. In MVP1 this is camera-frame planar docking
-evidence: `pose_estimate.x` is lateral offset in meters, `pose_estimate.y` is
-forward marker distance in meters, and `pose_estimate.yaw` is marker face yaw in
-radians. If calibration fields are omitted, `pose_estimate` remains `null`.
-Partial calibration input is rejected with HTTP `400` so the server does not emit
-ambiguous pose estimates.
+When `pose_profile` is provided, the server loads marker size and camera
+intrinsics from `ARUCO_POSE_PROFILES_PATH` (default:
+`config/perception/aruco_pose_profiles.example.json`). Profile source/marker ID
+must match the request/detection before pose is emitted; otherwise the marker
+event remains valid but `pose_estimate` stays `null`.
+
+When all manual marker/camera calibration fields are provided, ArUco marker
+events may also include `pose_estimate.method=ARUCO_POSE`. In MVP1 this is
+camera-frame planar docking evidence: `pose_estimate.x` is lateral offset in
+meters, `pose_estimate.y` is forward marker distance in meters, and
+`pose_estimate.yaw` is marker face yaw in radians. If profile/manual calibration
+fields are omitted, `pose_estimate` remains `null`. Partial calibration input or
+combining `pose_profile` with manual calibration fields is rejected with HTTP
+`400` so the server does not emit ambiguous pose estimates.
 
 Emission is disabled by default at runtime. `emit=true` only requests emission;
 the server attempts outbound WMS ingest only when `WMS_EMIT_ENABLED=true`.
