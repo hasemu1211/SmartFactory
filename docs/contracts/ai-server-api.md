@@ -44,6 +44,15 @@ Recommended status codes:
 
 ## AI Server endpoints
 
+MVP1 keeps two evidence layers separate:
+
+- `VisionEvent v1` is the lightweight event stream for marker/person/obstacle/item candidates.
+- `LiftRoiEvidence v1` is the richer ROI/count/verification summary for lift load pickup/dropoff decisions.
+
+Do **not** force lift count, mask, or stability fields into `VisionEvent v1`.
+WMS/Main may later translate a confirmed `LiftRoiEvidence` result into its own
+task/inventory transition, but AI Server remains evidence-only.
+
 ### `GET /api/v1/health`
 
 Purpose: service liveness/readiness. It must not require all cameras to be online.
@@ -233,6 +242,100 @@ event:
 `response` is parsed JSON when the WMS response body is JSON; otherwise it is
 `null`. For transport errors, timeouts, and non-2xx responses, `ok` is `false`
 and `error` contains a short diagnostic string.
+
+### `POST /api/v1/lift-roi/evaluate` planned
+
+Purpose: evaluate whether expected load items are inside a configured lift or
+target-slot ROI and return a contract-valid `LiftRoiEvidence v1` payload. This
+endpoint is contract-designed now; implementation should follow after the
+detector/segmenter interface seam is added.
+
+Canonical schema: `docs/contracts/lift-roi-evidence.schema.json`.
+
+Recommended request shape after implementation:
+
+```json
+{
+  "source": "tb3_1_picam",
+  "operation": "PICKUP",
+  "task_id": "TASK-IN-0001",
+  "image": { "width": 640, "height": 480 },
+  "roi": {
+    "roi_id": "TB3_1_LIFT_ROI",
+    "kind": "LIFT",
+    "polygon_xy": [[220, 180], [420, 180], [440, 360], [200, 360]]
+  },
+  "expected_count": 2,
+  "stable_frames": 5,
+  "count_stable": true,
+  "lift_sensor": {
+    "lift_up": true,
+    "lift_down_complete": null,
+    "backoff_complete": null
+  },
+  "candidates": [
+    {
+      "class_name": "box",
+      "bbox_xyxy": [240, 210, 310, 290],
+      "confidence": 0.91,
+      "track_id": "box-1",
+      "evidence_type": "bbox",
+      "mask_area_px": null
+    }
+  ]
+}
+```
+
+Response `200` should be a full `LiftRoiEvidence v1` object. Example excerpt:
+
+```json
+{
+  "schema_version": "lift-roi-evidence.v1",
+  "evidence_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "source": "tb3_1_picam",
+  "robot_id": "tb3_1",
+  "operation": "PICKUP",
+  "expected_count": 2,
+  "count_stable": true,
+  "load": {
+    "count": 2,
+    "empty": false,
+    "accepted_items": [
+      {
+        "class_name": "box",
+        "bbox_xyxy": [240, 210, 310, 290],
+        "confidence": 0.91,
+        "evidence_type": "bbox",
+        "center_inside_roi": true,
+        "overlap_ratio": 0.98,
+        "reason": "accepted"
+      }
+    ],
+    "rejected_items": []
+  },
+  "dropped_item_count": 0,
+  "verification": {
+    "status": "CONFIRMED",
+    "reason": "pickup_verified"
+  }
+}
+```
+
+Policy constraints validated by fixtures:
+
+- source/robot mapping follows the same policy as `VisionEvent v1`.
+- `load.count` must equal `accepted_items.length`.
+- `load.empty` must match `load.count == 0`.
+- accepted items must use `reason=accepted` and have `center_inside_roi=true`.
+- confirmed pickup requires `expected_count`, matching count, stable count,
+  `lift_up=true`, and `dropped_item_count=0`.
+- confirmed dropoff requires `lift_down_complete=true` and `backoff_complete=true`.
+
+This contract allows either bbox-only detection or instance segmentation:
+
+- `evidence_type=bbox`: ROI overlap is computed from the bounding box area.
+- `evidence_type=instance_mask`: ROI overlap is computed from the instance mask;
+  the contract stores only summary fields such as `mask_area_px`, not raw masks.
 
 ## Main Server/WMS-lite endpoints consumed by AI Server
 

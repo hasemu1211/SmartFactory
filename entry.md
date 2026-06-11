@@ -38,8 +38,8 @@
 
 | Lane | Status | Meaning | Next action |
 | --- | --- | --- | --- |
-| A. Completed robot-free stack | Done | AI Server evidence API, ArUco detection, optional pose/profile support, source health/staleness, pure docking math, lift ROI evaluator, passive ArUco pose monitor skeleton, synthetic tests, tuning prep assets | Keep as stable base; validate with `./scripts/test_ai_server.sh -q` and ROS package tests |
-| B. Remaining no-physical-tuning work | Open | Work that can be implemented now without robot/camera availability | Next: lift ROI evidence API/contract design |
+| A. Completed robot-free stack | Done | AI Server evidence API, ArUco detection, optional pose/profile support, source health/staleness, LiftRoiEvidence contract, pure docking math, lift ROI evaluator, passive ArUco pose monitor skeleton, synthetic tests, tuning prep assets | Keep as stable base; validate with `./scripts/test_ai_server.sh -q` and ROS package tests |
+| B. Remaining no-physical-tuning work | Open | Work that can be implemented now without robot/camera availability | Next: detector/segmenter interface seam |
 | C. Robot-available passive tuning | Waiting for hardware window | Requires robot/camera availability but no active motion | Use `docs/robot/docking-tuning-runbook.md`; measure topics/FPS/pose noise; no `/cmd_vel` |
 | D. Permission-gated active tuning | Blocked until explicit approval | Any low-speed motion command or robot-side change | Ask user first; enforce marker-loss/stale timeout stop |
 
@@ -94,6 +94,8 @@ AI Server package:
 Contracts/docs/scripts:
 
 - `docs/contracts/vision-event.schema.json`
+- `docs/contracts/lift-roi-evidence.schema.json`
+  - Separate contract for lift ROI count/verification evidence. It keeps count, mask-overlap, stability, lift-sensor and pickup/dropoff verification fields out of `VisionEvent v1`.
 - `docs/contracts/ai-server-api.md`
 - `docs/robot/docking-tuning-runbook.md`
   - Standalone tuning runbook for whenever a robot becomes available. Default lane is passive observation only: robot bringup/camera, central PC ROS topic inspection, no `/cmd_vel`.
@@ -111,6 +113,7 @@ Contracts/docs/scripts:
 - `scripts/run_ai_server.sh`
 - `scripts/test_ai_server.sh`
 - `scripts/validate_contracts.py`
+  - Validates both `VisionEvent v1` and `LiftRoiEvidence v1` valid/invalid fixtures with additional policy checks.
 - `Makefile`
 
 ROS2 bringup side:
@@ -207,6 +210,13 @@ Validated again on 2026-06-11 Asia/Seoul after AI Server source health/staleness
 - Added fake-clock unit coverage for online/stale/offline/disabled transitions.
 - Added API coverage proving marker-free valid frames refresh source health and marker events update last event metadata.
 
+Validated again on 2026-06-11 Asia/Seoul after Lift ROI evidence API/contract design:
+
+- `python3 scripts/validate_contracts.py`: `VisionEvent v1` and `LiftRoiEvidence v1` valid/invalid fixtures behaved as expected.
+- Added `LiftRoiEvidence v1` schema and pickup/dropoff valid fixtures.
+- Added invalid fixtures for lift count mismatch and source/robot mismatch.
+- Documented planned `POST /api/v1/lift-roi/evaluate`; implementation remains after detector/segmenter seam.
+
 Optional manual API smoke test:
 
 ```bash
@@ -225,14 +235,13 @@ Use `docs/technical/perception-control-plan.md` as the main plan pointer. It now
 
 ### 1. No-physical-tuning work that can start now
 
-1. Add API/event contract planning for count/segmentation summaries.
-   - Do not force mask/count fields into `vision-event.v1`.
-   - Decide between `vision-event.v2` and a separate ROI/count endpoint.
-2. Add detector/segmenter interface seams with mock/synthetic tests.
+1. Add detector/segmenter interface seams with mock/synthetic tests.
+   - Use the `LiftRoiEvidence v1` schema as the downstream contract target.
+   - Do not choose YOLO detect-vs-seg runtime until class/data needs are confirmed.
    - Actual YOLO/segmentation model choice remains a later scope decision.
-5. Add observability/persistence improvements after API contract stabilizes.
+2. Add observability/persistence improvements.
    - structured logs, request IDs, metrics, bounded event retention.
-6. Add docker-compose/systemd launch assets if the team wants reproducible Central-PC deployment.
+3. Add docker-compose/systemd launch assets if the team wants reproducible Central-PC deployment.
 
 ### 2. Physical robot/camera available, passive only
 
