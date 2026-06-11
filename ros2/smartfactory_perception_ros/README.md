@@ -55,3 +55,14 @@ ros2 run smartfactory_perception_ros image_snapshot_client --ros-args \
 The launch file is conservative: all snapshot clients are disabled unless
 `use_ai_snapshot_clients:=true`, and individual adapters are gated by
 `use_global_camera` / `use_robot_picams`.
+
+## Live Robot1 QA evidence
+
+Robot1 PiCam compressed transport was live-tested on 2026-06-11:
+
+- `/camera/image_raw/compressed`: `sensor_msgs/msg/CompressedImage`, about 30 Hz.
+- OpenCV viewer detected phone-displayed ArUco ID `0`.
+- `image_snapshot_client` posted compressed frames to AI Server with `source_id=tb3_1_picam` and `emit=false`.
+- AI Server produced `ARUCO_4X4_50_0` events for `tb3_1_picam` during the marker window.
+
+Detailed runbook/evidence: [`docs/robot/robot1-picam-aruco-ai-server-qa-2026-06-11.md`](../../docs/robot/robot1-picam-aruco-ai-server-qa-2026-06-11.md).

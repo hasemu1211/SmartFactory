@@ -1,6 +1,6 @@
 # SmartFactory AI Server Handoff Entry
 
-- Last updated: 2026-06-09 Asia/Seoul
+- Last updated: 2026-06-11 Asia/Seoul
 - Repo root: `/home/codelab/Desktop/Project/SmartFactory`
 - Active branch: `feature/ai-server-marker-detection`
 - Current purpose: MVP1 AI Server marker-evidence API for SmartFactory, implemented as a separate Central-PC process/container now and separable to a dedicated AI Server PC later.
@@ -125,27 +125,33 @@ Validated again on 2026-06-11 Asia/Seoul after WMS ingest client implementation:
 Validated again on 2026-06-11 Asia/Seoul after ROS2 snapshot adapter implementation:
 
 - `make ros-build-bringup`: builds `smartfactory_bringup` and `smartfactory_perception_ros` successfully.
-- `colcon test --packages-select smartfactory_perception_ros --event-handlers console_direct+`: `10 passed`.
+- `colcon test --packages-select smartfactory_perception_ros --event-handlers console_direct+`: `13 passed` after compressed transport support.
 - `make ros-launch-smoke`: succeeds with `use_ai_snapshot_clients:=false`.
 - Local no-robot E2E smoke: generated ArUco ROS `sensor_msgs/Image` -> `image_snapshot_client` -> AI Server `/api/v1/detect/image` -> latest detection contained `ARUCO_4X4_50_7`.
+- Robot1 PiCam live QA evidence is documented in `docs/robot/robot1-picam-aruco-ai-server-qa-2026-06-11.md`.
+  - `/camera/image_raw/compressed` was `sensor_msgs/msg/CompressedImage` at about 30 Hz.
+  - OpenCV viewer detected the phone-displayed marker as ID `0`.
+  - `image_snapshot_client` posted to AI Server with `source_id=tb3_1_picam`, `image_transport=compressed`, `emit=false`.
+  - AI Server latest detections contained `ARUCO_4X4_50_0` events for `tb3_1_picam` during the marker window.
 - `./scripts/test_ai_server.sh -q`: `33 passed, 1 warning` and contract fixtures behaved as expected.
 
 Optional manual API smoke test:
 
 ```bash
 ./scripts/run_ai_server.sh
-curl http://127.0.0.1:8001/api/v1/health
+curl http://127.0.0.1:8100/api/v1/health
 ```
 
 ## Recommended next work
 
-1. Add real camera source bringup/relay: confirm `/dev/video*` for `global_cam_01` and robot Pi camera stream path for `tb3_1_picam`/`tb3_2_picam`.
-2. Add source health/staleness reporting across snapshot adapter, AI Server, and Main/WMS.
-3. Add ROS2 bridge only after WMS task/state endpoints are stable.
-4. Add QR/AprilTag/YOLO only after a new scope decision; do not silently reintroduce QR tests into this ArUco-only branch.
-5. Add docker-compose/systemd launch assets if the team wants a reproducible Central-PC deployment.
-6. Consider persistence/observability after API contract stabilizes: structured logs, request IDs, metrics, and bounded event retention.
-7. Later, if production policy requires it, revisit best-effort WMS emission and decide whether some WMS failures should become hard failures or durable retry-queue entries.
+1. Repeat the validated Robot1 PiCam compressed QA on Robot2 when it is available; Robot1 `tb3_1_picam` is already live-validated through AI Server.
+2. Add real camera source bringup/relay for `global_cam_01` when the global camera is ready.
+3. Add source health/staleness reporting across snapshot adapter, AI Server, and Main/WMS.
+4. Add ROS2 bridge only after WMS task/state endpoints are stable.
+5. Add QR/AprilTag/YOLO only after a new scope decision; do not silently reintroduce QR tests into this ArUco-only branch.
+6. Add docker-compose/systemd launch assets if the team wants a reproducible Central-PC deployment.
+7. Consider persistence/observability after API contract stabilizes: structured logs, request IDs, metrics, and bounded event retention.
+8. Later, if production policy requires it, revisit best-effort WMS emission and decide whether some WMS failures should become hard failures or durable retry-queue entries.
 
 ## Recovery checklist for the next assistant
 
@@ -154,4 +160,4 @@ curl http://127.0.0.1:8001/api/v1/health
 3. Do not resume `smartfactory-ai-serve-ff431175`; it was intentionally shut down.
 4. Use `/home/codelab/turtlebot3_ws` as the default ROS2 workspace for `smartfactory_bringup`; do not reintroduce an active duplicate under `/home/codelab/ros2_ws/src`.
 5. Run validation commands above before further edits.
-5. Preserve the ArUco-only scope unless the user explicitly changes it.
+6. Preserve the ArUco-only scope unless the user explicitly changes it.
