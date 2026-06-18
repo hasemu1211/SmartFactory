@@ -29,6 +29,7 @@ from .observability import InMemoryMetrics, structured_log
 from .openapi_schemas import (
     ERROR_RESPONSE_OPENAPI,
     METRICS_RESPONSE_OPENAPI,
+    SOURCE_ID_OPENAPI_EXTRA,
     _debug_sources_response_schema,
     _detect_image_response_schema,
     _frame_ingest_response_schema,
@@ -59,7 +60,6 @@ frame_store = LatestFrameStore()
 overlay_cache = LatestEvidenceCache(maxlen_per_source=20)
 _overlay_images: dict[str, OverlayRenderResult] = {}
 _overlay_images_lock = Lock()
-SOURCE_ID_OPENAPI_EXTRA = {"enum": get_settings().source_ids}
 
 
 class SyntheticFrameRequest(BaseModel):
