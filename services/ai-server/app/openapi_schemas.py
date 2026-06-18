@@ -7,6 +7,9 @@ from typing import Any
 from .config import get_settings
 
 
+SOURCE_ID_OPENAPI_EXTRA = {"enum": get_settings().source_ids}
+
+
 ERROR_RESPONSE_OPENAPI = {
     "description": "SmartFactory API error response",
     "content": {
