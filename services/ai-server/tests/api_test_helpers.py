@@ -11,6 +11,11 @@ from generated_fixtures import aruco_png_bytes, blank_png_bytes
 
 client = TestClient(app)
 
+# Test-only contract oracle for endpoint-focused API tests. Keep this module
+# limited to fixtures and expected read-model/policy dictionaries; production
+# route behavior must stay in app modules, and each test remains responsible for
+# resetting shared in-memory state before assertions that depend on it.
+
 __all__ = [
     "DetectionBox",
     "InstanceMask",
