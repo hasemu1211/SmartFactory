@@ -15,7 +15,8 @@ Semantic ingest target remains `POST /api/v1/vision/events`; `POST /api/v1/camer
 ## Principles
 
 1. **API first**: implementation lanes depend on this contract, not on each other's internal modules.
-2. **Evidence only**: AI Server emits `VisionEvent`; Main/WMS-lite owns final task, inventory, database persistence, slot, item, robot, and exception state transitions.
+2. **Evidence only**: AI Server emits `VisionEvent`; WMS-lite owns final task, slot, item, robot, and exception state transitions.
+   Safety boundary note: `docs/contracts/vision-evidence-advisory-safety-contract-2026-06-18.md` summarizes the no `/cmd_vel`, no Nav2, no teleop, no parameter mutation, and no whole-graph bridge contract for Vision surfaces.
 3. **Versioned contract**: all MVP1 endpoints use `/api/v1`; events include `schema_version: vision-event.v1`.
 4. **Strict source IDs**: MVP1 camera sources are `global_cam_01`, `tb3_1_picam`, `tb3_2_picam`.
 5. **No depth dependency**: MVP1 has no robot-mounted depth camera; `depth_median_m` must be `null`.
