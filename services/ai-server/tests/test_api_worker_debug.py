@@ -1,3 +1,4 @@
+# ruff: noqa: F403,F405
 """Vision worker status/tick and debug source API tests."""
 
 from api_test_helpers import *  # noqa: F401,F403
