@@ -234,7 +234,7 @@ grep -RInE 'create_publisher\(.*cmd_vel|ActionClient\(.*nav2|ros2 launch.*nav2|t
 
 ## Baseline command log
 
-```text
+````text
 ## Verification run — 2026-06-18T01:05:38Z
 
 ### git status --short --branch
@@ -312,4 +312,280 @@ exit=0
 ```text
 exit=0
 ```
+
+## Additional verification run — 2026-06-18T01:06:05Z
+
+### ./scripts/test_ai_server.sh -q
+```text
+AI Server venv not found. Run ./scripts/setup_ai_server_env.sh first.
+exit=1
 ```
+
+### python3 scripts/validate_contracts.py
+```text
+VALID ok: docs/contracts/fixtures/vision-event.valid.global.json
+VALID ok: docs/contracts/fixtures/vision-event.valid.stale.global.json
+VALID ok: docs/contracts/fixtures/vision-event.valid.tb3_1.json
+VALID ok: docs/contracts/fixtures/vision-event.valid.tb3_2.json
+INVALID rejected: docs/contracts/fixtures/vision-event.invalid.bad-bbox-order.json (PolicyError: bbox_xyxy must satisfy x1 < x2 and y1 < y2)
+INVALID rejected: docs/contracts/fixtures/vision-event.invalid.bad-format.json (ValidationError: 'not-a-uuid' is not a 'uuid'
+
+Failed validating 'format' in schema['properties']['event_id']:
+    {'format': 'uuid', 'type': 'string'}
+
+On instance['event_id']:
+    'not-a-uuid')
+INVALID rejected: docs/contracts/fixtures/vision-event.invalid.confirmed-marker-no-marker-id.json (ValidationError: None is not of type 'string'
+
+Failed validating 'type' in schema['allOf'][4]['then']['properties']['marker_id']:
+    {'minLength': 1, 'type': 'string'}
+
+On instance['marker_id']:
+    None)
+INVALID rejected: docs/contracts/fixtures/vision-event.invalid.depth-non-null.json (ValidationError: 1.23 is not of type 'null'
+
+Failed validating 'type' in schema['properties']['depth_median_m']:
+    {'description': 'Reserved for future depth-camera variants. Must '
+                    'remain null in MVP1.',
+     'type': 'null'}
+
+On instance['depth_median_m']:
+    1.23)
+INVALID rejected: docs/contracts/fixtures/vision-event.invalid.missing-robot-id.json (ValidationError: 'robot_id' is a required property
+
+Failed validating 'required' in schema:
+    {'$id': 'https://smartfactory.local/contracts/vision-event.schema.json',
+     '$schema': 'https://json-schema.org/draft/2020-12/schema',
+     'additionalProperties': False,
+     'allOf': [{'if': {'properties': {'source': {'const': 'global_cam_01'}},
+                       'required': ['source']},
+                'then': {'properties': {'robot_id': {'type': 'null'}}}},
+               {'if': {'properties': {'source': {'const': 'tb3_1_picam'}},
+                       'required': ['source']},
+                'then': {'properties': {'robot_id': {'const': 'tb3_1'}}}},
+               {'if': {'properties': {'source': {'const': 'tb3_2_picam'}},
+                       'required': ['source']},
+                'then': {'properties': {'robot_id': {'const': 'tb3_2'}}}},
+               {'if': {'properties': {'event_kind': {'const': 'STALE'}},
+                       'required': ['event_kind']},
+                'then': {'properties': {'bbox_xyxy': {'type': 'null'},
+                                        'class_name': {'const': 'unknown'},
+                                        'confidence': {'type': 'null'},
+                                        'wms_hint': {'const': 'VISION_STALE'}},
+                         'required': ['class_name',
+                                      'confidence',
+                                      'wms_hint']}},
+               {'if': {'properties': {'class_name': {'enum': ['aruco_marker',
+                                                              'qr_marker',
+                                                              'apriltag_marker']},
+                                      'event_kind': {'const': 'CONFIRMED'}},
+                       'required': ['event_kind', 'class_name']},
+                'then': {'properties': {'marker_id': {'minLength': 1,
+                                                      'type': 'string'}},
+                         'required': ['marker_id']}},
+               {'if': {'properties': {'class_name': {'enum': ['person',
+                                                              'obstacle',
+                                                              'box',
+                                                              'dropped_item',
+                                                              'pallet',
+                                                              'unknown']},
+                                      'event_kind': {'enum': ['CANDIDATE',
+                                                              'CONFIRMED']}},
+                       'required': ['event_kind', 'class_name']},
+                'then': {'properties': {'bbox_xyxy': {'items': {'type': 'number'},
+                                                      'maxItems': 4,
+                                                      'minItems': 4,
+                                                      'type': 'array'}},
+                         'required': ['bbox_xyxy']}}],
+     'description': 'API-first contract for AI Server evidence events sent '
+                    'to Main Server/WMS-lite. AI Server emits evidence '
+                    'only; WMS-lite owns final state transitions.',
+     'properties': {'bbox_xyxy': {'items': {'type': 'number'},
+                                  'maxItems': 4,
+                                  'minItems': 4,
+                                  'type': ['array', 'null']},
+                    'class_name': {'enum': ['aruco_marker',
+                                            'qr_marker',
+                                            'apriltag_marker',
+                                            'person',
+                                            'obstacle',
+                                            'box',
+                                            'dropped_item',
+                                            'pallet',
+                                            'unknown'],
+                                   'type': 'string'},
+                    'confidence': {'maximum': 1,
+                                   'minimum': 0,
+                                   'type': ['number', 'null']},
+                    'depth_median_m': {'description': 'Reserved for future '
+                                                      'depth-camera '
+                                                      'variants. Must '
+                                                      'remain null in '
+                                                      'MVP1.',
+                                       'type': 'null'},
+                    'event_id': {'format': 'uuid', 'type': 'string'},
+                    'event_kind': {'enum': ['CANDIDATE',
+                                            'CONFIRMED',
+                                            'CLEARED',
+                                            'STALE'],
+                                   'type': 'string'},
+                    'frame_id': {'examples': ['global_camera_frame',
+                                              'tb3_1_pi_camera_optical_frame'],
+                                 'type': 'string'},
+                    'marker_id': {'description': 'Decoded marker ID. '
+                                                 'Required by policy '
+                                                 'before WMS confirms '
+                                                 'item/slot identity.',
+                                  'type': ['string', 'null']},
+                    'metadata': {'additionalProperties': False,
+                                 'properties': {'image_height': {'minimum': 1,
+                                                                 'type': ['integer',
+                                                                          'null']},
+                                                'image_width': {'minimum': 1,
+                                                                'type': ['integer',
+                                                                         'null']},
+                                                'latency_ms': {'minimum': 0,
+                                                               'type': ['number',
+                                                                        'null']},
+                                                'model': {'type': ['string',
+                                                                   'null']},
+                                                'n_frame_count': {'minimum': 0,
+                                                                  'type': 'integer'},
+                                                'policy_version': {'type': 'string'}},
+                                 'required': ['n_frame_count',
+                                              'policy_version',
+                                              'model'],
+                                 'type': 'object'},
+                    'pose_estimate': {'additionalProperties': False,
+                                      'description': 'Optional 2D/tag-pose '
+                                                     'estimate only. No '
+                                                     'depth camera is '
+                                                     'required in MVP1.',
+                                      'properties': {'confidence': {'maximum': 1,
+                                                                    'minimum': 0,
+                                                                    'type': ['number',
+                                                                             'null']},
+                                                     'method': {'enum': ['APRILTAG_POSE',
+                                                                         'ARUCO_POSE',
+                                                                         'GLOBAL_HOMOGRAPHY',
+                                                                         'KNOWN_SIZE_ESTIMATE'],
+                                                                'type': 'string'},
+                                                     'x': {'type': ['number',
+                                                                    'null']},
+                                                     'y': {'type': ['number',
+                                                                    'null']},
+                                                     'yaw': {'type': ['number',
+                                                                      'null']}},
+                                      'required': ['method',
+                                                   'x',
+                                                   'y',
+                                                   'yaw',
+                                                   'confidence'],
+                                      'type': ['object', 'null']},
+                    'robot_id': {'enum': ['tb3_1', 'tb3_2', None],
+                                 'type': ['string', 'null']},
+                    'roi_id': {'examples': ['STORAGE_A01_ROI',
+                                            'ROBOT_PATH_FRONT_ROI'],
+                               'type': ['string', 'null']},
+                    'schema_version': {'const': 'vision-event.v1',
+                                       'type': 'string'},
+                    'source': {'enum': ['global_cam_01',
+                                        'tb3_1_picam',
+                                        'tb3_2_picam'],
+                               'type': 'string'},
+                    'timestamp': {'format': 'date-time', 'type': 'string'},
+                    'track_id': {'type': ['integer', 'string', 'null']},
+                    'wms_hint': {'description': 'Non-authoritative hint. '
+                                                'WMS-lite decides final '
+                                                'task/slot/exception '
+                                                'state.',
+                                 'enum': ['TAG_DETECTED',
+                                          'SLOT_CANDIDATE',
+                                          'ITEM_CANDIDATE',
+                                          'PERSON_CANDIDATE',
+                                          'OBSTACLE_CANDIDATE',
+                                          'DROPPED_ITEM_CANDIDATE',
+                                          'VISION_STALE',
+                                          None],
+                                 'type': ['string', 'null']},
+                    'zone': {'examples': ['INBOUND',
+                                          'STORAGE_A',
+                                          'OUTBOUND',
+                                          'WAIT'],
+                             'type': ['string', 'null']}},
+     'required': ['schema_version',
+                  'event_id',
+                  'timestamp',
+                  'source',
+                  'event_kind',
+                  'class_name',
+                  'confidence',
+                  'metadata',
+                  'robot_id',
+                  'frame_id'],
+     'title': 'SmartFactory VisionEvent v1',
+     'type': 'object'}
+
+On instance:
+    {'bbox_xyxy': [10, 20, 100, 200],
+     'class_name': 'person',
+     'confidence': 0.61,
+     'depth_median_m': None,
+     'event_id': '77777777-7777-4777-8777-777777777777',
+     'event_kind': 'CANDIDATE',
+     'frame_id': 'tb3_1_pi_camera_optical_frame',
+     'marker_id': None,
+     'metadata': {'model': 'yolo11n.pt',
+                  'n_frame_count': 3,
+                  'policy_version': 'mvp1'},
+     'pose_estimate': None,
+     'roi_id': 'TB3_1_FRONT_ROI',
+     'schema_version': 'vision-event.v1',
+     'source': 'tb3_1_picam',
+     'timestamp': '2026-06-09T15:30:06+09:00',
+     'track_id': 3,
+     'wms_hint': 'PERSON_CANDIDATE',
+     'zone': 'ROBOT_PATH'})
+INVALID rejected: docs/contracts/fixtures/vision-event.invalid.source-robot-mismatch.json (ValidationError: 'tb3_1' was expected
+
+Failed validating 'const' in schema['allOf'][1]['then']['properties']['robot_id']:
+    {'const': 'tb3_1'}
+
+On instance['robot_id']:
+    'tb3_2')
+VALID ok: docs/contracts/fixtures/lift-roi-evidence.valid.dropoff.json
+VALID ok: docs/contracts/fixtures/lift-roi-evidence.valid.pickup.json
+INVALID rejected: docs/contracts/fixtures/lift-roi-evidence.invalid.count-mismatch.json (PolicyError: lift ROI load.count must equal accepted_items length)
+INVALID rejected: docs/contracts/fixtures/lift-roi-evidence.invalid.source-robot-mismatch.json (ValidationError: 'tb3_1' was expected
+
+Failed validating 'const' in schema['allOf'][1]['then']['properties']['robot_id']:
+    {'const': 'tb3_1'}
+
+On instance['robot_id']:
+    'tb3_2')
+
+All contract fixtures behaved as expected.
+exit=0
+```
+
+### python3 scripts/validate_deployment_assets.py
+```text
+Deployment assets validated.
+exit=0
+```
+
+### VISION_MODEL_WORKER_ENABLED=false ./scripts/run_d1_vision_multi_source_gateway_bundle.sh --check
+```text
+ERROR: AI Server venv not found at /home/codelab/Desktop/Project/SmartFactory/.omx/team/execute-approved-smar-49a6278f/worktrees/worker-1/services/ai-server/.venv
+exit=1
+```
+
+## ROS verification run — 2026-06-18T01:06:12Z
+
+### cd ros2/smartfactory_perception_ros && pytest -q
+```text
+......................................                                   [100%]
+38 passed in 1.13s
+exit=0
+```
+````
