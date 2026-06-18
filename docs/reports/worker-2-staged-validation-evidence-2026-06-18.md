@@ -14,16 +14,18 @@ Worker 2 performed documentation and local validation only. No command launched 
 
 | Commit | Task | Files | Purpose |
 | --- | --- | --- | --- |
-| `d9b6ce8` | 3 | `docs/contracts/source-registry-v2-evidence-contract-migration-plan-2026-06-18.md`, `docs/contracts/ai-server-api.md` | Source-registry v2 and evidence-contract migration plan covering two TB3 Pi cameras, future disabled depth-capable global source, QR/barcode/person/obstacle/lift ROI/docking evidence, and `task_id integer|null` transition tests. |
-| `f05bac2` | 7 | `docs/contracts/vision-evidence-advisory-safety-contract-2026-06-18.md`, `docs/contracts/ai-server-api.md` | Vision evidence/advisory-only safety contract: no `/cmd_vel`, Nav2, teleop, ROS parameter mutation, or whole-graph bridge. |
+| `d9b6ce8de07087afd0ecb67c0dad8465fbf39604` | 3 | `docs/contracts/source-registry-v2-evidence-contract-migration-plan-2026-06-18.md`, `docs/contracts/ai-server-api.md` | Source-registry v2 and evidence-contract migration plan covering two TB3 Pi cameras, future disabled depth-capable global source, QR/barcode/person/obstacle/lift ROI/docking evidence, and `task_id integer|null` transition tests. |
+| `f05bac25eb9c5a5293f8582d5aa53cd46647e6dc` | 7 | `docs/contracts/vision-evidence-advisory-safety-contract-2026-06-18.md`, `docs/contracts/ai-server-api.md` | Vision evidence/advisory-only safety contract: no `/cmd_vel`, Nav2, teleop, ROS parameter mutation, or whole-graph bridge. |
+| `ce456ddec8cc48ce2b62d53f79c3c13c89e3022b` | 10 | `docs/reports/worker-2-staged-validation-evidence-2026-06-18.md` | Aggregate staged-validation/no-live-robot evidence report for Ultragoal handoff. |
 
 ## Reviewable write scope
 
-The write scope remained documentation-only under `docs/contracts/` plus a single existing API-contract index/principles file:
+The write scope remained documentation-only under `docs/contracts/` and `docs/reports/` plus a single existing API-contract index/principles file:
 
 - Added `docs/contracts/source-registry-v2-evidence-contract-migration-plan-2026-06-18.md`
 - Added `docs/contracts/vision-evidence-advisory-safety-contract-2026-06-18.md`
 - Updated `docs/contracts/ai-server-api.md`
+- Added `docs/reports/worker-2-staged-validation-evidence-2026-06-18.md`
 
 No runtime Python, ROS launch, shell runner, deployment, or configuration file was changed by Worker 2 in these task commits.
 
@@ -55,7 +57,15 @@ No runtime Python, ROS launch, shell runner, deployment, or configuration file w
 
 - Task files: task 3 and task 7 are completed in OMX team state with result evidence; task 10 records this aggregate staged-validation evidence.
 - Dedicated worktree used: yes, all commands ran from Worker 2 worktree.
-- Commits available for integration: `d9b6ce8`, `f05bac2`, plus this task's report commit.
+- Commits available for integration: `d9b6ce8de07087afd0ecb67c0dad8465fbf39604`, `f05bac25eb9c5a5293f8582d5aa53cd46647e6dc`, and report commit `ce456ddec8cc48ce2b62d53f79c3c13c89e3022b`.
+- Leader-owned Ultragoal handoff: this report is evidence for `.omx/ultragoal` goal `G009-repo-docs-contract-alignment-v2`; Worker 2 did not mutate `.omx/ultragoal` and leaves checkpointing to the leader.
 - Live robot movement: none.
 - Safety boundary changed: documentation only, stricter/no-new-runtime-surface.
 - Remaining risk: generated source-registry v2 and `task_id integer|null` implementation is intentionally future work; this worker produced the migration plan and evidence report, not the runtime migration.
+
+## Task 10 fresh validation addendum
+
+- PASS: subagent review/test/change-slice probes spawned and integrated for Task 10.
+- PASS: `git diff --check HEAD~1..HEAD` for the report commit.
+- PASS: `python3 scripts/validate_contracts.py` using the existing project venv interpreter.
+- PASS: static forbidden active-surface scan found no active command publisher/Nav2/action/whole-graph enablement hits outside tests/docs.
