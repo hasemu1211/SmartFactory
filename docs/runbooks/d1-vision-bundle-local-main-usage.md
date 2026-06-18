@@ -26,8 +26,10 @@ Main Server는 ROS2/DDS/domain bridge를 직접 사용하지 않습니다.
 Main이 알아야 하는 것은 **단일 HTTP base URL** 하나입니다.
 
 ```text
-LMS_VISION_STREAM_BASE_URL=http://192.168.10.63:8090
+LMS_VISION_STREAM_BASE_URL=http://smartfactory-vision.local:8090
 ```
+
+`smartfactory-vision.local`은 hostname-first 권장값입니다. Main Server PC에서 이 이름이 mDNS/DNS/운영자 관리 host alias로 resolve되어야 합니다. 이 repo의 실행 스크립트는 IP, router reservation, `/etc/hosts`를 자동 변경하지 않습니다. 이름 해석이 아직 준비되지 않은 경우에만 `make vision-config`가 출력하는 detected LAN IP를 명시적 fallback env로 설정합니다.
 
 카메라는 port가 아니라 `source` query parameter로 구분합니다.
 
@@ -132,7 +134,7 @@ bundle supervisor가 child process들을 같이 종료합니다.
 ### 4.1 상태 확인
 
 ```bash
-curl http://192.168.10.63:8090/api/v1/vision/bridge/status
+curl http://smartfactory-vision.local:8090/api/v1/vision/bridge/status
 ```
 
 정상 출력 예:
@@ -160,8 +162,8 @@ curl http://192.168.10.63:8090/api/v1/vision/bridge/status
 ### 4.2 browser 확인
 
 ```text
-http://192.168.10.63:8090/api/v1/vision/overlay/view?source=tb3_1_picam
-http://192.168.10.63:8090/api/v1/vision/overlay/view?source=tb3_2_picam
+http://smartfactory-vision.local:8090/api/v1/vision/overlay/view?source=tb3_1_picam
+http://smartfactory-vision.local:8090/api/v1/vision/overlay/view?source=tb3_2_picam
 ```
 
 ### 4.3 stream 직접 확인
@@ -169,28 +171,28 @@ http://192.168.10.63:8090/api/v1/vision/overlay/view?source=tb3_2_picam
 AI overlay MJPEG:
 
 ```text
-http://192.168.10.63:8090/api/v1/vision/overlay/stream?source=tb3_1_picam&max_fps=30
-http://192.168.10.63:8090/api/v1/vision/overlay/stream?source=tb3_2_picam&max_fps=30
+http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?source=tb3_1_picam&max_fps=30
+http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?source=tb3_2_picam&max_fps=30
 ```
 
 Raw/latest frame MJPEG:
 
 ```text
-http://192.168.10.63:8090/api/v1/vision/frame/stream?source=tb3_1_picam&max_fps=30
-http://192.168.10.63:8090/api/v1/vision/frame/stream?source=tb3_2_picam&max_fps=30
+http://smartfactory-vision.local:8090/api/v1/vision/frame/stream?source=tb3_1_picam&max_fps=30
+http://smartfactory-vision.local:8090/api/v1/vision/frame/stream?source=tb3_2_picam&max_fps=30
 ```
 
 ### 4.4 AI Server 상태
 
 ```bash
-curl http://192.168.10.63:8100/api/v1/health
+curl http://smartfactory-vision.local:8100/api/v1/health
 ```
 
 ### 4.5 최신 semantic tags 확인
 
 ```text
-http://192.168.10.63:8100/api/v1/detections/latest?source=tb3_1_picam&limit=10
-http://192.168.10.63:8100/api/v1/detections/latest?source=tb3_2_picam&limit=10
+http://smartfactory-vision.local:8100/api/v1/detections/latest?source=tb3_1_picam&limit=10
+http://smartfactory-vision.local:8100/api/v1/detections/latest?source=tb3_2_picam&limit=10
 ```
 
 ---
@@ -204,6 +206,7 @@ http://192.168.10.63:8100/api/v1/detections/latest?source=tb3_2_picam&limit=10
 | `AI_SERVER_HOST` | `0.0.0.0` | AI Server bind host |
 | `AI_SERVER_PORT` | `8100` | AI Server port |
 | `AI_SERVER_URL` | `http://127.0.0.1:8100` | sidecar가 내부 호출하는 AI Server URL |
+| `VISION_PUBLIC_HOST` | `smartfactory-vision.local` | Main-facing hostname-first 권장값 |
 | `VISION_STREAM_GATEWAY_HOST` | `0.0.0.0` | Main-facing gateway host |
 | `VISION_STREAM_GATEWAY_PORT` | `8090` | Main-facing gateway port |
 | `VISION_SOURCE_1_ID` | `tb3_1_picam` | Robot1 source id |
@@ -242,7 +245,22 @@ VISION_GATEWAY_IMAGE_QOS_RELIABILITY=sensor_data \
 Main Server는 Vision PC gateway base URL만 알면 됩니다.
 
 ```bash
-LMS_VISION_STREAM_BASE_URL=http://192.168.10.63:8090
+LMS_VISION_STREAM_BASE_URL=http://smartfactory-vision.local:8090
+```
+
+권장 Main 설정:
+
+```bash
+VISION_API_BASE_URL=http://smartfactory-vision.local:8100
+VISION_STREAM_BASE_URL=http://smartfactory-vision.local:8090
+LMS_VISION_STREAM_BASE_URL=http://smartfactory-vision.local:8090
+```
+
+명시적 fallback은 hostname resolution 또는 health check 실패 때만 사용합니다. Main이 임의 IP를 추측하면 안 됩니다.
+
+```bash
+VISION_API_FALLBACK_BASE_URL=http://<detected-vision-lan-ip>:8100
+VISION_STREAM_FALLBACK_BASE_URL=http://<detected-vision-lan-ip>:8090
 ```
 
 Main Server PC에는 ROS2, DDS, domain bridge 설정이 필요 없습니다.
@@ -321,7 +339,7 @@ GET /api/v1/vision/bridge/status
 Main이 아직 push ingest를 구현하지 않았다면 controlled polling 가능:
 
 ```text
-GET http://192.168.10.63:8100/api/v1/detections/latest?source=tb3_1_picam&limit=10
+GET http://smartfactory-vision.local:8100/api/v1/detections/latest?source=tb3_1_picam&limit=10
 ```
 
 설명: 최신 `VisionEvent v1` 후보를 조회합니다.
@@ -443,7 +461,13 @@ stale=false
 ### 10.1 public gateway 상태
 
 ```bash
-curl http://192.168.10.63:8090/api/v1/vision/bridge/status
+curl http://smartfactory-vision.local:8090/api/v1/vision/bridge/status
+```
+
+이름 해석부터 확인하려면:
+
+```bash
+getent hosts smartfactory-vision.local
 ```
 
 source `status`가 `online`인지 확인합니다.
@@ -451,7 +475,7 @@ source `status`가 `online`인지 확인합니다.
 ### 10.2 AI Server 상태
 
 ```bash
-curl http://192.168.10.63:8100/api/v1/health
+curl http://smartfactory-vision.local:8100/api/v1/health
 ```
 
 `model_status=loaded`, `source_summary.online` 값을 확인합니다.
@@ -484,7 +508,7 @@ pgrep -af 'run_d1_vision_multi_source_gateway_bundle|vision_frame_gateway|vision
 
 ```text
 Base URL:
-  http://192.168.10.63:8090
+  http://smartfactory-vision.local:8090
 
 Overlay MJPEG:
   GET /api/v1/vision/overlay/stream?source={source_id}&max_fps={1..30}

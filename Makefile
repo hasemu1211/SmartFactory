@@ -2,7 +2,7 @@ ROS2_WS ?= $(or $(SMARTFACTORY_ROS2_WS),/home/codelab/turtlebot3_ws)
 ROS_DISTRO ?= jazzy
 ROS_PACKAGES ?= smartfactory_bringup smartfactory_perception_ros
 
-.PHONY: ai-setup ai-test ai-run contracts source-registry-surfaces deploy-validate docker-ai-config vision-check vision-run vision-config vision-smoke-local ros-test ros-build-bringup ros-launch-smoke status
+.PHONY: ai-setup ai-test ai-run contracts source-registry-surfaces deploy-validate docker-ai-config vision-check vision-run vision-config vision-smoke-local vision-smoke-main ros-test ros-build-bringup ros-launch-smoke status
 
 ai-setup:
 	./scripts/setup_ai_server_env.sh
@@ -36,6 +36,9 @@ vision-config:
 
 vision-smoke-local:
 	./scripts/run_d1_vision_multi_source_gateway_bundle.sh --smoke-local
+
+vision-smoke-main:
+	./scripts/smoke_main_dashboard_gateway.sh
 
 ros-test:
 	cd ros2/smartfactory_perception_ros && pytest -q

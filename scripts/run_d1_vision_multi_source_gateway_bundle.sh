@@ -19,7 +19,12 @@ Runs the Main-compatible single-port D1 vision gateway bundle:
   - Public source-based Vision Stream Gateway on 0.0.0.0:8090
 
 Main sees only one base URL:
-  LMS_VISION_STREAM_BASE_URL=http://<vision-pc>:8090
+  LMS_VISION_STREAM_BASE_URL=http://smartfactory-vision.local:8090
+
+Recommended endpoint contract:
+  - hostname first: VISION_PUBLIC_HOST=smartfactory-vision.local
+  - explicit fallback only: use the detected LAN IP printed by --print-config
+    only when Main/operator config sets a fallback URL.
 
 No robot motion, Nav2, teleop, /cmd_vel, robot-side persistent services, or
 whole-graph bridge are started.
@@ -38,7 +43,37 @@ Supporting/debug scripts remain available for narrower cases:
 USAGE
 }
 
+is_private_ipv4() {
+  local ip="${1:-}"
+  [[ "${ip}" =~ ^10\. ]] \
+    || [[ "${ip}" =~ ^192\.168\. ]] \
+    || [[ "${ip}" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]]
+}
+
+route_source_ip() {
+  local target="${1:-}"
+  [ -n "${target}" ] || return 1
+  command -v ip >/dev/null 2>&1 || return 1
+  ip route get "${target}" 2>/dev/null | awk '
+    {
+      for (i = 1; i <= NF; i++) {
+        if ($i == "src" && (i + 1) <= NF) {
+          print $(i + 1)
+          exit
+        }
+      }
+    }'
+}
+
 lan_ip() {
+  local routed=""
+  if [ -n "${VISION_MAIN_HOST:-}" ]; then
+    routed="$(route_source_ip "${VISION_MAIN_HOST}" || true)"
+    if is_private_ipv4 "${routed}"; then
+      printf '%s\n' "${routed}"
+      return 0
+    fi
+  fi
   hostname -I 2>/dev/null | tr ' ' '\n' \
     | grep -E '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)' \
     | grep -v '^172\.17\.' \
@@ -52,6 +87,7 @@ set_defaults() {
   export AI_SERVER_PORT="${AI_SERVER_PORT:-8100}"
   export AI_SERVER_URL="${AI_SERVER_URL:-http://127.0.0.1:${AI_SERVER_PORT}}"
   export AI_SERVER_VENV_DIR="${AI_SERVER_VENV_DIR:-${ROOT_DIR}/services/ai-server/.venv}"
+  export VISION_PUBLIC_HOST="${VISION_PUBLIC_HOST:-smartfactory-vision.local}"
   if [ -z "${AI_SERVER_EXTRA_PYTHONPATH:-}" ] && [ -d "${DEFAULT_MODEL_EXTRA_PYTHONPATH}" ]; then
     export AI_SERVER_EXTRA_PYTHONPATH="${DEFAULT_MODEL_EXTRA_PYTHONPATH}"
   fi
@@ -136,13 +172,15 @@ PY
 }
 
 print_config() {
-  local ip
+  local ip public_host
   ip="$(lan_ip)"
   ip="${ip:-127.0.0.1}"
+  public_host="${VISION_PUBLIC_HOST:-smartfactory-vision.local}"
   cat <<CONFIG
 D1 Main-compatible multi-source gateway bundle
   root: ${ROOT_DIR}
   ai_server: ${AI_SERVER_HOST}:${AI_SERVER_PORT}
+  public_host: ${public_host}
   public_gateway: ${VISION_STREAM_GATEWAY_HOST}:${VISION_STREAM_GATEWAY_PORT}
   source1: ${VISION_SOURCE_1_ID}, domain=${VISION_SOURCE_1_DOMAIN}, topic=${VISION_SOURCE_1_TOPIC}, internal_port=${VISION_SOURCE_1_INTERNAL_PORT}
   source2: ${VISION_SOURCE_2_ID}, domain=${VISION_SOURCE_2_DOMAIN}, topic=${VISION_SOURCE_2_TOPIC}, internal_port=${VISION_SOURCE_2_INTERNAL_PORT}
@@ -150,13 +188,21 @@ D1 Main-compatible multi-source gateway bundle
   pipeline: async=${VISION_GATEWAY_ASYNC_PIPELINE}, inline_process=${VISION_GATEWAY_PROCESS_FRAME_INLINE}, frame_process_path=${VISION_GATEWAY_FRAME_PROCESS_PATH}, period=${VISION_GATEWAY_PERIOD_SEC}s, output_period=${VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC}s, retry_failed=${VISION_GATEWAY_RETRY_FAILED_FRAME}
   upstreams: ${VISION_STREAM_SOURCE_UPSTREAMS_JSON}
 
-Main/GUI single base URL:
-  LMS_VISION_STREAM_BASE_URL=http://${ip}:${VISION_STREAM_GATEWAY_PORT}
-  Overlay ${VISION_SOURCE_1_ID}: http://${ip}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_SOURCE_1_ID}&max_fps=${VISION_STREAM_MAX_FPS}
-  Overlay ${VISION_SOURCE_2_ID}: http://${ip}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_SOURCE_2_ID}&max_fps=${VISION_STREAM_MAX_FPS}
-  Raw ${VISION_SOURCE_1_ID}:     http://${ip}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=${VISION_SOURCE_1_ID}&max_fps=${VISION_STREAM_MAX_FPS}
-  Raw ${VISION_SOURCE_2_ID}:     http://${ip}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=${VISION_SOURCE_2_ID}&max_fps=${VISION_STREAM_MAX_FPS}
-  Status:            http://${ip}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/bridge/status
+Main/GUI recommended stable base URLs (hostname-first):
+  VISION_API_BASE_URL=http://${public_host}:${AI_SERVER_PORT}
+  VISION_STREAM_BASE_URL=http://${public_host}:${VISION_STREAM_GATEWAY_PORT}
+  LMS_VISION_STREAM_BASE_URL=http://${public_host}:${VISION_STREAM_GATEWAY_PORT}
+  Overlay ${VISION_SOURCE_1_ID}: http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_SOURCE_1_ID}&max_fps=${VISION_STREAM_MAX_FPS}
+  Overlay ${VISION_SOURCE_2_ID}: http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_SOURCE_2_ID}&max_fps=${VISION_STREAM_MAX_FPS}
+  Raw ${VISION_SOURCE_1_ID}:     http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=${VISION_SOURCE_1_ID}&max_fps=${VISION_STREAM_MAX_FPS}
+  Raw ${VISION_SOURCE_2_ID}:     http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=${VISION_SOURCE_2_ID}&max_fps=${VISION_STREAM_MAX_FPS}
+  Status:            http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/bridge/status
+
+Detected LAN fallback evidence (configure explicitly only if hostname resolution fails):
+  detected_lan_ip=${ip}
+  VISION_API_FALLBACK_BASE_URL=http://${ip}:${AI_SERVER_PORT}
+  VISION_STREAM_FALLBACK_BASE_URL=http://${ip}:${VISION_STREAM_GATEWAY_PORT}
+  LMS_VISION_STREAM_FALLBACK_BASE_URL=http://${ip}:${VISION_STREAM_GATEWAY_PORT}
 CONFIG
 }
 
