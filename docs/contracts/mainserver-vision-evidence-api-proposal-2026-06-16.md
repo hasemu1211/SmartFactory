@@ -740,24 +740,24 @@ for semantic `VisionEvent v1` ingestion. Until a continuous live auto-emitter/re
 
 Runbook: `docs/runbooks/d1-vision-bundle-main-handoff.md`.
 
-## 19. Two-robot D1 stream handoff smoke
+## 19. Two-robot D1 stream handoff smoke (historical, superseded)
 
-Added on 2026-06-16 KST.
+Added on 2026-06-16 KST. Historical note only: this early smoke exposed a temporary public `8090/8091` split while domain isolation was being tested. Section 20 supersedes it for Main integration: Main should use the single source-selected public `:8090` gateway.
 
-Current simultaneous stream layout:
+Historical simultaneous stream layout, not current Main contract:
 
 ```text
 tb3_1_picam / ROS_DOMAIN_ID=2 -> vision bundle -> http://<vision-pc>:8090
-tb3_2_picam / ROS_DOMAIN_ID=5 -> domain sidecar -> http://<vision-pc>:8091
+tb3_2_picam / ROS_DOMAIN_ID=5 -> domain sidecar -> superseded/operator-only http://<vision-pc>:8091
 ```
 
-Main/GUI receive URLs:
+Historical operator smoke URLs; do **not** publish these as current Main receive URLs:
 
 ```text
 GET http://<vision-pc>:8090/api/v1/vision/overlay/stream?source=tb3_1_picam&max_fps=30.0
-GET http://<vision-pc>:8091/api/v1/vision/overlay/stream?source=tb3_2_picam&max_fps=30.0
+GET http://<vision-pc>:8091/api/v1/vision/overlay/stream?source=tb3_2_picam&max_fps=30.0  # historical/operator-only, superseded
 GET http://<vision-pc>:8090/api/v1/vision/bridge/status
-GET http://<vision-pc>:8091/api/v1/vision/bridge/status
+GET http://<vision-pc>:8091/api/v1/vision/bridge/status  # historical/operator-only, superseded
 GET http://<vision-pc>:8100/api/v1/detections/latest?source=tb3_1_picam&limit=10
 GET http://<vision-pc>:8100/api/v1/detections/latest?source=tb3_2_picam&limit=10
 ```
