@@ -41,6 +41,8 @@ python3 scripts/generate_source_registry_surfaces.py
 
 Current MVP1 sources are `global_cam_01`, `tb3_1_picam`, and `tb3_2_picam`. Robot PiCam physical input topics are compressed image handoff topics (`/tb3_1/camera/image_raw/compressed`, `/tb3_2/camera/image_raw/compressed`) while legacy `/mission/.../camera/compressed` browser topics remain preserved during migration.
 
+Forward migration plan: `docs/contracts/source-registry-v2-evidence-contract-migration-plan-2026-06-18.md` defines the proposed `vision-sources.v2` capability/depth metadata, two-TB3-PiCam coverage, future disabled global depth-capable source slot, advisory-only evidence boundaries, and the `LiftRoiEvidence.task_id` integer/null transition test plan.
+
 ## Common response objects
 
 ### Error object
