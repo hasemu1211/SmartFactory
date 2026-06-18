@@ -109,16 +109,18 @@ Current continuous live camera path publishes semantic snapshots to ROS `/sf/vis
 - The public Main-facing gateway remains ROS-free. Current ROS/domain handling runs in sidecars, but ROS-aware Vision/AI internals remain valid future implementation options when approved by ADR and safety gates.
 - Ctrl-C on the bundle supervisor sends shutdown signals to all local child processes.
 
-## Dual robot/domain runtime
+## Superseded dual-port smoke reference (historical)
 
-Current two-robot smoke keeps domain separation instead of forcing one ROS domain:
+Historical note only: the first two-robot smoke kept domain separation by exposing separate read-only ports while domain-bridge risk was being isolated. Current Main integration supersedes that public `8090/8091` split with a single source-selected public `:8090` gateway; any `8091` bridge is internal/operator-only and not a Main contract.
 
-| Robot/source | Robot domain | Local process group | HTTP port | Main stream |
+Historical smoke layout, not current Main contract:
+
+| Robot/source | Robot domain | Local process group | Historical/operator port | Current Main stream |
 |---|---:|---|---:|---|
-| `tb3_1_picam` | `2` | `run_d1_vision_bundle.sh` includes AI + Robot1 gateway + bridge | `8090` | `/api/v1/vision/overlay/stream?source=tb3_1_picam&max_fps=30.0` |
-| `tb3_2_picam` | `5` | `run_d1_vision_domain_sidecar.sh` adds Robot2 gateway + bridge against the already-running AI Server | `8091` | `/api/v1/vision/overlay/stream?source=tb3_2_picam&max_fps=30.0` |
+| `tb3_1_picam` | `2` | `run_d1_vision_bundle.sh` included AI + Robot1 gateway + bridge | `8090` | `/api/v1/vision/overlay/stream?source=tb3_1_picam&max_fps=30.0` via public `:8090` |
+| `tb3_2_picam` | `5` | `run_d1_vision_domain_sidecar.sh` added Robot2 gateway + bridge against the already-running AI Server | superseded `8091` | `/api/v1/vision/overlay/stream?source=tb3_2_picam&max_fps=30.0` via public `:8090` |
 
-Robot2/domain5 sidecar command:
+Historical Robot2/domain5 sidecar command, operator-only:
 
 ```bash
 cd /home/codelab/Desktop/Project/SmartFactory
@@ -129,16 +131,14 @@ VISION_STREAM_PORT=8091 \
 ./scripts/run_d1_vision_domain_sidecar.sh
 ```
 
-Robot2 Main/GUI receive surfaces on the current LAN candidate:
+Historical/operator-only URLs; do **not** publish these as Main contract:
 
 ```text
-GET http://192.168.10.63:8091/api/v1/vision/overlay/view?source=tb3_2_picam
-GET http://192.168.10.63:8091/api/v1/vision/overlay/stream?source=tb3_2_picam&max_fps=30.0
-GET http://192.168.10.63:8091/api/v1/vision/bridge/status
+GET http://192.168.10.63:8091/api/v1/vision/overlay/view?source=tb3_2_picam  # historical/operator-only, superseded
+GET http://192.168.10.63:8091/api/v1/vision/overlay/stream?source=tb3_2_picam&max_fps=30.0  # historical/operator-only, superseded
+GET http://192.168.10.63:8091/api/v1/vision/bridge/status  # historical/operator-only, superseded
 GET http://192.168.10.63:8100/api/v1/detections/latest?source=tb3_2_picam&limit=10
 ```
-
-Historical smoke note: the first two-robot smoke exposed separate read-only ports while domain-bridge risk was being isolated. Current Main integration supersedes that public `8090/8091` split with a single source-selected public `:8090` gateway; any `8091` bridge is internal/operator-only and not a Main contract.
 
 ## Main-compatible single public gateway mode
 
