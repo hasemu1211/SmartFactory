@@ -938,7 +938,7 @@ Response `200` excerpt:
   "topic_exposure_policy": {
     "policy": "explicit_allowlist_only",
     "rosbridge_exposes_all_topics": false,
-    "browser_primary_transport": "rosbridge",
+    "browser_primary_transport": "http_mjpeg_gateway",
     "allowed_message_types": [
       "sensor_msgs/msg/CompressedImage",
       "smartfactory_msgs/msg/VisionEvent or JSON bridge payload"

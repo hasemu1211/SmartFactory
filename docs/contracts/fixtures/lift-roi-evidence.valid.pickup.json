@@ -6,7 +6,7 @@
   "robot_id": "tb3_1",
   "frame_id": "tb3_1_pi_camera_optical_frame",
   "operation": "PICKUP",
-  "task_id": "TASK-IN-0001",
+  "task_id": "12",
   "image": {"width": 640, "height": 480},
   "roi": {
     "roi_id": "TB3_1_LIFT_ROI",
