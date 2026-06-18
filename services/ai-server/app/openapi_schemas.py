@@ -174,6 +174,53 @@ def _synthetic_frame_response_schema() -> dict[str, Any]:
     return schema
 
 
+def _vision_streams_response_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": True,
+        "not": {"required": ["rosbridge_url"]},
+        "required": [
+            "generated_at",
+            "primary_stream_plane",
+            "stream_base_url",
+            "debug_only",
+            "motion_command_allowed",
+            "control_topics_published",
+            "internal_rosbridge",
+            "sources",
+        ],
+        "properties": {
+            "generated_at": {"type": "string", "format": "date-time"},
+            "requested_source": {"type": ["string", "null"]},
+            "primary_stream_plane": {"const": "http_mjpeg_gateway", "type": "string"},
+            "stream_base_url": {"type": "string"},
+            "debug_only": {"const": False, "type": "boolean"},
+            "motion_command_allowed": {"const": False, "type": "boolean"},
+            "control_topics_published": {
+                "type": "array",
+                "maxItems": 0,
+                "items": {},
+            },
+            "internal_rosbridge": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["scope", "url", "exposes_all_topics"],
+                "properties": {
+                    "scope": {"const": "operator_prototype_only", "type": "string"},
+                    "url": {"type": "string"},
+                    "exposes_all_topics": {"const": False, "type": "boolean"},
+                },
+            },
+            "summary": {"type": "object"},
+            "topic_exposure_policy": {"type": "object"},
+            "topic_exposure_summary": {"type": "object"},
+            "runtime_policy": {"type": "object"},
+            "debug_fallback": {"type": "object"},
+            "sources": {"type": "array", "items": {"type": "object"}},
+        },
+    }
+
+
 def _debug_sources_response_schema() -> dict[str, Any]:
     return {
         "type": "object",

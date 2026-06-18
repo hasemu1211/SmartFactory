@@ -39,6 +39,7 @@ from .openapi_schemas import (
     _lift_roi_openapi_schema,
     _ros_handoff_response_schema,
     _synthetic_frame_response_schema,
+    _vision_streams_response_schema,
     _worker_status_response_schema,
 )
 from .overlay import OverlayRenderResult, render_overlay
@@ -1547,7 +1548,16 @@ def _vision_streams_summary(source_entries: list[dict[str, Any]]) -> dict[str, A
         ),
     }
 
-@app.get("/api/v1/vision/streams", responses={400: ERROR_RESPONSE_OPENAPI})
+@app.get(
+    "/api/v1/vision/streams",
+    responses={
+        200: _json_response_openapi(
+            "Main-facing HTTP/MJPEG Vision Stream Gateway discovery",
+            _vision_streams_response_schema(),
+        ),
+        400: ERROR_RESPONSE_OPENAPI,
+    },
+)
 def vision_streams(source: str | None = Query(default=None, json_schema_extra=SOURCE_ID_OPENAPI_EXTRA)) -> dict[str, Any]:
     """Describe Vision Gateway stream surfaces.
 
