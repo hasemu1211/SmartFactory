@@ -28,7 +28,7 @@ Robot camera/domain bridge (already running)
   -> Main/GUI consumes HTTP video/status/tags
 ```
 
-This is preferable to merging all code into one Python process because AI Server must remain ROS-free. ROS code stays in sidecar processes; the bundle only supervises them.
+This is preferable to merging all code into one Python process because the public Main-facing gateway must stay ROS-free at the boundary. ROS code currently stays in sidecar processes; ROS-aware Vision/AI internals remain open to future ADRs and safety gates.
 
 ## Run
 

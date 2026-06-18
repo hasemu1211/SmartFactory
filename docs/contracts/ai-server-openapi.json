@@ -381,7 +381,10 @@
                       "format": "date-time"
                     },
                     "primary_stream_plane": {
-                      "const": "rosbridge",
+                      "const": "http_mjpeg_gateway",
+                      "type": "string"
+                    },
+                    "stream_base_url": {
                       "type": "string"
                     },
                     "debug_only": {
@@ -807,7 +810,10 @@
                       "format": "date-time"
                     },
                     "primary_stream_plane": {
-                      "const": "rosbridge",
+                      "const": "http_mjpeg_gateway",
+                      "type": "string"
+                    },
+                    "stream_base_url": {
                       "type": "string"
                     },
                     "sources": {

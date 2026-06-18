@@ -187,7 +187,8 @@ def expected_ros_topic_exposure_policy() -> dict:
     return {
         "policy": "explicit_allowlist_only",
         "rosbridge_exposes_all_topics": False,
-        "browser_primary_transport": "rosbridge",
+        "browser_primary_transport": "http_mjpeg_gateway",
+        "rosbridge_scope": "internal_operator_allowlist_only",
         "allowed_message_types": [
             "sensor_msgs/msg/CompressedImage",
             "smartfactory_msgs/msg/VisionEvent or JSON bridge payload",
@@ -212,7 +213,8 @@ def expected_ros_topic_exposure_policy() -> dict:
         "server_publish_control_allowed": False,
         "auth_required_when_exposed_beyond_private_network": True,
         "notes": [
-            "Expose only camera/overlay/evidence topics needed by GUI.",
+            "Main-facing browser video uses the source-selected HTTP/MJPEG :8090 gateway.",
+            "Expose only camera/overlay/evidence topics needed by operator/internal ROS tooling.",
             "Do not expose all DDS topics through rosbridge.",
             "Motion and parameter mutation remain outside Vision Gateway.",
         ],
@@ -250,6 +252,8 @@ def expected_source_topic_exposure(source: str) -> dict:
 
 def expected_rosbridge_subscription_hints(source: str) -> dict:
     return {
+        "scope": "internal_operator_prototype_only",
+        "main_facing_video_transport": "http_mjpeg_gateway",
         "allowed_browser_topics": expected_source_topic_exposure(source)[
             "allowed_browser_topics"
         ],

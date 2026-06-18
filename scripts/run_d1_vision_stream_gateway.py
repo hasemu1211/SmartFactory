@@ -9,6 +9,7 @@ base URL such as http://<vision-pc>:8090.
 from __future__ import annotations
 
 import html
+import ipaddress
 import json
 import os
 import time
@@ -26,6 +27,23 @@ DEFAULT_SOURCES = {
 }
 
 
+def _allow_non_loopback_upstreams() -> bool:
+    return os.environ.get("VISION_STREAM_ALLOW_NON_LOOPBACK_UPSTREAMS", "false").lower() == "true"
+
+
+def _is_loopback_upstream(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+    host = parsed.hostname.lower()
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def _env_source_upstreams() -> dict[str, str]:
     text = os.environ.get("VISION_STREAM_SOURCE_UPSTREAMS_JSON", "").strip()
     if not text:
@@ -37,8 +55,9 @@ def _env_source_upstreams() -> dict[str, str]:
     for key, value in parsed.items():
         source = str(key).strip()
         url = str(value).strip().rstrip("/")
-        if not source or not url.startswith(("http://", "https://")):
-            raise ValueError(f"invalid source upstream mapping: {key!r} -> {value!r}")
+        if not source or not _is_loopback_upstream(url):
+            if not source or not _allow_non_loopback_upstreams() or not url.startswith(("http://", "https://")):
+                raise ValueError(f"invalid source upstream mapping: {key!r} -> {value!r}")
         upstreams[source] = url
     return upstreams
 

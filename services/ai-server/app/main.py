@@ -295,7 +295,8 @@ def _ros_topic_exposure_policy() -> dict[str, Any]:
     return {
         "policy": "explicit_allowlist_only",
         "rosbridge_exposes_all_topics": False,
-        "browser_primary_transport": "rosbridge",
+        "browser_primary_transport": "http_mjpeg_gateway",
+        "rosbridge_scope": "internal_operator_allowlist_only",
         "allowed_message_types": [
             "sensor" + "_msgs/msg/CompressedImage",
             "smartfactory_msgs/msg/VisionEvent or JSON bridge payload",
@@ -320,7 +321,8 @@ def _ros_topic_exposure_policy() -> dict[str, Any]:
         "server_publish_control_allowed": False,
         "auth_required_when_exposed_beyond_private_network": True,
         "notes": [
-            "Expose only camera/overlay/evidence topics needed by GUI.",
+            "Main-facing browser video uses the source-selected HTTP/MJPEG :8090 gateway.",
+            "Expose only camera/overlay/evidence topics needed by operator/internal ROS tooling.",
             "Do not expose all DDS topics through rosbridge.",
             "Motion and parameter mutation remain outside Vision Gateway.",
         ],
@@ -355,9 +357,11 @@ def _source_topic_exposure(source: str, physical_topic: str | None) -> dict[str,
 
 
 def _rosbridge_subscription_hints(source: str, topic_exposure: dict[str, Any]) -> dict[str, Any]:
-    """Return source-scoped browser subscription hints without touching rosbridge."""
+    """Return source-scoped internal rosbridge hints without touching rosbridge."""
 
     return {
+        "scope": "internal_operator_prototype_only",
+        "main_facing_video_transport": "http_mjpeg_gateway",
         "allowed_browser_topics": topic_exposure["allowed_browser_topics"],
         "recommended_image_topic": _normalized_image_topic_for_source(source),
         "recommended_overlay_topic": _normalized_overlay_topic_for_source(source),
@@ -1566,10 +1570,15 @@ def vision_streams(source: str | None = Query(default=None, json_schema_extra=SO
     return {
         "generated_at": _now_iso(),
         "requested_source": source,
-        "primary_stream_plane": "rosbridge",
-        "rosbridge_url": "ws://<vision-host>:9090",
-        "debug_only": True,
+        "primary_stream_plane": "http_mjpeg_gateway",
+        "stream_base_url": "http://<vision-host>:8090",
+        "debug_only": False,
         "motion_command_allowed": False,
+        "internal_rosbridge": {
+            "scope": "operator_prototype_only",
+            "url": "ws://<vision-host>:9090",
+            "exposes_all_topics": False,
+        },
         "control_topics_published": [],
         "summary": _vision_streams_summary(source_entries),
         "topic_exposure_policy": _ros_topic_exposure_policy(),
@@ -1618,9 +1627,14 @@ def vision_ros_topics(source: str | None = Query(default=None, json_schema_extra
     return {
         "generated_at": _now_iso(),
         "requested_source": source,
-        "primary_stream_plane": "rosbridge",
-        "rosbridge_url": "ws://<vision-host>:9090",
+        "primary_stream_plane": "http_mjpeg_gateway",
+        "stream_base_url": "http://<vision-host>:8090",
         "debug_only": True,
+        "internal_rosbridge": {
+            "scope": "operator_prototype_only",
+            "url": "ws://<vision-host>:9090",
+            "exposes_all_topics": False,
+        },
         "motion_command_allowed": False,
         "migration_policy": "keep existing /mission browser topics; add /sf normalized topics in parallel",
         "control_topics_published": [],
@@ -1636,7 +1650,8 @@ def vision_ros_topics(source: str | None = Query(default=None, json_schema_extra
         "publish_readiness_summary": _ros_publish_readiness_summary(source_rows),
         "evidence_event_publish_readiness_summary": _ros_evidence_event_publish_readiness_summary(source_rows),
         "notes": [
-            "HTTP/MJPEG endpoints remain debug/fallback only.",
+            "Main-facing browser video uses the source-selected HTTP/MJPEG :8090 gateway.",
+            "ROS/rosbridge metadata here is internal/operator handoff only.",
             "Vision Gateway must not publish /cmd_vel or call Nav2 actions.",
             "Lane C should subscribe/publish with sensor QoS, keep-last=1, and drop stale frames.",
         ],
@@ -2103,7 +2118,8 @@ def vision_debug_sources(source: str | None = Query(default=None, json_schema_ex
     return {
         "generated_at": _now_iso(),
         "requested_source": source,
-        "primary_stream_plane": "rosbridge",
+        "primary_stream_plane": "http_mjpeg_gateway",
+        "stream_base_url": "http://<vision-host>:8090",
         "debug_only": True,
         "summary": _debug_sources_summary(source_entries),
         "topic_exposure_policy": _ros_topic_exposure_policy(),

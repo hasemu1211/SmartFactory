@@ -181,7 +181,8 @@ def _debug_sources_response_schema() -> dict[str, Any]:
         "required": ["generated_at", "primary_stream_plane", "sources"],
         "properties": {
             "generated_at": {"type": "string", "format": "date-time"},
-            "primary_stream_plane": {"const": "rosbridge", "type": "string"},
+            "primary_stream_plane": {"const": "http_mjpeg_gateway", "type": "string"},
+            "stream_base_url": {"type": "string"},
             "sources": {"type": "array", "items": {"type": "object"}},
         },
     }
@@ -337,7 +338,8 @@ def _ros_handoff_response_schema() -> dict[str, Any]:
         ],
         "properties": {
             "generated_at": {"type": "string", "format": "date-time"},
-            "primary_stream_plane": {"const": "rosbridge", "type": "string"},
+            "primary_stream_plane": {"const": "http_mjpeg_gateway", "type": "string"},
+            "stream_base_url": {"type": "string"},
             "debug_only": {"const": True, "type": "boolean"},
             "motion_command_allowed": {"const": False, "type": "boolean"},
             "sources": {"type": "array", "items": {"type": "object"}},
