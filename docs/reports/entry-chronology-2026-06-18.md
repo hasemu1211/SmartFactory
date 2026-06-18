@@ -115,7 +115,7 @@ AI Server package:
   - Lift ROI JSON endpoint accepts caller-provided bbox/mask candidates and returns contract-valid `LiftRoiEvidence v1`.
   - Lift ROI image endpoint uses the configured optional detector/segmenter adapter, prefers instance masks when available, and returns HTTP 503 if the model path/package is unavailable.
   - Optional best-effort WMS emission is available for `VisionEvent` when request `emit=true` and `WMS_EMIT_ENABLED=true`; local detection still succeeds if WMS emission fails. Lane 0 says `/camera/events` is interim audit-only while `/vision/events` remains target canonical Main ingest.
-  - Lane B debug/fallback frame/overlay endpoints expose raw frame ingest, latest raw frame metadata/JPEG, plus overlay metadata/JPEG/MJPEG for synthetic validation; production browser stream remains rosbridge 9090 unless later changed. `GET /api/v1/vision/ros/topics` exposes the planned `/mission`→parallel `/sf` topic handoff plus Lane C QoS/frame-drop/runtime policy, source-level ingest readiness, source snapshot ROS ingest/publish readiness, source-level overlay publish readiness, and optional source filtering without starting ROS2 or publishing control topics.
+  - Historical Lane B debug/fallback frame/overlay endpoints expose raw frame ingest, latest raw frame metadata/JPEG, plus overlay metadata/JPEG/MJPEG for synthetic validation; at that time production browser stream was recorded as rosbridge 9090 unless later changed. The 2026-06-18 v2 contract supersedes that stream-plane guidance with the source-selected HTTP/MJPEG Vision Stream Gateway on `:8090` as Main-facing production video and ROS/rosbridge as internal allowlisted operator/prototype infrastructure unless a future ADR promotes it. `GET /api/v1/vision/ros/topics` exposes the planned `/mission`→parallel `/sf` topic handoff plus Lane C QoS/frame-drop/runtime policy, source-level ingest readiness, source snapshot ROS ingest/publish readiness, source-level overlay publish readiness, and optional source filtering without starting ROS2 or publishing control topics.
   - Overlay metadata now includes `visual_state=fresh|stale`; stale overlay JPEGs include a full-width amber warning band so old evidence is not confused with current task success.
   - `POST /api/v1/vision/synthetic/frame` generates a deterministic ArUco image and runs the same latest-frame/detection/overlay path as `/api/v1/detect/image`, returning `{source, emitted, emit_disabled, emit_results, events, overlay}`.
   - `GET /api/v1/vision/worker/status` previews `no_frame|processed|skipped|stale_frame` without processing. `POST /api/v1/vision/worker/tick` runs one controlled latest-frame processing tick for one source or all sources. It skips frames whose latest overlay already matches `frame_seq` unless `force=true`, and now skips frames older than `max_frame_age_s`/`SOURCE_STALE_AFTER_S` as `stale_frame`; it never publishes ROS motion commands.
@@ -431,7 +431,7 @@ Lane B controlled latest-frame worker tick slice implemented on 2026-06-15 Asia/
   - Request JSON: optional `source`, optional `force`, optional `stale`.
   - Response returns per-source `processed`, `skipped`, or `no_frame` status plus overlay metadata when available.
   - `force=false` skips when the latest overlay already matches the latest frame sequence; `force=true` reprocesses intentionally for debug.
-  - Endpoint is a Lane B debug/control surface only; production browser video remains rosbridge 9090 and Vision still does not publish `/cmd_vel`/Nav2 actions.
+  - Endpoint is a Lane B debug/control surface only. Historical text recorded production browser video as rosbridge 9090; the 2026-06-18 v2 contract supersedes this with the source-selected HTTP/MJPEG Vision Stream Gateway on `:8090`, and Vision still does not publish `/cmd_vel`/Nav2 actions.
 - Updated API docs and regenerated `docs/contracts/ai-server-openapi.json`.
 - Validation:
   - `./scripts/test_ai_server.sh -q tests/test_api.py tests/test_contract_boundaries.py`: `96 passed, 1 warning` and contract fixtures behaved as expected.
@@ -465,7 +465,7 @@ Lane B stream metrics/FPS/drop counter slice implemented on 2026-06-15 Asia/Seou
   - frame-store stats exposed alongside event-store stats.
 - `GET /api/v1/metrics` now returns `frame_store` and `metrics.stream`/`metrics.worker`.
 - `GET /api/v1/vision/streams` now exposes `debug_fallback.metrics_path=/api/v1/metrics` and per-source `stream_metrics`.
-- Debug stream metrics remain local MJPEG/fallback observability only; production browser stream remains rosbridge 9090.
+- Debug stream metrics remain local MJPEG/fallback observability only. Historical text recorded production browser stream as rosbridge 9090; the 2026-06-18 v2 contract supersedes this with the source-selected HTTP/MJPEG Vision Stream Gateway on `:8090` for Main-facing production video.
 - Updated API docs and regenerated `docs/contracts/ai-server-openapi.json`.
 - Validation:
   - `./scripts/test_ai_server.sh -q tests/test_observability.py tests/test_api.py tests/test_contract_boundaries.py`: `99 passed, 1 warning` and contract fixtures behaved as expected.
@@ -493,7 +493,7 @@ Lane B debug MJPEG max_fps/rate-limit slice implemented on 2026-06-15 Asia/Seoul
   - Each multipart frame includes `X-Debug-Max-FPS` for smoke/debug visibility.
 - `GET /api/v1/vision/streams` now advertises `mjpeg_max_fps_default=10` and `mjpeg_max_fps_limit=30`; source entries include `mjpeg_default_max_fps`.
 - `GET /api/v1/vision/debug/sources` debug paths now include `mjpeg_default_max_fps`.
-- This rate limit applies only to the FastAPI MJPEG debug/fallback plane; production browser streaming remains rosbridge 9090.
+- This rate limit applies only to the FastAPI MJPEG debug/fallback plane. Historical text recorded production browser streaming as rosbridge 9090; the 2026-06-18 v2 contract supersedes this with the source-selected HTTP/MJPEG Vision Stream Gateway on `:8090` for Main-facing production video.
 - Updated API docs and regenerated `docs/contracts/ai-server-openapi.json`.
 - Validation:
   - `./scripts/test_ai_server.sh -q tests/test_api.py tests/test_contract_boundaries.py`: `103 passed, 1 warning` and contract fixtures behaved as expected.
@@ -1312,7 +1312,7 @@ Use `docs/technical/perception-control-plan.md` as the main plan pointer. It now
 ### 1. No-physical-tuning work that can start now
 
 1. Continue Lane B in small slices:
-   - prepare ROS2 ingest/domain bridge handoff while keeping MJPEG/HTTP stream debug/fallback only; rosbridge 9090 remains production browser stream plane,
+   - prepare ROS2 ingest/domain bridge handoff while keeping MJPEG/HTTP stream debug/fallback only; historical text recorded rosbridge 9090 as production browser stream plane, superseded by the 2026-06-18 v2 source-selected HTTP/MJPEG Vision Stream Gateway on `:8090`,
    - source/topic drift is now guarded by `config/vision/sources.yaml` plus generated schema/OpenAPI/snapshot surfaces.
 2. Plan `task_id` integer/null migration:
    - update `lift-roi-evidence.schema.json`, code, fixtures, docs, and Main alignment notes in one change.

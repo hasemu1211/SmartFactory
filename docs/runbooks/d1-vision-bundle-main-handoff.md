@@ -12,7 +12,7 @@ It is a **single supervisor process** that starts and stops these child processe
 2. **`vision_frame_gateway`** — ROS2 sidecar that subscribes to the robot camera topic, posts frames to AI Server, triggers worker ticks, and publishes safe vision topics.
 3. **`vision_overlay_stream_bridge`** (`:8090`) — read-only HTTP/MJPEG bridge that serves the AI overlay ROS topic to Main/GUI.
 
-It intentionally does **not** start robot motion, Nav2, teleop, `/cmd_vel`, or robot-side persistent services.
+It intentionally does **not** start robot motion, Nav2, teleop, `/cmd_vel`, safety stop/slow execution, or robot-side persistent services. Nav/Movement owns motion and safety execution truth; this bundle only supplies vision evidence and read-only streams.
 
 ## Recommended process grouping
 
@@ -104,6 +104,7 @@ Current continuous live camera path publishes semantic snapshots to ROS `/sf/vis
 ## Safety guarantees
 
 - No `/cmd_vel`, Nav2, teleop, ROS parameters, or whole-graph rosbridge exposure.
+- No safety stop/slow execution authority; Vision may produce evidence/alerts, but Nav/Movement executes motion and safety outcomes.
 - Stream bridge is read-only: GET/OPTIONS only; mutation methods are rejected.
 - The public Main-facing gateway remains ROS-free. Current ROS/domain handling runs in sidecars, but ROS-aware Vision/AI internals remain valid future implementation options when approved by ADR and safety gates.
 - Ctrl-C on the bundle supervisor sends shutdown signals to all local child processes.

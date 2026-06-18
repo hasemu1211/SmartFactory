@@ -501,6 +501,7 @@ AI model note:
 Critic/design gate:
 
 - Reject any D1 design that exposes `/cmd_vel`, teleop, Nav2, parameter mutation, or whole-graph rosbridge access.
+- Reject any D1 design that makes AI Server, Vision Gateway, or Main-facing stream components the executor for motion commands, Nav2 actions, safety stops, or safety slowdowns; Nav/Movement owns that execution truth.
 - Reject any design that makes rosbridge the canonical Main DB/evidence path.
 - Reject any design that uses HTTP snapshot polling as the production high-FPS stream.
 

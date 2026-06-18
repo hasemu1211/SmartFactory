@@ -1547,8 +1547,9 @@ def _vision_streams_summary(source_entries: list[dict[str, Any]]) -> dict[str, A
 def vision_streams(source: str | None = Query(default=None, json_schema_extra=SOURCE_ID_OPENAPI_EXTRA)) -> dict[str, Any]:
     """Describe Vision Gateway stream surfaces.
 
-    ROS/rosbridge remains the production browser stream plane. The local MJPEG
-    endpoint is a debug/fallback helper for Lane B synthetic validation.
+    Main-facing production browser video uses the source-selected HTTP/MJPEG
+    Vision Stream Gateway on :8090. ROS/rosbridge is internal allowlisted
+    operator/prototype infrastructure unless a future ADR promotes it.
     """
 
     settings = get_settings()
@@ -1920,7 +1921,9 @@ def vision_worker_tick(payload: VisionWorkerTickRequest) -> dict[str, Any]:
 
     This is a robot-free debug/control surface for the future evidence worker.
     It processes only explicit configured sources and never publishes ROS motion
-    commands. Production browser video remains rosbridge 9090.
+    commands. Main-facing production browser video uses the source-selected
+    HTTP/MJPEG Vision Stream Gateway on :8090; rosbridge is internal allowlisted
+    operator/prototype infrastructure only.
     """
 
     sources = _worker_tick_sources(payload.source)
@@ -2268,7 +2271,9 @@ def latest_frame_image(source: str = Query(..., json_schema_extra=SOURCE_ID_OPEN
     """Return latest raw frame image for one source.
 
     This is a debug/fallback image endpoint for comparing raw frame evidence
-    against rendered overlays. Production browser streaming remains rosbridge.
+    against rendered overlays. Main-facing production browser streaming uses the
+    source-selected HTTP/MJPEG Vision Stream Gateway on :8090; rosbridge is
+    internal allowlisted operator/prototype infrastructure only.
     """
 
     _ensure_known_source(source)
@@ -2352,8 +2357,10 @@ def debug_overlay_mjpeg_stream(
 ) -> StreamingResponse:
     """Debug/fallback MJPEG stream of latest overlays.
 
-    This is not the production browser stream plane; rosbridge 9090 remains the
-    default production path per Lane 0.
+    This stream is served behind the Main-facing :8090 HTTP/MJPEG gateway when
+    exposed through the source-selected public gateway. ROS/rosbridge remains
+    internal allowlisted operator/prototype infrastructure unless a future ADR
+    promotes it.
     """
 
     _ensure_known_source(source)
