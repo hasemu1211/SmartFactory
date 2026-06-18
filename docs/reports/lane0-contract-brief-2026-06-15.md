@@ -3,7 +3,7 @@
 - Date: 2026-06-15 Asia/Seoul
 - Audience: Main Server, GUI, Movement, Vision/AI Server contributors
 - Purpose: Lane 0에서 합의해야 할 계약 API, 반환값, 미결정 사항을 압축 정리한다.
-- Status: **Lane 0 contract alignment artifact**. 구현 착수 문서가 아니라, 팀 간 합의용 계약 브리프다.
+- Status: **Historical Lane 0 contract alignment artifact**. 구현 착수 문서가 아니라, 팀 간 합의용 계약 브리프다. 2026-06-18 v2 contract supersedes the stream-plane guidance below: Main-facing production video is the source-selected HTTP/MJPEG Vision Stream Gateway on `:8090`; ROS/rosbridge is internal allowlisted operator/prototype infrastructure unless a future ADR promotes it.
 
 ---
 
@@ -572,8 +572,8 @@ Important fields:
 
 Lane 0 default decision:
 
-- Browser production video path: rosbridge `9090`.
-- Vision HTTP/MJPEG/WS stream endpoints, if added, are debug/fallback only unless Lane 0 explicitly changes this.
+- Historical Lane 0 note: browser production video path was listed as rosbridge `9090`.
+- Current v2 supersession: Main-facing production video is the source-selected HTTP/MJPEG Vision Stream Gateway on `:8090`; ROS/rosbridge is internal allowlisted operator/prototype infrastructure unless a future ADR promotes it.
 - Main API does not proxy video.
 
 Topic migration matrix to complete before Lane C. 채택 방향은 `/mission/...` 회귀 없이 유지하면서 `/sf/...` 표준 topic을 병행 추가하는 것입니다:
