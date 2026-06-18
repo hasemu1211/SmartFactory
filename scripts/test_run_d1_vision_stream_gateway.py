@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
@@ -73,3 +74,19 @@ def test_mutating_http_methods_are_read_only() -> None:
         "ok": False,
         "error": "read-only gateway",
     }
+
+
+def test_multi_source_bundle_print_config_keeps_source_bridges_loopback_only() -> None:
+    result = subprocess.run(
+        ["bash", "scripts/run_d1_vision_multi_source_gateway_bundle.sh", "--print-config"],
+        check=True,
+        cwd=MODULE_PATH.parent.parent,
+        text=True,
+        capture_output=True,
+    )
+
+    assert "public_gateway: 0.0.0.0:8090" in result.stdout
+    assert '"tb3_1_picam":"http://127.0.0.1:18090"' in result.stdout
+    assert '"tb3_2_picam":"http://127.0.0.1:18091"' in result.stdout
+    assert "http://0.0.0.0:18090" not in result.stdout
+    assert "http://0.0.0.0:18091" not in result.stdout
