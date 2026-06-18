@@ -1,4 +1,3 @@
-# ruff: noqa: F401
 from fastapi.testclient import TestClient
 import pytest
 import cv2
@@ -12,6 +11,29 @@ from generated_fixtures import aruco_png_bytes, blank_png_bytes
 
 client = TestClient(app)
 
+__all__ = [
+    "DetectionBox",
+    "InstanceMask",
+    "aruco_png_bytes",
+    "blank_png_bytes",
+    "client",
+    "cv2",
+    "expected_ros_evidence_event_publish_policy",
+    "expected_ros_ingest_readiness",
+    "expected_ros_ingest_runtime_plan",
+    "expected_ros_overlay_publish_policy",
+    "expected_ros_overlay_publish_qos_policy",
+    "expected_ros_publish_runtime_plan",
+    "expected_ros_topic_exposure_policy",
+    "expected_rosbridge_subscription_hints",
+    "expected_source_topic_exposure",
+    "expected_topic_exposure_summary",
+    "get_settings",
+    "main_module",
+    "np",
+    "pytest",
+    "source_definition",
+]
 
 def expected_ros_overlay_publish_qos_policy() -> dict:
     return {

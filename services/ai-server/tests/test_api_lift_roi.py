@@ -1,7 +1,6 @@
-# ruff: noqa: F403,F405
 """Lift ROI evidence API tests."""
 
-from api_test_helpers import *  # noqa: F401,F403
+from api_test_helpers import InstanceMask, blank_png_bytes, client, main_module, np
 
 def test_lift_roi_evaluate_returns_contract_valid_pickup_evidence():
     response = client.post(
