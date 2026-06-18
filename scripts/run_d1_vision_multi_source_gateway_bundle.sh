@@ -9,8 +9,9 @@ DEFAULT_MODEL_EXTRA_PYTHONPATH="/home/codelab/venv/venv/lib/python3.12/site-pack
 
 usage() {
   cat <<USAGE
-Usage: $(basename "$0") [--check|--print-config|--help]
+Usage: $(basename "$0") [--check|--print-config|--smoke-local|--help]
 
+Official local/Main integration entrypoint.
 Runs the Main-compatible single-port D1 vision gateway bundle:
   - AI Server on AI_SERVER_HOST:AI_SERVER_PORT
   - Robot1/domain2 gateway + internal stream bridge
@@ -22,6 +23,18 @@ Main sees only one base URL:
 
 No robot motion, Nav2, teleop, /cmd_vel, robot-side persistent services, or
 whole-graph bridge are started.
+
+Makefile aliases are intentionally thin wrappers around this script:
+  make vision-check       # preflight this bundle with model worker disabled unless overridden
+  make vision-run         # run this bundle
+  make vision-config      # print this bundle configuration
+  make vision-smoke-local # curl local health/status endpoints if already running
+
+Supporting/debug scripts remain available for narrower cases:
+  scripts/run_ai_server.sh                  # AI Server only
+  scripts/run_d1_vision_bundle.sh           # single-source bundle
+  scripts/run_d1_vision_domain_sidecar.sh   # extra source/domain sidecar
+  scripts/run_d1_vision_stream_gateway.py   # public source mux implementation
 USAGE
 }
 
@@ -255,6 +268,24 @@ start_source_pair() {
       -p "overlay_sub_qos_depth:=${VISION_STREAM_OVERLAY_SUB_QOS_DEPTH}"
 }
 
+
+smoke_local() {
+  local ai_health_url="${AI_SERVER_URL%/}/api/v1/health"
+  local gateway_host="127.0.0.1"
+  local gateway_status_url="http://${gateway_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/bridge/status"
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "ERROR: curl is required for --smoke-local" >&2
+    return 1
+  fi
+
+  echo "[multi-gateway] smoke: AI Server health ${ai_health_url}"
+  curl -fsS --max-time 2 "${ai_health_url}" >/dev/null
+  echo "[multi-gateway] smoke: public Vision Stream Gateway status ${gateway_status_url}"
+  curl -fsS --max-time 2 "${gateway_status_url}" >/dev/null
+  echo "[multi-gateway] smoke-local: ok"
+}
+
 start_public_gateway() {
   echo "[multi-gateway] starting public Vision Stream Gateway"
   (
@@ -270,6 +301,7 @@ main() {
     --help|-h) usage; exit 0 ;;
     --check) set_defaults; check_prereqs; print_config; exit 0 ;;
     --print-config) set_defaults; print_config; exit 0 ;;
+    --smoke-local) set_defaults; smoke_local; exit 0 ;;
     "") ;;
     *) echo "ERROR: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
