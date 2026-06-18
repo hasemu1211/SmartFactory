@@ -4,6 +4,8 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .source_registry import SourceRegistry, load_source_registry_cached
+
 
 SERVICE_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = SERVICE_DIR.parents[1]
@@ -22,7 +24,8 @@ class Settings(BaseSettings):
     ai_server_port: int = 8100
     main_server_url: str = "http://127.0.0.1:8000"
     camera_sources: str = "global_cam_01,tb3_1_picam,tb3_2_picam"
-    ros_image_topics: str = "/global_camera/image_raw,/tb3_1/pi_camera/image_raw,/tb3_2/pi_camera/image_raw"
+    ros_image_topics: str = "/global_camera/image_raw,/tb3_1/camera/image_raw/compressed,/tb3_2/camera/image_raw/compressed"
+    vision_sources_registry_path: Path = REPO_ROOT / "config" / "vision" / "sources.yaml"
     vision_event_schema_version: str = "vision-event.v1"
     model_name: str = "opencv-marker-detector"
     policy_version: str = "mvp1"
@@ -33,20 +36,100 @@ class Settings(BaseSettings):
     source_target_fps: float = 10.0
     source_stale_after_s: float = 2.0
     source_offline_after_s: float = 30.0
+    event_store_maxlen: int = 200
+    vision_model_path: str = ""
+    vision_model_task: str = "segment"
+    vision_model_conf: float = 0.5
+    vision_model_iou: float = 0.5
+    vision_model_imgsz: int = 640
+    vision_model_device: str = "cpu"
+    vision_model_worker_enabled: bool = False
+    vision_model_class_map_json: str = '{"bottle":"box","person":"person"}'
+    vision_model_unmapped_class: str = "unknown"
+    vision_model_max_events: int = 20
     contract_schema_path: Path = Field(
         default=REPO_ROOT / "docs" / "contracts" / "vision-event.schema.json"
+    )
+    lift_roi_evidence_schema_path: Path = Field(
+        default=REPO_ROOT / "docs" / "contracts" / "lift-roi-evidence.schema.json"
     )
     aruco_pose_profiles_path: Path = Field(
         default=REPO_ROOT / "config" / "perception" / "aruco_pose_profiles.example.json"
     )
 
     @property
+    def source_registry(self) -> SourceRegistry:
+        if self.vision_sources_registry_path.exists():
+            return load_source_registry_cached(str(self.vision_sources_registry_path))
+        return _legacy_source_registry(
+            source_ids=[part.strip() for part in self.camera_sources.split(",") if part.strip()],
+            image_topics=[part.strip() for part in self.ros_image_topics.split(",") if part.strip()],
+        )
+
+    @property
     def source_ids(self) -> list[str]:
-        return [part.strip() for part in self.camera_sources.split(",") if part.strip()]
+        return self.source_registry.source_ids
 
     @property
     def image_topics(self) -> list[str]:
-        return [part.strip() for part in self.ros_image_topics.split(",") if part.strip()]
+        return [
+            source.physical_input.topic
+            for source in self.source_registry.sources
+            if source.physical_input.topic
+        ]
+
+
+def _legacy_source_registry(*, source_ids: list[str], image_topics: list[str]) -> SourceRegistry:
+    # Fallback for older local envs that have not mounted config/vision/sources.yaml.
+    from .source_registry import BrowserSurface, NormalizedTopics, PhysicalInput, SourceDefinition
+
+    sources: list[SourceDefinition] = []
+    for index, source_id in enumerate(source_ids):
+        robot_id = None if source_id == "global_cam_01" else source_id.replace("_picam", "")
+        kind = "global_rgb" if source_id == "global_cam_01" else "robot_pi_camera"
+        frame_id = (
+            "global_camera_frame"
+            if source_id == "global_cam_01"
+            else f"{robot_id}_pi_camera_optical_frame"
+        )
+        physical_topic = image_topics[index] if index < len(image_topics) else None
+        legacy_topic = None
+        if source_id == "tb3_1_picam":
+            legacy_topic = "/mission/tb3_1/camera/compressed"
+        elif source_id == "tb3_2_picam":
+            legacy_topic = "/mission/tb3_2/camera/compressed"
+        sources.append(
+            SourceDefinition(
+                source_id=source_id,
+                kind=kind,
+                robot_id=robot_id,
+                frame_id=frame_id,
+                enabled=True,
+                target_fps=None,
+                notes=(
+                    "overview/slot/zone evidence"
+                    if source_id == "global_cam_01"
+                    else "front marker/dock/local item evidence"
+                ),
+                physical_input=PhysicalInput(
+                    topic=physical_topic,
+                    message_type=None,
+                    content_type=None,
+                    preferred_transport=None,
+                ),
+                browser=BrowserSurface(
+                    legacy_topic=legacy_topic,
+                    legacy_message_type=None,
+                    primary_transport="rosbridge",
+                ),
+                normalized_topics=NormalizedTopics(
+                    image=f"/sf/vision/sources/{source_id}/image/compressed",
+                    overlay=f"/sf/vision/sources/{source_id}/overlay/compressed",
+                ),
+                evidence_event_topic="/sf/vision/events",
+            )
+        )
+    return SourceRegistry(schema_version="vision-sources.legacy", sources=tuple(sources))
 
 
 @lru_cache(maxsize=1)

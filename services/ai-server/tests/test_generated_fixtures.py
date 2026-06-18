@@ -75,7 +75,7 @@ def test_generated_fixture_decode_rejects_non_image_bytes():
     )
 
     assert response.status_code == 400
-    assert "decodable image" in response.json()["detail"]
+    assert "decodable image" in response.json()["error"]["message"]
 
 
 def test_generated_multi_marker_fixture_returns_all_markers_in_stable_order():

@@ -1,0 +1,37 @@
+digraph G {
+  graph [rankdir=TB, splines=ortho, nodesep=0.65, ranksep=0.75, bgcolor="white", fontname="Noto Sans CJK KR", label="Scenario 기반 로봇 작업 상태 다이어그램", labelloc=t, fontsize=18];
+  node [shape=box, style="rounded,filled", fillcolor="#F7F4FF", color="#8B6FE8", penwidth=1.4, fontname="Noto Sans CJK KR", fontsize=13, margin="0.12,0.08"];
+  edge [color="#333333", arrowsize=0.8, fontname="Noto Sans CJK KR", fontsize=11];
+
+  start [shape=circle, label="", width=0.16, fillcolor="#222222", color="#222222"];
+  idle [label="대기 / 작업 가능"];
+  assign [label="작업 배정"];
+  inbound [label="입고·보관 수행"];
+  outbound [label="출고 수행"];
+  done [label="작업 완료"];
+  stop [label="위험 정지"];
+  confirm [label="관리자 확인"];
+  charge_move [label="충전 구역 이동"];
+  charging [label="충전 중"];
+
+  start -> idle;
+  idle -> assign [label="GUI 작업 요청"];
+  assign -> inbound [label="입고 요청"];
+  assign -> outbound [label="출고 요청"];
+  inbound -> done [label="보관 완료"];
+  outbound -> done [label="출고 완료"];
+  done -> idle [label="로그 기록 / 상태 표시"];
+
+  inbound -> stop [label="장애물 / 적재 실패"];
+  outbound -> stop [label="장애물 / 부품 없음"];
+  stop -> confirm [label="위험 알림"];
+  confirm -> assign [label="재개"];
+  confirm -> idle [label="대기 / 취소 / 수동 처리"];
+
+  idle -> charge_move [label="배터리 20% 미만"];
+  charge_move -> charging [label="충전 구역 도착"];
+  charging -> idle [label="50% 이상 충전"];
+
+  { rank=same; inbound; outbound; }
+  { rank=same; stop; confirm; }
+}

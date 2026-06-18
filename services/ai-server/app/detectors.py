@@ -80,3 +80,28 @@ def detect_markers(image: np.ndarray) -> list[MarkerDetection]:
 
     detections = list(_detect_aruco(image))
     return sorted(detections, key=lambda item: (item.class_name, item.marker_id, item.bbox_xyxy))
+
+
+def generate_synthetic_aruco_frame(
+    *,
+    marker_id: int = 7,
+    marker_size: int = 96,
+    padding: int = 32,
+) -> np.ndarray:
+    """Generate a deterministic BGR ArUco frame for robot-free Lane B validation."""
+
+    if not 0 <= marker_id < 50:
+        raise ValueError("marker_id must be between 0 and 49 for DICT_4X4_50")
+    if marker_size <= 0:
+        raise ValueError("marker_size must be positive")
+    if padding < 0:
+        raise ValueError("padding must be non-negative")
+    aruco = getattr(cv2, "aruco", None)
+    if aruco is None:
+        raise ValueError("OpenCV ArUco module is unavailable")
+    dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
+    marker = aruco.generateImageMarker(dictionary, marker_id, marker_size)
+    canvas_size = marker_size + (padding * 2)
+    canvas = np.full((canvas_size, canvas_size), 255, dtype=np.uint8)
+    canvas[padding : padding + marker_size, padding : padding + marker_size] = marker
+    return cv2.cvtColor(canvas, cv2.COLOR_GRAY2BGR)

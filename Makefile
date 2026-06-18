@@ -2,7 +2,7 @@ ROS2_WS ?= $(or $(SMARTFACTORY_ROS2_WS),/home/codelab/turtlebot3_ws)
 ROS_DISTRO ?= jazzy
 ROS_PACKAGES ?= smartfactory_bringup smartfactory_perception_ros
 
-.PHONY: ai-setup ai-test ai-run contracts ros-build-bringup ros-launch-smoke status
+.PHONY: ai-setup ai-test ai-run contracts source-registry-surfaces deploy-validate docker-ai-config ros-build-bringup ros-launch-smoke status
 
 ai-setup:
 	./scripts/setup_ai_server_env.sh
@@ -15,6 +15,15 @@ ai-run:
 
 contracts:
 	python3 scripts/validate_contracts.py
+
+source-registry-surfaces:
+	python3 scripts/generate_source_registry_surfaces.py
+
+deploy-validate:
+	python3 scripts/validate_deployment_assets.py
+
+docker-ai-config:
+	docker compose -f docker-compose.ai-server.yml config --quiet
 
 ros-build-bringup:
 	bash -lc 'source /opt/ros/$(ROS_DISTRO)/setup.bash && cd $(ROS2_WS) && colcon build --symlink-install --packages-select $(ROS_PACKAGES)'
