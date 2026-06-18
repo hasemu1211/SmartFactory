@@ -9,7 +9,7 @@
 ## Principles
 
 1. **API first**: implementation lanes depend on this contract, not on each other's internal modules.
-2. **Evidence only**: AI Server emits `VisionEvent`; WMS-lite owns final task, slot, item, robot, and exception state transitions.
+2. **Evidence only**: AI Server emits `VisionEvent`; Main/WMS-lite owns final task, inventory, database persistence, slot, item, robot, and exception state transitions.
 3. **Versioned contract**: all MVP1 endpoints use `/api/v1`; events include `schema_version: vision-event.v1`.
 4. **Strict source IDs**: MVP1 camera sources are `global_cam_01`, `tb3_1_picam`, `tb3_2_picam`.
 5. **No depth dependency**: MVP1 has no robot-mounted depth camera; `depth_median_m` must be `null`.
@@ -78,7 +78,8 @@ MVP1 keeps two evidence layers separate:
 
 Do **not** force lift count, mask, or stability fields into `VisionEvent v1`.
 WMS/Main may later translate a confirmed `LiftRoiEvidence` result into its own
-task/inventory transition, but AI Server remains evidence-only.
+task/inventory/DB transition, but AI Server remains evidence-only and must not
+write task, inventory, or database truth directly.
 
 ### `GET /api/v1/health`
 
@@ -1582,10 +1583,11 @@ Response `422` validation error uses the common error object.
 Required WMS ingest behavior:
 
 - Duplicate `event_id` must not create duplicate event-log rows.
+- Main/WMS is the authoritative owner for task records, inventory counts/locations, and DB persistence; AI evidence may only be stored as input to Main/WMS policy.
 - `STALE` events update source/zone freshness but must not directly complete or fail tasks.
 - `CANDIDATE` events can be displayed and logged, but WMS policy decides whether to promote downstream state.
 - `CONFIRMED` marker events may support slot/item/dock verification only when WMS policy and task context allow it.
-- AI Server must never write directly to WMS DB.
+- AI Server must never write directly to the Main/WMS DB or mutate task/inventory state outside Main/WMS APIs.
 
 ### `POST /api/v1/vision/events/batch` optional, not MVP1 start gate
 
