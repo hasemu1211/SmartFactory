@@ -51,7 +51,7 @@ tb3_2_picam
 - robot-side persistent service 설치/변경 없음
 - whole-graph rosbridge 노출 없음
 
-AI Server는 ROS-free로 유지되고, ROS 처리는 sidecar process에서만 수행합니다.
+Main-facing public gateway는 ROS-free로 유지합니다. 현재 ROS/domain 처리는 sidecar process에서 수행하지만, 안전 gate와 ADR을 통과한 ROS-aware Vision/AI 내부 구현 가능성은 닫지 않습니다.
 
 ---
 

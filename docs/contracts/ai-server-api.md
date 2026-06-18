@@ -1,10 +1,16 @@
 # SmartFactory AI Server API Contract v1
 
-- Status: Draft contract for MVP1 implementation planning; AI Server endpoints below reflect the 2026-06-16 local implementation.
-- Date: 2026-06-16
+- Status: Draft contract for MVP1 implementation planning; AI Server endpoints below reflect the 2026-06-16 local implementation plus the 2026-06-18 Main/Nav/Vision contract v2 alignment.
+- Date: 2026-06-18
 - Goal: make AI Server, Main Server/WMS-lite, and GUI work mergeable by API contract before implementation.
 - Canonical payload schemas: `docs/contracts/vision-event.schema.json`, `docs/contracts/lift-roi-evidence.schema.json`
 - Generated OpenAPI snapshot: `docs/contracts/ai-server-openapi.json`
+
+## Contract decision v2 / non-lock-in note
+
+Confluence `API` page version 69 is the canonical cross-team Main/Nav/Vision contract snapshot for this update. Main-facing production video is the single HTTP/MJPEG Vision Stream Gateway at `LMS_VISION_STREAM_BASE_URL=http://192.168.10.63:8090`, selected by `source`. ROS, DDS, rosbridge, and domain bridges are internal sidecar/operator/prototype implementation details unless a future ADR promotes a different public stream plane. The public Main-facing gateway is ROS-free; this is not a permanent ban on ROS-aware Vision/AI components behind the gateway when safety and architecture gates approve them. Vision remains evidence/advisory only; Main owns task/inventory/DB truth, and Nav/Movement owns motion/safety execution truth.
+
+Semantic ingest target remains `POST /api/v1/vision/events`; `POST /api/v1/camera/events` is only a temporary audit fallback until Main implements `/vision/events` with agreed dedup/idempotency behavior. Main-bound `task_id` target type is `integer|null`; decimal strings may be parsed during migration, but non-decimal task references require a future versioned field/ADR.
 
 ## Principles
 
@@ -374,13 +380,19 @@ for synthetic tests, offline fixtures, and future model providers.
 
 Canonical response schema: `docs/contracts/lift-roi-evidence.schema.json`.
 
+Contract v2 transition note: current `LiftRoiEvidence v1` accepts `task_id` as
+`string|null`, but Main-bound evidence targets `integer|null`. During migration,
+Vision may parse decimal-string values such as `"12"` before emitting to Main;
+non-decimal task identifiers are not canonical Main `task_id` values and require
+a future versioned `task_ref`/schema ADR.
+
 Request shape:
 
 ```json
 {
   "source": "tb3_1_picam",
   "operation": "PICKUP",
-  "task_id": "TASK-IN-0001",
+  "task_id": "12",
   "image": { "width": 640, "height": 480 },
   "roi": {
     "roi_id": "TB3_1_LIFT_ROI",
@@ -500,12 +512,14 @@ Response `503`: common error object when model path/package/runtime is
 unavailable. This is fail-closed behavior; the endpoint must not return success
 when the configured vision model cannot run.
 
-## Lane B debug/fallback stream and overlay APIs
+## Lane B stream and overlay APIs
 
-Production browser video remains rosbridge `9090` unless a later contract changes it.
-The following endpoints are local Vision Gateway debug/fallback surfaces for robot-free
-synthetic validation and GUI integration experiments. They must not be treated as the
-primary ROS/browser video plane.
+Main-facing production browser video is the source-selected HTTP/MJPEG Vision
+Stream Gateway on `:8090`. ROS/rosbridge remains an internal allowlisted
+operator/prototype transport unless a later ADR promotes it. The following
+endpoints support robot-free synthetic validation, GUI integration experiments,
+and the current Main-facing gateway; Main must not depend on ROS or rosbridge
+for production stream access.
 
 ### `POST /api/v1/vision/synthetic/frame`
 
@@ -745,9 +759,9 @@ Response `200` excerpt:
 {
   "generated_at": "2026-06-15T09:00:03+09:00",
   "requested_source": "tb3_1_picam",
-  "primary_stream_plane": "rosbridge",
-  "rosbridge_url": "ws://<vision-host>:9090",
-  "debug_only": true,
+  "primary_stream_plane": "http_mjpeg_gateway",
+  "stream_base_url": "http://<vision-host>:8090",
+  "debug_only": false,
   "motion_command_allowed": false,
   "control_topics_published": [],
   "summary": {
@@ -897,8 +911,9 @@ Purpose: return a read-only ROS2/domain-bridge handoff matrix for Lane B/C
 planning. This endpoint does not start ROS2 and does not publish/subscribe at
 request time. It exists so GUI/Main/ROS developers can align on physical input
 topics, preserved legacy browser topics, and planned normalized `/sf/...` topics
-before Lane C. Production browser streaming remains rosbridge `9090`; HTTP/MJPEG
-remains debug/fallback.
+before Lane C. Main-facing browser streaming now uses the public `:8090`
+HTTP/MJPEG gateway; rosbridge is internal allowlisted operator/prototype
+infrastructure only.
 
 Query parameters:
 
@@ -912,9 +927,9 @@ Response `200` excerpt:
 {
   "generated_at": "2026-06-15T09:00:07+09:00",
   "requested_source": "tb3_1_picam",
-  "primary_stream_plane": "rosbridge",
-  "rosbridge_url": "ws://<vision-host>:9090",
-  "debug_only": true,
+  "primary_stream_plane": "http_mjpeg_gateway",
+  "stream_base_url": "http://<vision-host>:8090",
+  "debug_only": false,
   "motion_command_allowed": false,
   "migration_policy": "keep existing /mission browser topics; add /sf normalized topics in parallel",
   "control_topics_published": [],
@@ -1229,9 +1244,9 @@ returns `400`.
 Purpose: return a one-shot Lane B readiness snapshot for one source or all
 configured sources. This lets GUI/Main developers check whether a source has a
 latest frame, a latest overlay, overlay/frame lag, ROS ingest/publish preflight,
-stream metrics, and debug paths without opening the MJPEG stream. It is a
-debug/fallback surface only; production browser streaming remains rosbridge
-`9090`.
+stream metrics, and debug paths without opening the MJPEG stream. It is also
+a source-aware readiness companion for the public `:8090` HTTP/MJPEG gateway;
+rosbridge details are internal allowlisted operator/prototype hints only.
 
 Query parameters:
 
@@ -1245,8 +1260,8 @@ Response `200` excerpt:
 {
   "generated_at": "2026-06-15T09:00:06+09:00",
   "requested_source": "tb3_1_picam",
-  "primary_stream_plane": "rosbridge",
-  "debug_only": true,
+  "primary_stream_plane": "http_mjpeg_gateway",
+  "debug_only": false,
   "summary": {
     "sources_total": 1,
     "with_frame_count": 1,
@@ -1540,8 +1555,8 @@ Query parameters:
 | `max_fps` | no | per-client debug stream cap, integer `1..30`, default `10` |
 
 The stream emits at most one latest overlay per `1 / max_fps` seconds. This
-protects the local FastAPI debug/fallback plane during GUI experiments; it does
-not configure production rosbridge `9090`. Each multipart frame includes an
+protects the local FastAPI stream plane during GUI experiments; it does
+not configure internal rosbridge/operator transports. Each multipart frame includes an
 `X-Debug-Max-FPS` part header for smoke/debug visibility.
 
 Errors: `400` unknown source, `404` no overlay image available yet, `422` invalid `max_fps`.
@@ -1810,10 +1825,11 @@ Current recommended split:
   such as `GET /api/v1/vision/frame/latest/image?source=tb3_1_picam` and
   `GET /api/v1/vision/overlay/latest/image?source=tb3_1_picam`. Image bytes
   remain out of `VisionEvent` JSON.
-- High-FPS browser stream: use a stream-native read-only plane such as
-  Movement-owned rosbridge/WebSocket `9090` or another allowlisted stream bridge.
-  The AI Server MJPEG endpoint remains debug/fallback, and repeated HTTP image
-  polling is not the production stream plan.
+- High-FPS browser stream: Main/GUI should use the source-selected read-only
+  HTTP/MJPEG Vision Stream Gateway at `:8090`. Movement-owned rosbridge/WebSocket
+  `9090` or another allowlisted stream bridge is internal operator/prototype
+  infrastructure only unless a future ADR promotes it. Repeated HTTP image
+  snapshot polling is not the production stream plan.
 - ROS safe topics currently published by the Lane C sidecar may be bridged only
   when allowlisted/read-only:
   `/sf/vision/sources/tb3_1_picam/overlay/compressed` and `/sf/vision/events`.
@@ -1892,8 +1908,8 @@ Model candidate behavior:
 
 - Model candidates are emitted as schema-valid `VisionEvent v1` with `event_kind=CANDIDATE`.
 - They are overlaid on the cached overlay image and can then be republished by `vision_frame_gateway` to `/sf/vision/sources/<source>/overlay/compressed`.
-- The production/high-FPS AI overlay video path is the ROS overlay topic through a read-only rosbridge/stream bridge.
-- `GET /api/v1/vision/frame/latest/image`, `GET /api/v1/vision/overlay/latest/image`, and `GET /api/v1/vision/stream/{source}.mjpeg` remain debug/fallback surfaces and are not the acceptance path for high-FPS GUI video.
+- The production/high-FPS Main/GUI overlay video path is the source-selected read-only `:8090` HTTP/MJPEG gateway. ROS overlay topics and rosbridge/stream bridges remain internal operator/prototype transports unless a future ADR promotes them.
+- `GET /api/v1/vision/frame/latest/image` and `GET /api/v1/vision/overlay/latest/image` remain snapshot/debug surfaces; stream endpoints behind the public `:8090` gateway are the acceptance path for Main-facing video.
 
 Recommended pretrained run command:
 

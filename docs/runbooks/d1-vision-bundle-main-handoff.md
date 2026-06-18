@@ -105,7 +105,7 @@ Current continuous live camera path publishes semantic snapshots to ROS `/sf/vis
 
 - No `/cmd_vel`, Nav2, teleop, ROS parameters, or whole-graph rosbridge exposure.
 - Stream bridge is read-only: GET/OPTIONS only; mutation methods are rejected.
-- AI Server remains ROS-free; ROS code runs in sidecars.
+- The public Main-facing gateway remains ROS-free. Current ROS/domain handling runs in sidecars, but ROS-aware Vision/AI internals remain valid future implementation options when approved by ADR and safety gates.
 - Ctrl-C on the bundle supervisor sends shutdown signals to all local child processes.
 
 ## Dual robot/domain runtime
@@ -137,7 +137,7 @@ GET http://192.168.10.63:8091/api/v1/vision/bridge/status
 GET http://192.168.10.63:8100/api/v1/detections/latest?source=tb3_2_picam&limit=10
 ```
 
-A future alternative is to add an explicit domain bridge from domain 5 to domain 2 and serve both sources from a single `:8090` stream bridge. For the current safe smoke, separate read-only ports are simpler and avoid cross-domain remap mistakes.
+Historical smoke note: the first two-robot smoke exposed separate read-only ports while domain-bridge risk was being isolated. Current Main integration supersedes that public `8090/8091` split with a single source-selected public `:8090` gateway; any `8091` bridge is internal/operator-only and not a Main contract.
 
 ## Main-compatible single public gateway mode
 
