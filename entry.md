@@ -5,12 +5,21 @@
 - Active branch at cleanup: `feature/ai-server-marker-detection`
 - Purpose: compact recovery index for the AI/Vision Server lane. Historical implementation chronology moved to `docs/reports/entry-chronology-2026-06-18.md`.
 
+## Architecture non-lock-in / OMX-first principle
+
+- Treat the current structure as a verified baseline, not a permanent target architecture.
+- Before feature/refactor/planning work, use OMX-native context first: setup/doctor when needed, then `omx code-intel`/MCP and repo evidence.
+- Classify important claims as Fact / Decision / Temporary guard / Open option / Assumption.
+- Do not promote current implementation guards into product invariants without explicit decision evidence.
+- Keep ROS-aware, ROS-sidecar, hybrid, and real-robot validation paths open when evidence and safety gates justify them.
+- For major direction changes, compare alternatives through plan -> architect -> critic before `$ultragoal`/`$team` execution, then record decisions separately from open options.
+
 ## Current project boundaries
 
 1. AI/Vision Server is evidence-only. Main/WMS remains source of truth for task, inventory, and robot state.
 2. MVP keeps Vision on the Central PC/process/container, but code and docs preserve a clean split for a later dedicated Vision/AI Server.
 3. Vision Gateway/stream bridge must not publish `/cmd_vel`, call Nav2 actions, expose teleop, mutate ROS parameters, or provide whole-graph rosbridge access.
-4. AI Server FastAPI remains ROS-free; ROS/domain handling belongs in sidecar processes such as `vision_frame_gateway` and stream bridges.
+4. Current FastAPI AI Server avoids direct ROS responsibilities; ROS/domain handling currently lives in sidecar processes such as `vision_frame_gateway` and stream bridges. This is an implementation boundary, not a permanent architecture lock.
 5. MVP sources remain registry-driven: `global_cam_01`, `tb3_1_picam`, and `tb3_2_picam`.
 6. Public detector/event baseline remains OpenCV ArUco for `VisionEvent v1`; optional model/segmentation paths are fail-closed and evidence-only.
 
