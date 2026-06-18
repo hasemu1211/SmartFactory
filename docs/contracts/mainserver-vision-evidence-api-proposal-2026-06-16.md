@@ -3,7 +3,7 @@
 - 작성일: 2026-06-16 Asia/Seoul
 - 범위: Robot camera → `vision_frame_gateway` → AI Server → **이미 구현 중인 Mainserver API와 연결**
 - 상태: 제안 문서. Mainserver 내부 구현 요구서가 아니라, AI Server/Lane C 쪽에서 Main API에 맞춰 연결하기 위한 계약 정리다.
-- 안전 경계: evidence/image 조회만 다룬다. `/cmd_vel`, Nav2 action, teleop, ROS parameter mutation, 로봇 파일/네트워크/캘리브레이션 변경은 범위 밖이다.
+- 안전 경계: evidence/image 조회만 다룬다. Mainserver/WMS가 task, inventory, DB-persisted truth의 최종 소유자이며 AI Server/Lane C는 이를 직접 생성·완료·실패·수정하지 않는다. `/cmd_vel`, Nav2 action, teleop, ROS parameter mutation, 로봇 파일/네트워크/캘리브레이션 변경은 범위 밖이다.
 
 ## 1. 구성 요소 간단 설명
 
@@ -285,7 +285,7 @@ http://mainserver:8080/api/v1/vision/events
 - `200` 또는 `202`를 성공으로 반환한다.
 - 같은 `event_id`가 재전송되어도 중복 row/상태전이를 만들지 않는다.
 - validation 실패는 `4xx`로 반환한다.
-- Main 최종 상태전이는 Main/WMS 정책이 결정한다. AI Server event는 evidence일 뿐이다.
+- Main 최종 상태전이는 Main/WMS 정책이 결정한다. Task 생성/완료/실패, inventory count/location 변경, DB row persistence는 Main/WMS만 수행하며 AI Server event는 evidence일 뿐이다.
 
 ## 6. 현재 AI Server에서 바로 연결 smoke 가능한 API
 
