@@ -14,8 +14,9 @@ from urllib.parse import parse_qs, urlparse
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage
+
+from .qos_profiles import build_bounded_image_qos_profile as build_qos_profile
 
 VALID_SOURCE_IDS = {"global_cam_01", "tb3_1_picam", "tb3_2_picam"}
 DEFAULT_OVERLAY_TOPICS = {
@@ -135,26 +136,6 @@ def content_type_for_compressed_format(format_value: str) -> str:
     if "png" in normalized:
         return "image/png"
     return "image/jpeg"
-
-
-def build_qos_profile(reliability: str, *, depth: int = 1, role: str = "topic") -> QoSProfile:
-    normalized = str(reliability or "").strip().lower().replace("-", "_")
-    bounded_depth = max(1, int(depth))
-    if normalized in {"sensor", "sensor_data", "qos_profile_sensor_data", "best_effort", "besteffort"}:
-        reliability_policy = ReliabilityPolicy.BEST_EFFORT
-    elif normalized == "reliable":
-        reliability_policy = ReliabilityPolicy.RELIABLE
-    else:
-        raise ValueError(
-            f"{role} QoS reliability must be one of "
-            "'sensor_data', 'best_effort', or 'reliable'; got {reliability!r}"
-        )
-    return QoSProfile(
-        history=HistoryPolicy.KEEP_LAST,
-        depth=bounded_depth,
-        reliability=reliability_policy,
-        durability=DurabilityPolicy.VOLATILE,
-    )
 
 
 def format_mjpeg_part(frame: FrameSnapshot) -> bytes:

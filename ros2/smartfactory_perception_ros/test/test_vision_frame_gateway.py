@@ -9,6 +9,7 @@ import requests
 import rclpy
 from sensor_msgs.msg import CompressedImage
 
+from smartfactory_perception_ros.qos_profiles import build_bounded_image_qos_profile
 from smartfactory_perception_ros.vision_frame_gateway import (
     PendingFrameWork,
     VisionFrameGateway,
@@ -83,9 +84,13 @@ def test_build_ai_server_url_normalizes_slashes():
 def test_qos_profile_builder_supports_reliable_and_rejects_bad_values():
     reliable = build_qos_profile("reliable", depth=1, role="image input")
     best_effort = build_qos_profile("sensor_data", depth=1, role="image input")
+    shared_reliable = build_bounded_image_qos_profile(
+        "reliable", depth=1, role="shared image input"
+    )
 
     assert reliable.reliability == ReliabilityPolicy.RELIABLE
     assert best_effort.reliability == ReliabilityPolicy.BEST_EFFORT
+    assert shared_reliable.reliability == ReliabilityPolicy.RELIABLE
 
     with pytest.raises(ValueError, match="QoS reliability"):
         build_qos_profile("invalid", role="image input")

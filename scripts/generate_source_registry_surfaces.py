@@ -27,7 +27,7 @@ if VENV_PYTHON.exists() and Path(sys.prefix).resolve() != VENV_DIR.resolve():
 sys.path.insert(0, str(SERVICE_DIR))
 
 from app.config import get_settings  # noqa: E402
-from app.main import app  # noqa: E402
+from app.factory import create_app  # noqa: E402
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -60,7 +60,7 @@ def main() -> int:
     _write_json(GENERATED_DIR / "source-registry.snapshot.json", snapshot)
     _write_json(FIXTURE_DIR / "source-registry.valid.json", snapshot)
 
-    app.openapi_schema = None
+    app = create_app()
     _write_json(CONTRACT_DIR / "ai-server-openapi.json", app.openapi())
 
     print("Generated source registry surfaces:")

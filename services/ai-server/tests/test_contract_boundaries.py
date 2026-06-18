@@ -3,12 +3,145 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app.factory import create_app
 from app.main import app
 
 ROOT = Path(__file__).resolve().parents[3]
 SERVICE_DIR = ROOT / "services" / "ai-server"
 
 client = TestClient(app)
+
+
+def test_factory_creates_runtime_app_without_generator_bridge():
+    from app.service_metadata import SERVICE_VERSION
+
+    factory_app = create_app()
+    route_paths = {getattr(route, "path", "") for route in factory_app.routes}
+
+    assert factory_app.title == "SmartFactory AI Server"
+    assert factory_app.version == SERVICE_VERSION
+    assert "/api/v1/health" in route_paths
+    assert "/api/v1/vision/streams" in route_paths
+
+
+def test_source_registry_generator_uses_factory_seam_not_main_app_import():
+    script = (ROOT / "scripts" / "generate_source_registry_surfaces.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "from app.factory import create_app" in script
+    assert "from app.main import app" not in script
+    assert "include_runtime_routes" not in script
+
+
+def test_app_factory_has_no_temporary_runtime_bridge():
+    factory_source = (SERVICE_DIR / "app" / "factory.py").read_text(encoding="utf-8")
+
+    assert "include_runtime_routes" not in factory_source
+    assert "from .main" not in factory_source
+
+
+
+def test_runtime_state_default_context_preserves_compatibility_aliases():
+    from app import runtime_state
+
+    context = runtime_state.default_runtime_context
+    assert runtime_state.store is context.store
+    assert runtime_state.source_health is context.source_health
+    assert runtime_state.metrics is context.metrics
+    assert runtime_state.frame_store is context.frame_store
+    assert runtime_state.overlay_cache is context.overlay_cache
+    assert runtime_state._overlay_images is context.overlay_images
+    assert runtime_state._overlay_images_lock is context.overlay_images_lock
+
+
+def test_app_factory_accepts_injected_runtime_context():
+    from app.runtime_state import create_runtime_context, default_runtime_context
+
+    default_before = default_runtime_context.metrics.snapshot()["http"]["request_total"]
+    injected_context = create_runtime_context()
+    injected_app = create_app(runtime_context=injected_context)
+    injected_client = TestClient(injected_app)
+
+    response = injected_client.get("/api/v1/health")
+
+    assert response.status_code == 200
+    assert injected_app.state.runtime_context is injected_context
+    assert injected_context is not default_runtime_context
+    assert injected_context.metrics.snapshot()["http"]["request_total"] >= 1
+    assert default_runtime_context.metrics.snapshot()["http"]["request_total"] == default_before
+
+
+
+
+def test_injected_runtime_context_is_preserved_for_mjpeg_generator():
+    import asyncio
+
+    from app import runtime_routes
+    from app.overlay import OverlayRenderResult
+    from app.runtime_state import create_runtime_context, default_runtime_context
+
+    injected_context = create_runtime_context()
+    default_before = default_runtime_context.metrics.stream_snapshot()["frames_sent_total"]
+    overlay = OverlayRenderResult(
+        source="tb3_1_picam",
+        frame_seq=1,
+        frame_timestamp="2026-06-18T00:00:00+00:00",
+        evidence_timestamp=None,
+        overlay_timestamp="2026-06-18T00:00:01+00:00",
+        latency_ms=None,
+        event_count=0,
+        stale=False,
+        image_width=1,
+        image_height=1,
+        jpeg=b"jpeg-bytes",
+    )
+    with injected_context.overlay_images_lock:
+        injected_context.overlay_images[overlay.source] = overlay
+
+    async def first_chunk() -> bytes:
+        generator = runtime_routes._mjpeg_latest_overlay_generator(
+            overlay.source,
+            max_fps=30,
+            runtime_context=injected_context,
+        )
+        try:
+            return await asyncio.wait_for(generator.__anext__(), timeout=1.0)
+        finally:
+            await generator.aclose()
+
+    chunk = asyncio.run(first_chunk())
+
+    assert b"jpeg-bytes" in chunk
+    assert injected_context.metrics.stream_snapshot()["frames_sent_total"] == 1
+    assert default_runtime_context.metrics.stream_snapshot()["frames_sent_total"] == default_before
+
+def test_app_main_is_only_runtime_entrypoint_wrapper():
+    main_source = (SERVICE_DIR / "app" / "main.py").read_text(encoding="utf-8")
+
+    assert "sys.modules" not in main_source
+    assert "include_runtime_routes" not in main_source
+    assert "from .factory import create_app" in main_source
+    assert "app = create_app()" in main_source
+
+
+def test_vision_bundle_scripts_share_common_shell_helpers():
+    common = ROOT / "scripts" / "lib" / "vision_bundle_common.sh"
+    common_source = common.read_text(encoding="utf-8")
+
+    assert "sf_lan_ip()" in common_source
+    assert "sf_default_model_extra_pythonpath()" in common_source
+
+    for script_name in (
+        "run_d1_vision_multi_source_gateway_bundle.sh",
+        "run_d1_vision_bundle.sh",
+        "run_d1_vision_domain_sidecar.sh",
+    ):
+        script_source = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+        assert 'source "${SCRIPT_DIR}/lib/vision_bundle_common.sh"' in script_source
+        assert '$(sf_repo_root_from_script "${BASH_SOURCE[0]}")' in script_source
+        assert "$(sf_lan_ip" in script_source
+
 
 
 def test_health_matches_api_contract_fields():

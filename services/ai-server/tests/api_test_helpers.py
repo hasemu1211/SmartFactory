@@ -3,7 +3,7 @@ import pytest
 import cv2
 import numpy as np
 
-import app.main as main_module
+from app import runtime_routes as main_module
 from app.config import get_settings
 from app.main import app
 from app.vision_interfaces import DetectionBox, InstanceMask
