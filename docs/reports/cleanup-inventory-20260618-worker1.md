@@ -220,10 +220,17 @@ grep -RInE 'create_publisher\(.*cmd_vel|ActionClient\(.*nav2|ros2 launch.*nav2|t
 ## Suggested non-overlap execution slices
 
 1. Worker-1/meta: inventory and baseline evidence only (this report).
-2. AI route extraction lane:  plus new ; verify OpenAPI/API tests after each move.
-3. Test split lane:  to endpoint-focused files; move-only first.
-4. Entrypoint lane: , , supporting runbook references; thin aliases only.
-5. Docs lane:  + /runbooks; verify Confluence only before public claims.
+2. AI route extraction lane: `services/ai-server/app/main.py` plus new `services/ai-server/app/api/*.py`; verify OpenAPI/API tests after each move.
+3. Test split lane: `services/ai-server/tests/test_api.py` to endpoint-focused files; move-only first.
+4. Entrypoint lane: `Makefile`, `scripts/run_d1_vision_multi_source_gateway_bundle.sh`, supporting runbook references; thin aliases only.
+5. Docs lane: `entry.md` + `docs/reports`/runbooks; verify Confluence only before public claims.
+
+## Subagent change-slice probe integrated
+
+- Subagent: `019ed841-8e44-7561-bb7e-b3d3a812e19e` (change-slice probe).
+- Recommended safe first implementation slice: move shared error handling, OpenAPI helpers, middleware/exception handlers from `services/ai-server/app/main.py` into `services/ai-server/app/api/` without changing route URLs, response schemas, middleware order, or app import behavior.
+- Primary migration hazards: preserve AI Server ROS-free boundary; keep `app` import-safe for contract tooling; keep generated OpenAPI and existing tests stable after each move.
+- Non-overlap decision for worker-1: record this guidance here only; do not edit route/test/script/doc implementation surfaces owned by other active workers.
 
 ## Baseline command log
 
