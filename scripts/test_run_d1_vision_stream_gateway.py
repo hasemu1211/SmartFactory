@@ -39,14 +39,14 @@ def test_env_source_upstreams_requires_json_object_and_loopback_http_urls(monkey
 
     monkeypatch.setenv(
         "VISION_STREAM_SOURCE_UPSTREAMS_JSON",
-        json.dumps({"tb3_1_picam": "http://192.168.10.63:18090"}),
+        json.dumps({"tb3_1_picam": "http://203.0.113.10:18090"}),
     )
     monkeypatch.delenv("VISION_STREAM_ALLOW_NON_LOOPBACK_UPSTREAMS", raising=False)
     with pytest.raises(ValueError, match="invalid source upstream mapping"):
         gateway._env_source_upstreams()
 
     monkeypatch.setenv("VISION_STREAM_ALLOW_NON_LOOPBACK_UPSTREAMS", "true")
-    assert gateway._env_source_upstreams() == {"tb3_1_picam": "http://192.168.10.63:18090"}
+    assert gateway._env_source_upstreams() == {"tb3_1_picam": "http://203.0.113.10:18090"}
 
 
 def test_clamp_fps_keeps_stream_gateway_bounded() -> None:

@@ -1,14 +1,14 @@
 # SmartFactory AI Server API Contract v1
 
-- Status: Draft contract for MVP1 implementation planning; AI Server endpoints below reflect the 2026-06-16 local implementation plus the 2026-06-18 Main/Nav/Vision contract v2 alignment.
+- Status: Draft contract for MVP1 implementation planning; AI Server endpoints below reflect the 2026-06-16 local implementation plus the 2026-06-18 Main/Nav/Vision contract v3 hostname-first endpoint alignment.
 - Date: 2026-06-18
 - Goal: make AI Server, Main Server/WMS-lite, and GUI work mergeable by API contract before implementation.
 - Canonical payload schemas: `docs/contracts/vision-event.schema.json`, `docs/contracts/lift-roi-evidence.schema.json`
 - Generated OpenAPI snapshot: `docs/contracts/ai-server-openapi.json`
 
-## Contract decision v2 / non-lock-in note
+## Contract decision v3 / non-lock-in note
 
-Confluence `API` page version 69 is the canonical cross-team Main/Nav/Vision contract snapshot for this update. Main-facing production video is the single HTTP/MJPEG Vision Stream Gateway at `LMS_VISION_STREAM_BASE_URL=http://192.168.10.63:8090`, selected by `source`. ROS, DDS, rosbridge, and domain bridges are internal sidecar/operator/prototype implementation details unless a future ADR promotes a different public stream plane. The public Main-facing gateway is ROS-free; this is not a permanent ban on ROS-aware Vision/AI components behind the gateway when safety and architecture gates approve them. Vision remains evidence/advisory only; Main owns task/inventory/DB truth, and Nav/Movement owns motion/safety execution truth.
+Confluence `API` page version 70 is the canonical cross-team Main/Nav/Vision contract snapshot for this update. Main-facing production video is the single HTTP/MJPEG Vision Stream Gateway at hostname-first `LMS_VISION_STREAM_BASE_URL=http://smartfactory-vision.local:8090`, selected by `source`; an explicitly configured `VISION_STREAM_FALLBACK_BASE_URL=http://<vision-lan-ip>:8090` may be used only when hostname resolution or health checks fail. ROS, DDS, rosbridge, and domain bridges are internal sidecar/operator/prototype implementation details unless a future ADR promotes a different public stream plane. The public Main-facing gateway is ROS-free; this is not a permanent ban on ROS-aware Vision/AI components behind the gateway when safety and architecture gates approve them. Vision remains evidence/advisory only; Main owns task/inventory/DB truth, and Nav/Movement owns motion/safety execution truth.
 
 Semantic ingest target remains `POST /api/v1/vision/events`; `POST /api/v1/camera/events` is only a temporary audit fallback until Main implements `/vision/events` with agreed dedup/idempotency behavior. Main-bound `task_id` target type is `integer|null`; decimal strings may be parsed during migration, but non-decimal task references require a future versioned field/ADR.
 

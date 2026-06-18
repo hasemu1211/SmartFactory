@@ -69,19 +69,23 @@ If replacing the currently running separate panes, stop only these local panes f
 | `VISION_GATEWAY_PERIOD_SEC` | `0.05` | Gateway processing cadence. |
 | `VISION_STREAM_PORT` | `8090` | Read-only stream bridge port. |
 | `VISION_STREAM_MAX_FPS` | `30` | Bridge max stream FPS cap. |
+| `VISION_PUBLIC_HOST` | `smartfactory-vision.local` | Recommended stable Main-facing host name printed by `make vision-config`. |
+| `VISION_MAIN_HOST` | unset | Optional Main host/IP used only to choose the best local route source IP for fallback evidence. |
 
 ## Main/GUI receive surfaces
 
-Assuming this PC is `192.168.10.63`:
+Recommended hostname-first Main target is `smartfactory-vision.local`; use the detected LAN IP printed by `make vision-config` only as an explicitly configured fallback:
+
+Hostname prerequisite: `smartfactory-vision.local` must resolve from the Main Server PC. This repo does not mutate DNS, `/etc/hosts`, router DHCP, or local IP aliases. Until mDNS/DNS/operator-managed host alias is configured, `scripts/smoke_main_dashboard_gateway.sh` may report `hostname_unresolved`; in that case Main may use an explicit fallback such as `VISION_STREAM_FALLBACK_BASE_URL=http://<detected-vision-lan-ip>:8090`.
 
 | Purpose | Method / URL | Output |
 |---|---|---|
-| Operator view | `GET http://192.168.10.63:8090/api/v1/vision/overlay/view?source=tb3_1_picam` | HTML page with AI overlay video. |
-| Main video stream | `GET http://192.168.10.63:8090/api/v1/vision/overlay/stream?source=tb3_1_picam&max_fps=30` | `multipart/x-mixed-replace` MJPEG stream. |
-| Bridge status | `GET http://192.168.10.63:8090/api/v1/vision/bridge/status` | JSON read-only status, source paths, stale/has-frame state. |
-| AI health | `GET http://192.168.10.63:8100/api/v1/health` | JSON service health, source/model summary. |
-| Latest semantic tags | `GET http://192.168.10.63:8100/api/v1/detections/latest?source=tb3_1_picam&limit=10` | Latest `VisionEvent v1` candidates such as `box`, `person`, `unknown`. |
-| Latest overlay metadata | `GET http://192.168.10.63:8100/api/v1/vision/overlay/latest?source=tb3_1_picam` | Overlay freshness, frame seq, event count. |
+| Operator view | `GET http://smartfactory-vision.local:8090/api/v1/vision/overlay/view?source=tb3_1_picam` | HTML page with AI overlay video. |
+| Main video stream | `GET http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?source=tb3_1_picam&max_fps=30` | `multipart/x-mixed-replace` MJPEG stream. |
+| Bridge status | `GET http://smartfactory-vision.local:8090/api/v1/vision/bridge/status` | JSON read-only status, source paths, stale/has-frame state. |
+| AI health | `GET http://smartfactory-vision.local:8100/api/v1/health` | JSON service health, source/model summary. |
+| Latest semantic tags | `GET http://smartfactory-vision.local:8100/api/v1/detections/latest?source=tb3_1_picam&limit=10` | Latest `VisionEvent v1` candidates such as `box`, `person`, `unknown`. |
+| Latest overlay metadata | `GET http://smartfactory-vision.local:8100/api/v1/vision/overlay/latest?source=tb3_1_picam` | Overlay freshness, frame seq, event count. |
 
 ## Main server integration recommendation
 
@@ -134,10 +138,10 @@ VISION_STREAM_PORT=8091 \
 Historical/operator-only URLs; do **not** publish these as Main contract:
 
 ```text
-GET http://192.168.10.63:8091/api/v1/vision/overlay/view?source=tb3_2_picam  # historical/operator-only, superseded
-GET http://192.168.10.63:8091/api/v1/vision/overlay/stream?source=tb3_2_picam&max_fps=30.0  # historical/operator-only, superseded
-GET http://192.168.10.63:8091/api/v1/vision/bridge/status  # historical/operator-only, superseded
-GET http://192.168.10.63:8100/api/v1/detections/latest?source=tb3_2_picam&limit=10
+GET http://smartfactory-vision.local:8091/api/v1/vision/overlay/view?source=tb3_2_picam  # historical/operator-only, superseded
+GET http://smartfactory-vision.local:8091/api/v1/vision/overlay/stream?source=tb3_2_picam&max_fps=30.0  # historical/operator-only, superseded
+GET http://smartfactory-vision.local:8091/api/v1/vision/bridge/status  # historical/operator-only, superseded
+GET http://smartfactory-vision.local:8100/api/v1/detections/latest?source=tb3_2_picam&limit=10
 ```
 
 ## Main-compatible single public gateway mode
@@ -147,7 +151,7 @@ Current recommended Main integration mode supersedes the earlier temporary publi
 Public base URL for Main:
 
 ```text
-LMS_VISION_STREAM_BASE_URL=http://192.168.10.63:8090
+LMS_VISION_STREAM_BASE_URL=http://smartfactory-vision.local:8090
 ```
 
 Public endpoints:
@@ -211,7 +215,7 @@ Backpressure rule: at most one pending frame per source is retained. If AI/HTTP 
 Current Main contract is unchanged:
 
 ```text
-LMS_VISION_STREAM_BASE_URL=http://192.168.10.63:8090
+LMS_VISION_STREAM_BASE_URL=http://smartfactory-vision.local:8090
 GET /api/v1/vision/overlay/stream?source={source_id}&max_fps=30
 GET /api/v1/vision/frame/stream?source={source_id}&max_fps=30
 GET /api/v1/vision/bridge/status
