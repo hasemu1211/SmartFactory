@@ -7,7 +7,19 @@ from typing import Any
 from .config import get_settings
 
 
-SOURCE_ID_OPENAPI_EXTRA = {"enum": get_settings().source_ids}
+def apply_source_id_openapi_extra(schema: dict[str, Any]) -> None:
+    """Populate source enum when FastAPI/Pydantic generates OpenAPI.
+
+    Source IDs are process-static for this service: runtime source-registry
+    changes require a process restart and regenerated contract surfaces. Using a
+    schema callback avoids resolving settings at module import time while keeping
+    that process-static contract explicit.
+    """
+
+    schema["enum"] = list(get_settings().source_ids)
+
+
+SOURCE_ID_OPENAPI_EXTRA = apply_source_id_openapi_extra
 
 
 ERROR_RESPONSE_OPENAPI = {

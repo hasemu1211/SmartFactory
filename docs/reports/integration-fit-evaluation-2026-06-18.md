@@ -69,13 +69,13 @@ Risk to watch:
 
 Fit: acceptable for local integration, not yet production-performance certified.
 
-- The default local bundle keeps model worker disabled unless explicitly enabled.
-- The async frame/process path and source stream gateway are present, but performance claims should remain conservative until measured with representative cameras and model settings.
+- `make vision-check` disables the model worker by default for safe preflight, while `make vision-run` follows the bundle script default (`VISION_MODEL_WORKER_ENABLED=true`) unless the operator overrides it.
+- The async frame/process path and source stream gateway are present, but performance claims should remain conservative until measured with representative cameras and explicit model-worker settings.
 
 Risk to watch:
 
 - Do not present synthetic/local smoke results as real robot throughput.
-- Record FPS, latency, stale/drop policy, and source-specific failures when moving to live camera checks.
+- Record whether the model worker was enabled, plus FPS, latency, stale/drop policy, and source-specific failures when moving to live camera checks.
 
 ## Robot safety and real-robot status
 
