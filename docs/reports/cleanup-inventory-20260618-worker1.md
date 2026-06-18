@@ -234,4 +234,82 @@ grep -RInE 'create_publisher\(.*cmd_vel|ActionClient\(.*nav2|ros2 launch.*nav2|t
 
 ## Baseline command log
 
-Filled by worker verification commands in this task result.
+```text
+## Verification run — 2026-06-18T01:05:38Z
+
+### git status --short --branch
+```text
+## HEAD (no branch)
+```
+
+### git diff --check
+```text
+exit=0
+```
+
+### AI Server ROS import AST scan
+```text
+hits= []
+exit=0
+```
+
+### Active-control grep (informational: policy text may match)
+```text
+services/ai-server/app/main.py:230:            "primary_stream_plane": {"const": "rosbridge", "type": "string"},
+services/ai-server/app/main.py:386:            "primary_stream_plane": {"const": "rosbridge", "type": "string"},
+services/ai-server/app/main.py:492:    """Return existing browser/rosbridge topic that must not regress."""
+services/ai-server/app/main.py:602:    """Return the planned ROS/rosbridge topic exposure policy without applying it."""
+services/ai-server/app/main.py:606:        "rosbridge_exposes_all_topics": False,
+services/ai-server/app/main.py:607:        "browser_primary_transport": "rosbridge",
+services/ai-server/app/main.py:633:            "Do not expose all DDS topics through rosbridge.",
+services/ai-server/app/main.py:666:def _rosbridge_subscription_hints(source: str, topic_exposure: dict[str, Any]) -> dict[str, Any]:
+services/ai-server/app/main.py:667:    """Return source-scoped browser subscription hints without touching rosbridge."""
+services/ai-server/app/main.py:707:    if policy["rosbridge_exposes_all_topics"]:
+services/ai-server/app/main.py:708:        policy_violations.append("rosbridge must not expose the full ROS graph")
+services/ai-server/app/main.py:725:        "rosbridge_exposes_all_topics": policy["rosbridge_exposes_all_topics"],
+services/ai-server/app/main.py:1773:        "rosbridge_subscription_hints": _rosbridge_subscription_hints(source, topic_exposure),
+services/ai-server/app/main.py:1859:    ROS/rosbridge remains the production browser stream plane. The local MJPEG
+services/ai-server/app/main.py:1877:        "primary_stream_plane": "rosbridge",
+services/ai-server/app/main.py:1878:        "rosbridge_url": "ws://<vision-host>:9090",
+services/ai-server/app/main.py:1929:        "primary_stream_plane": "rosbridge",
+services/ai-server/app/main.py:1930:        "rosbridge_url": "ws://<vision-host>:9090",
+services/ai-server/app/main.py:2232:    commands. Production browser video remains rosbridge 9090.
+services/ai-server/app/main.py:2354:        "rosbridge_subscription_hints": _rosbridge_subscription_hints(source, topic_exposure),
+services/ai-server/app/main.py:2412:        "primary_stream_plane": "rosbridge",
+services/ai-server/app/main.py:2580:    against rendered overlays. Production browser streaming remains rosbridge.
+services/ai-server/app/main.py:2664:    This is not the production browser stream plane; rosbridge 9090 remains the
+services/ai-server/app/source_registry.py:186:                browser.get("primary_transport", "rosbridge"),
+services/ai-server/app/config.py:123:                    primary_transport="rosbridge",
+services/ai-server/tests/test_api.py:161:        "rosbridge_exposes_all_topics": False,
+services/ai-server/tests/test_api.py:162:        "browser_primary_transport": "rosbridge",
+services/ai-server/tests/test_api.py:188:            "Do not expose all DDS topics through rosbridge.",
+services/ai-server/tests/test_api.py:223:def expected_rosbridge_subscription_hints(source: str) -> dict:
+services/ai-server/tests/test_api.py:266:        "rosbridge_exposes_all_topics": False,
+services/ai-server/tests/test_api.py:977:def test_vision_streams_declares_rosbridge_primary_and_debug_fallback():
+services/ai-server/tests/test_api.py:999:    assert body["primary_stream_plane"] == "rosbridge"
+services/ai-server/tests/test_api.py:1054:    assert body["primary_stream_plane"] == "rosbridge"
+services/ai-server/tests/test_api.py:1070:    assert source["rosbridge_subscription_hints"] == expected_rosbridge_subscription_hints(
+services/ai-server/tests/test_api.py:1214:    assert body["primary_stream_plane"] == "rosbridge"
+services/ai-server/tests/test_api.py:1225:    assert body["topic_exposure_summary"]["rosbridge_exposes_all_topics"] is False
+services/ai-server/tests/test_api.py:1597:    assert stream_body["primary_stream_plane"] == ros_body["primary_stream_plane"] == "rosbridge"
+services/ai-server/tests/test_api.py:2647:    assert body["primary_stream_plane"] == "rosbridge"
+services/ai-server/tests/test_api.py:2679:    assert source["rosbridge_subscription_hints"] == expected_rosbridge_subscription_hints(
+services/ai-server/tests/test_api.py:2700:    assert source["rosbridge_subscription_hints"]["recommended_overlay_topic"] == (
+services/ai-server/tests/test_api.py:2760:    assert body["sources"][0]["rosbridge_subscription_hints"] == expected_rosbridge_subscription_hints(
+scripts/run_d1_vision_bundle.sh:19:This script intentionally does NOT start robot motion, Nav2, teleop, /cmd_vel,
+scripts/run_d1_vision_multi_source_gateway_bundle.sh:23:No robot motion, Nav2, teleop, /cmd_vel, robot-side persistent services, or
+scripts/run_d1_vision_domain_sidecar.sh:18:teleop, /cmd_vel, robot-side persistent services, or a whole-graph bridge.
+ros2/smartfactory_perception_ros/README.md:108:clients, and no `/cmd_vel`/Nav2/teleop/parameter surface.
+exit=0
+```
+
+### bash -n scripts/*.sh
+```text
+exit=0
+```
+
+### py_compile selected scripts
+```text
+exit=0
+```
+```
