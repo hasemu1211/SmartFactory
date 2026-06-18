@@ -1,0 +1,27 @@
+---
+title: Scenario 기반 로봇 작업 상태 다이어그램
+---
+stateDiagram-v2
+    direction TB
+
+    state "대기 / 작업 가능" as idle
+    state "작업 배정" as assign
+    state "작업 수행" as work
+    state "위험 정지" as stop
+    state "관리자 확인" as confirm
+    state "충전 중" as charging
+    state "작업 완료" as done
+
+    [*] --> idle
+    idle --> assign: GUI 입고/출고 요청
+    idle --> charging: 배터리 부족
+    charging --> idle: 50% 이상 충전
+
+    assign --> work: 로봇 선택 및 이동
+    work --> done: 입고 보관 완료 / 출고 완료
+    done --> idle: 재고·이력·로그 기록
+
+    work --> stop: 장애물 / 적재 실패 / 부품 없음
+    stop --> confirm: 위험 알림
+    confirm --> work: 재개
+    confirm --> idle: 대기 / 취소 / 수동 처리

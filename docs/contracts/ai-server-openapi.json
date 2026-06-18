@@ -1,0 +1,5247 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SmartFactory AI Server",
+    "description": "API-first MVP1 AI Server. Emits evidence only; WMS owns decisions.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Health Api V1 Health Get"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/sources": {
+      "get": {
+        "summary": "Sources",
+        "operationId": "sources_api_v1_sources_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Sources Api V1 Sources Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/detections/latest": {
+      "get": {
+        "summary": "Latest Detections",
+        "operationId": "latest_detections_api_v1_detections_latest_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "enum": [
+                "global_cam_01",
+                "tb3_1_picam",
+                "tb3_2_picam"
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "default": 10,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Latest Detections Api V1 Detections Latest Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/streams": {
+      "get": {
+        "summary": "Vision Streams",
+        "description": "Describe Vision Gateway stream surfaces.\n\nROS/rosbridge remains the production browser stream plane. The local MJPEG\nendpoint is a debug/fallback helper for Lane B synthetic validation.",
+        "operationId": "vision_streams_api_v1_vision_streams_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "enum": [
+                "global_cam_01",
+                "tb3_1_picam",
+                "tb3_2_picam"
+              ],
+              "title": "Source"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Vision Streams Api V1 Vision Streams Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/ros/topics": {
+      "get": {
+        "summary": "Vision Ros Topics",
+        "description": "Return the read-only ROS2 topic handoff matrix for Lane B/C planning.\n\nThis endpoint does not start ROS2, does not publish overlays, and does not\nexpose motion control. It exists so GUI/Main/ROS developers can align on the\nsource-to-topic contract before Lane C ROS ingest/domain bridge work.",
+        "operationId": "vision_ros_topics_api_v1_vision_ros_topics_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "enum": [
+                "global_cam_01",
+                "tb3_1_picam",
+                "tb3_2_picam"
+              ],
+              "title": "Source"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lane B ROS2/domain-bridge handoff topic matrix",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Vision Ros Topics Api V1 Vision Ros Topics Get",
+                  "required": [
+                    "generated_at",
+                    "primary_stream_plane",
+                    "debug_only",
+                    "motion_command_allowed",
+                    "sources"
+                  ],
+                  "properties": {
+                    "generated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "primary_stream_plane": {
+                      "const": "rosbridge",
+                      "type": "string"
+                    },
+                    "debug_only": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "motion_command_allowed": {
+                      "const": false,
+                      "type": "boolean"
+                    },
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/worker/status": {
+      "get": {
+        "summary": "Vision Worker Status",
+        "description": "Return what the next worker tick would do without processing frames.",
+        "operationId": "vision_worker_status_api_v1_vision_worker_status_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "enum": [
+                "global_cam_01",
+                "tb3_1_picam",
+                "tb3_2_picam"
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "name": "max_frame_age_s",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Frame Age S"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lane B read-only worker readiness snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Vision Worker Status Api V1 Vision Worker Status Get",
+                  "required": [
+                    "generated_at",
+                    "max_frame_age_s",
+                    "summary",
+                    "sources"
+                  ],
+                  "properties": {
+                    "generated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "requested_source": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "max_frame_age_s": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "summary": {
+                      "type": "object"
+                    },
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/worker/tick": {
+      "post": {
+        "summary": "Vision Worker Tick",
+        "description": "Run one controlled latest-frame processing tick for Lane B validation.\n\nThis is a robot-free debug/control surface for the future evidence worker.\nIt processes only explicit configured sources and never publishes ROS motion\ncommands. Production browser video remains rosbridge 9090.",
+        "operationId": "vision_worker_tick_api_v1_vision_worker_tick_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisionWorkerTickRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Vision Worker Tick Api V1 Vision Worker Tick Post"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/debug/sources": {
+      "get": {
+        "summary": "Vision Debug Sources",
+        "description": "Return one-shot source/frame/overlay readiness snapshots for Lane B debug use.",
+        "operationId": "vision_debug_sources_api_v1_vision_debug_sources_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "enum": [
+                "global_cam_01",
+                "tb3_1_picam",
+                "tb3_2_picam"
+              ],
+              "title": "Source"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lane B source/frame/overlay debug snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Vision Debug Sources Api V1 Vision Debug Sources Get",
+                  "required": [
+                    "generated_at",
+                    "primary_stream_plane",
+                    "sources"
+                  ],
+                  "properties": {
+                    "generated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "primary_stream_plane": {
+                      "const": "rosbridge",
+                      "type": "string"
+                    },
+                    "sources": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/frame": {
+      "post": {
+        "summary": "Ingest Frame",
+        "description": "Store one raw frame in the latest-frame cache without detection.\n\nThis is a Lane B robot-free seam for future ROS2/camera ingest. It lets\ncallers push a frame, inspect it with `/vision/frame/latest`, and then run\n`/vision/worker/tick` to process it. It is not the production browser stream\nplane and it does not publish ROS motion commands.",
+        "operationId": "ingest_frame_api_v1_vision_frame_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ingest_frame_api_v1_vision_frame_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Latest-frame ingest debug response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "source": {
+                      "type": "string"
+                    },
+                    "processed": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "frame": {
+                      "properties": {
+                        "source": {
+                          "type": "string"
+                        },
+                        "frame_seq": {
+                          "type": "integer",
+                          "minimum": 1.0
+                        },
+                        "frame_timestamp": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "image": {
+                          "properties": {
+                            "width": {
+                              "type": "integer",
+                              "minimum": 1.0
+                            },
+                            "height": {
+                              "type": "integer",
+                              "minimum": 1.0
+                            }
+                          },
+                          "type": "object",
+                          "required": [
+                            "width",
+                            "height"
+                          ]
+                        },
+                        "content_type": {
+                          "type": "string"
+                        },
+                        "size_bytes": {
+                          "type": "integer",
+                          "minimum": 1.0
+                        }
+                      },
+                      "additionalProperties": true,
+                      "type": "object",
+                      "required": [
+                        "source",
+                        "frame_seq",
+                        "frame_timestamp",
+                        "image",
+                        "content_type",
+                        "size_bytes"
+                      ]
+                    },
+                    "overlay": {
+                      "type": "null"
+                    },
+                    "ingest_context": {
+                      "properties": {
+                        "transport": {
+                          "type": "string"
+                        },
+                        "topic": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "stored_in_latest_frame_cache": {
+                          "type": "boolean"
+                        },
+                        "processed_inline": {
+                          "type": "boolean"
+                        },
+                        "source_health_updated": {
+                          "type": "boolean"
+                        },
+                        "ros_callback_compatible": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "transport",
+                        "topic",
+                        "stored_in_latest_frame_cache",
+                        "processed_inline",
+                        "source_health_updated",
+                        "ros_callback_compatible"
+                      ]
+                    },
+                    "worker_tick_path": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "processed",
+                    "frame",
+                    "overlay",
+                    "ingest_context",
+                    "worker_tick_path"
+                  ],
+                  "title": "Response Ingest Frame Api V1 Vision Frame Post"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/frame/process": {
+      "post": {
+        "summary": "Ingest And Process Frame",
+        "description": "Store one raw frame and immediately render AI/detection overlay.\n\nThis ROS-free endpoint is optimized for the D1 gateway hot path: one HTTP\nrequest updates the latest-frame cache and overlay cache, avoiding the older\nframe POST -> worker tick race. It still publishes no ROS/control topics.",
+        "operationId": "ingest_and_process_frame_api_v1_vision_frame_process_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ingest_and_process_frame_api_v1_vision_frame_process_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Latest-frame ingest plus immediate overlay processing response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "source": {
+                      "type": "string"
+                    },
+                    "processed": {
+                      "type": "boolean"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "processed",
+                        "skipped"
+                      ]
+                    },
+                    "frame_seq": {
+                      "type": "integer",
+                      "minimum": 1.0
+                    },
+                    "event_count": {
+                      "type": "integer",
+                      "minimum": 0.0
+                    },
+                    "new_event_count": {
+                      "type": "integer",
+                      "minimum": 0.0
+                    },
+                    "evidence_action": {
+                      "type": "string"
+                    },
+                    "frame": {
+                      "properties": {
+                        "source": {
+                          "type": "string"
+                        },
+                        "frame_seq": {
+                          "type": "integer",
+                          "minimum": 1.0
+                        },
+                        "frame_timestamp": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "image": {
+                          "properties": {
+                            "width": {
+                              "type": "integer",
+                              "minimum": 1.0
+                            },
+                            "height": {
+                              "type": "integer",
+                              "minimum": 1.0
+                            }
+                          },
+                          "type": "object",
+                          "required": [
+                            "width",
+                            "height"
+                          ]
+                        },
+                        "content_type": {
+                          "type": "string"
+                        },
+                        "size_bytes": {
+                          "type": "integer",
+                          "minimum": 1.0
+                        }
+                      },
+                      "additionalProperties": true,
+                      "type": "object",
+                      "required": [
+                        "source",
+                        "frame_seq",
+                        "frame_timestamp",
+                        "image",
+                        "content_type",
+                        "size_bytes"
+                      ]
+                    },
+                    "overlay": {
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "events": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "ingest_context": {
+                      "properties": {
+                        "transport": {
+                          "type": "string"
+                        },
+                        "topic": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "stored_in_latest_frame_cache": {
+                          "type": "boolean"
+                        },
+                        "processed_inline": {
+                          "type": "boolean"
+                        },
+                        "source_health_updated": {
+                          "type": "boolean"
+                        },
+                        "ros_callback_compatible": {
+                          "type": "boolean"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "transport",
+                        "topic",
+                        "stored_in_latest_frame_cache",
+                        "processed_inline",
+                        "source_health_updated",
+                        "ros_callback_compatible"
+                      ]
+                    }
+                  },
+                  "additionalProperties": true,
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "processed",
+                    "status",
+                    "frame_seq",
+                    "event_count",
+                    "new_event_count",
+                    "evidence_action",
+                    "frame",
+                    "overlay",
+                    "reason",
+                    "ingest_context"
+                  ],
+                  "title": "Response Ingest And Process Frame Api V1 Vision Frame Process Post"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/frame/latest": {
+      "get": {
+        "summary": "Latest Frame",
+        "description": "Return latest raw frame metadata for one source.\n\nThis is a Lane B debug/fallback endpoint for visual QA. It exposes only the\nnewest cached frame and does not queue historical frames.",
+        "operationId": "latest_frame_api_v1_vision_frame_latest_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "global_cam_01",
+                "tb3_1_picam",
+                "tb3_2_picam"
+              ],
+              "title": "Source"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest raw frame debug metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "title": "Response Latest Frame Api V1 Vision Frame Latest Get",
+                  "required": [
+                    "generated_at",
+                    "frame"
+                  ],
+                  "properties": {
+                    "generated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "frame": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": [
+                        "source",
+                        "frame_seq",
+                        "frame_timestamp",
+                        "image",
+                        "content_type",
+                        "size_bytes"
+                      ],
+                      "properties": {
+                        "source": {
+                          "type": "string"
+                        },
+                        "frame_seq": {
+                          "type": "integer",
+                          "minimum": 1
+                        },
+                        "frame_timestamp": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "image": {
+                          "type": "object",
+                          "required": [
+                            "width",
+                            "height"
+                          ],
+                          "properties": {
+                            "width": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "height": {
+                              "type": "integer",
+                              "minimum": 1
+                            }
+                          }
+                        },
+                        "content_type": {
+                          "type": "string"
+                        },
+                        "size_bytes": {
+                          "type": "integer",
+                          "minimum": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/frame/latest/image": {
+      "get": {
+        "summary": "Latest Frame Image",
+        "description": "Return latest raw frame image for one source.\n\nThis is a debug/fallback image endpoint for comparing raw frame evidence\nagainst rendered overlays. Production browser streaming remains rosbridge.",
+        "operationId": "latest_frame_image_api_v1_vision_frame_latest_image_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "global_cam_01",
+                "tb3_1_picam",
+                "tb3_2_picam"
+              ],
+              "title": "Source"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/overlay/latest": {
+      "get": {
+        "summary": "Latest Overlay",
+        "description": "Return latest visual evidence overlay metadata for one source.",
+        "operationId": "latest_overlay_api_v1_vision_overlay_latest_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "global_cam_01",
+                "tb3_1_picam",
+                "tb3_2_picam"
+              ],
+              "title": "Source"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Latest Overlay Api V1 Vision Overlay Latest Get"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/overlay/latest/image": {
+      "get": {
+        "summary": "Latest Overlay Image",
+        "description": "Return latest overlay image for one source as JPEG.",
+        "operationId": "latest_overlay_image_api_v1_vision_overlay_latest_image_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "global_cam_01",
+                "tb3_1_picam",
+                "tb3_2_picam"
+              ],
+              "title": "Source"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/stream/{source}.mjpeg": {
+      "get": {
+        "summary": "Debug Overlay Mjpeg Stream",
+        "description": "Debug/fallback MJPEG stream of latest overlays.\n\nThis is not the production browser stream plane; rosbridge 9090 remains the\ndefault production path per Lane 0.",
+        "operationId": "debug_overlay_mjpeg_stream_api_v1_vision_stream__source__mjpeg_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source"
+            }
+          },
+          {
+            "name": "max_fps",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 30,
+              "minimum": 1,
+              "default": 10,
+              "title": "Max Fps"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metrics": {
+      "get": {
+        "summary": "Metrics Snapshot",
+        "operationId": "metrics_snapshot_api_v1_metrics_get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "enum": [
+                "global_cam_01",
+                "tb3_1_picam",
+                "tb3_2_picam"
+              ],
+              "title": "Source"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "AI Server in-memory metrics snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Metrics Snapshot Api V1 Metrics Get",
+                  "required": [
+                    "generated_at",
+                    "metrics",
+                    "event_store",
+                    "frame_store"
+                  ],
+                  "properties": {
+                    "generated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "metrics": {
+                      "type": "object"
+                    },
+                    "event_store": {
+                      "type": "object"
+                    },
+                    "frame_store": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/vision/synthetic/frame": {
+      "post": {
+        "summary": "Ingest Synthetic Frame",
+        "description": "Generate and ingest a synthetic ArUco frame for robot-free Lane B validation.\n\nThis debug endpoint exercises the same latest-frame, detection, and overlay\npath used by uploaded images, without requiring a physical camera or ROS2.",
+        "operationId": "ingest_synthetic_frame_api_v1_vision_synthetic_frame_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyntheticFrameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Synthetic frame detection response with overlay metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "source": {
+                      "type": "string"
+                    },
+                    "emitted": {
+                      "type": "boolean"
+                    },
+                    "emit_disabled": {
+                      "type": "boolean"
+                    },
+                    "emit_results": {
+                      "items": {
+                        "properties": {
+                          "event_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "attempted": {
+                            "type": "boolean"
+                          },
+                          "ok": {
+                            "type": "boolean"
+                          },
+                          "status_code": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "error": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "response": {
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          }
+                        },
+                        "additionalProperties": true,
+                        "type": "object",
+                        "required": [
+                          "event_id",
+                          "attempted",
+                          "ok",
+                          "status_code",
+                          "error",
+                          "response"
+                        ]
+                      },
+                      "type": "array"
+                    },
+                    "events": {
+                      "items": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "$id": "https://smartfactory.local/contracts/vision-event.schema.json",
+                        "allOf": [
+                          {
+                            "if": {
+                              "properties": {
+                                "source": {
+                                  "const": "global_cam_01"
+                                }
+                              },
+                              "required": [
+                                "source"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "robot_id": {
+                                  "type": "null"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "if": {
+                              "properties": {
+                                "source": {
+                                  "const": "tb3_1_picam"
+                                }
+                              },
+                              "required": [
+                                "source"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "robot_id": {
+                                  "const": "tb3_1"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "if": {
+                              "properties": {
+                                "source": {
+                                  "const": "tb3_2_picam"
+                                }
+                              },
+                              "required": [
+                                "source"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "robot_id": {
+                                  "const": "tb3_2"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "if": {
+                              "properties": {
+                                "event_kind": {
+                                  "const": "STALE"
+                                }
+                              },
+                              "required": [
+                                "event_kind"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "class_name": {
+                                  "const": "unknown"
+                                },
+                                "confidence": {
+                                  "type": "null"
+                                },
+                                "bbox_xyxy": {
+                                  "type": "null"
+                                },
+                                "wms_hint": {
+                                  "const": "VISION_STALE"
+                                }
+                              },
+                              "required": [
+                                "class_name",
+                                "confidence",
+                                "wms_hint"
+                              ]
+                            }
+                          },
+                          {
+                            "if": {
+                              "properties": {
+                                "event_kind": {
+                                  "const": "CONFIRMED"
+                                },
+                                "class_name": {
+                                  "enum": [
+                                    "aruco_marker",
+                                    "qr_marker",
+                                    "apriltag_marker"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "event_kind",
+                                "class_name"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "marker_id": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "marker_id"
+                              ]
+                            }
+                          },
+                          {
+                            "if": {
+                              "properties": {
+                                "event_kind": {
+                                  "enum": [
+                                    "CANDIDATE",
+                                    "CONFIRMED"
+                                  ]
+                                },
+                                "class_name": {
+                                  "enum": [
+                                    "person",
+                                    "obstacle",
+                                    "box",
+                                    "dropped_item",
+                                    "pallet",
+                                    "unknown"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "event_kind",
+                                "class_name"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "bbox_xyxy": {
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "type": "array",
+                                  "maxItems": 4,
+                                  "minItems": 4
+                                }
+                              },
+                              "required": [
+                                "bbox_xyxy"
+                              ]
+                            }
+                          }
+                        ],
+                        "properties": {
+                          "schema_version": {
+                            "type": "string",
+                            "const": "vision-event.v1"
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "timestamp": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "global_cam_01",
+                              "tb3_1_picam",
+                              "tb3_2_picam"
+                            ]
+                          },
+                          "robot_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              "tb3_1",
+                              "tb3_2",
+                              null
+                            ]
+                          },
+                          "frame_id": {
+                            "type": "string",
+                            "examples": [
+                              "global_camera_frame",
+                              "tb3_1_pi_camera_optical_frame"
+                            ]
+                          },
+                          "event_kind": {
+                            "type": "string",
+                            "enum": [
+                              "CANDIDATE",
+                              "CONFIRMED",
+                              "CLEARED",
+                              "STALE"
+                            ]
+                          },
+                          "class_name": {
+                            "type": "string",
+                            "enum": [
+                              "aruco_marker",
+                              "qr_marker",
+                              "apriltag_marker",
+                              "person",
+                              "obstacle",
+                              "box",
+                              "dropped_item",
+                              "pallet",
+                              "unknown"
+                            ]
+                          },
+                          "confidence": {
+                            "type": [
+                              "number",
+                              "null"
+                            ],
+                            "maximum": 1.0,
+                            "minimum": 0.0
+                          },
+                          "bbox_xyxy": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": [
+                              "array",
+                              "null"
+                            ],
+                            "maxItems": 4,
+                            "minItems": 4
+                          },
+                          "track_id": {
+                            "type": [
+                              "integer",
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "marker_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Decoded marker ID. Required by policy before WMS confirms item/slot identity."
+                          },
+                          "zone": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "examples": [
+                              "INBOUND",
+                              "STORAGE_A",
+                              "OUTBOUND",
+                              "WAIT"
+                            ]
+                          },
+                          "roi_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "examples": [
+                              "STORAGE_A01_ROI",
+                              "ROBOT_PATH_FRONT_ROI"
+                            ]
+                          },
+                          "pose_estimate": {
+                            "properties": {
+                              "method": {
+                                "type": "string",
+                                "enum": [
+                                  "APRILTAG_POSE",
+                                  "ARUCO_POSE",
+                                  "GLOBAL_HOMOGRAPHY",
+                                  "KNOWN_SIZE_ESTIMATE"
+                                ]
+                              },
+                              "x": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
+                              },
+                              "y": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
+                              },
+                              "yaw": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
+                              },
+                              "confidence": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ],
+                                "maximum": 1.0,
+                                "minimum": 0.0
+                              }
+                            },
+                            "additionalProperties": false,
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "method",
+                              "x",
+                              "y",
+                              "yaw",
+                              "confidence"
+                            ],
+                            "description": "Optional 2D/tag-pose estimate only. No depth camera is required in MVP1."
+                          },
+                          "depth_median_m": {
+                            "type": "null",
+                            "description": "Reserved for future depth-camera variants. Must remain null in MVP1."
+                          },
+                          "wms_hint": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              "TAG_DETECTED",
+                              "SLOT_CANDIDATE",
+                              "ITEM_CANDIDATE",
+                              "PERSON_CANDIDATE",
+                              "OBSTACLE_CANDIDATE",
+                              "DROPPED_ITEM_CANDIDATE",
+                              "VISION_STALE",
+                              null
+                            ],
+                            "description": "Non-authoritative hint. WMS-lite decides final task/slot/exception state."
+                          },
+                          "metadata": {
+                            "properties": {
+                              "n_frame_count": {
+                                "type": "integer",
+                                "minimum": 0.0
+                              },
+                              "policy_version": {
+                                "type": "string"
+                              },
+                              "model": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "image_width": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ],
+                                "minimum": 1.0
+                              },
+                              "image_height": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ],
+                                "minimum": 1.0
+                              },
+                              "latency_ms": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ],
+                                "minimum": 0.0
+                              }
+                            },
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "n_frame_count",
+                              "policy_version",
+                              "model"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "schema_version",
+                          "event_id",
+                          "timestamp",
+                          "source",
+                          "event_kind",
+                          "class_name",
+                          "confidence",
+                          "metadata",
+                          "robot_id",
+                          "frame_id"
+                        ],
+                        "title": "SmartFactory VisionEvent v1",
+                        "description": "API-first contract for AI Server evidence events sent to Main Server/WMS-lite. AI Server emits evidence only; WMS-lite owns final state transitions."
+                      },
+                      "type": "array"
+                    },
+                    "overlay": {
+                      "properties": {
+                        "source": {
+                          "type": "string"
+                        },
+                        "frame_seq": {
+                          "type": "integer",
+                          "minimum": 1.0
+                        },
+                        "frame_timestamp": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "evidence_timestamp": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "format": "date-time"
+                        },
+                        "overlay_timestamp": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "latency_ms": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "minimum": 0.0
+                        },
+                        "event_count": {
+                          "type": "integer",
+                          "minimum": 0.0
+                        },
+                        "stale": {
+                          "type": "boolean"
+                        },
+                        "visual_state": {
+                          "type": "string",
+                          "enum": [
+                            "fresh",
+                            "stale"
+                          ]
+                        },
+                        "image": {
+                          "properties": {
+                            "width": {
+                              "type": "integer",
+                              "minimum": 1.0
+                            },
+                            "height": {
+                              "type": "integer",
+                              "minimum": 1.0
+                            }
+                          },
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "width",
+                            "height"
+                          ]
+                        },
+                        "content_type": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "source",
+                        "frame_seq",
+                        "frame_timestamp",
+                        "evidence_timestamp",
+                        "overlay_timestamp",
+                        "latency_ms",
+                        "event_count",
+                        "stale",
+                        "visual_state",
+                        "image",
+                        "content_type"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "emitted",
+                    "emit_disabled",
+                    "emit_results",
+                    "events",
+                    "overlay"
+                  ],
+                  "title": "Response Ingest Synthetic Frame Api V1 Vision Synthetic Frame Post"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lift-roi/evaluate": {
+      "post": {
+        "summary": "Evaluate Lift Roi",
+        "description": "Evaluate caller-supplied detector/segmenter candidates against an ROI.\n\nThis is the MVP seam between future model providers and the stable\nLiftRoiEvidence contract. It intentionally accepts synthetic/provided\ncandidates instead of selecting a concrete runtime model.",
+        "operationId": "evaluate_lift_roi_api_v1_lift_roi_evaluate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object",
+                "title": "Payload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Contract-valid LiftRoiEvidence v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "$id": "https://smartfactory.local/contracts/lift-roi-evidence.schema.json",
+                  "$defs": {
+                    "image": {
+                      "properties": {
+                        "width": {
+                          "type": "integer",
+                          "minimum": 1.0
+                        },
+                        "height": {
+                          "type": "integer",
+                          "minimum": 1.0
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "width",
+                        "height"
+                      ]
+                    },
+                    "point_xy": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "type": "array",
+                      "maxItems": 2,
+                      "minItems": 2
+                    },
+                    "roi": {
+                      "properties": {
+                        "roi_id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "LIFT",
+                            "DROPPED_ITEM",
+                            "TARGET_SLOT"
+                          ]
+                        },
+                        "polygon_xy": {
+                          "items": {
+                            "$ref": "#/$defs/point_xy"
+                          },
+                          "type": "array",
+                          "minItems": 3
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "roi_id",
+                        "kind",
+                        "polygon_xy"
+                      ]
+                    },
+                    "lift_sensor": {
+                      "properties": {
+                        "lift_up": {
+                          "type": [
+                            "boolean",
+                            "null"
+                          ]
+                        },
+                        "lift_down_complete": {
+                          "type": [
+                            "boolean",
+                            "null"
+                          ]
+                        },
+                        "backoff_complete": {
+                          "type": [
+                            "boolean",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "lift_up",
+                        "lift_down_complete",
+                        "backoff_complete"
+                      ]
+                    },
+                    "item_decision": {
+                      "properties": {
+                        "class_name": {
+                          "type": "string",
+                          "enum": [
+                            "box",
+                            "pallet",
+                            "unknown"
+                          ]
+                        },
+                        "bbox_xyxy": {
+                          "items": {
+                            "type": "number"
+                          },
+                          "type": "array",
+                          "maxItems": 4,
+                          "minItems": 4
+                        },
+                        "confidence": {
+                          "type": "number",
+                          "maximum": 1.0,
+                          "minimum": 0.0
+                        },
+                        "track_id": {
+                          "type": [
+                            "integer",
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "evidence_type": {
+                          "type": "string",
+                          "enum": [
+                            "bbox",
+                            "instance_mask"
+                          ]
+                        },
+                        "mask_area_px": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 0.0
+                        },
+                        "center_inside_roi": {
+                          "type": "boolean"
+                        },
+                        "overlap_ratio": {
+                          "type": "number",
+                          "maximum": 1.0,
+                          "minimum": 0.0
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "accepted",
+                            "class_not_load",
+                            "low_confidence",
+                            "center_outside_roi",
+                            "insufficient_roi_overlap",
+                            "invalid_mask_shape",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "class_name",
+                        "bbox_xyxy",
+                        "confidence",
+                        "track_id",
+                        "evidence_type",
+                        "mask_area_px",
+                        "center_inside_roi",
+                        "overlap_ratio",
+                        "reason"
+                      ]
+                    },
+                    "load_evaluation": {
+                      "properties": {
+                        "count": {
+                          "type": "integer",
+                          "minimum": 0.0
+                        },
+                        "empty": {
+                          "type": "boolean"
+                        },
+                        "accepted_items": {
+                          "items": {
+                            "$ref": "#/$defs/item_decision"
+                          },
+                          "type": "array"
+                        },
+                        "rejected_items": {
+                          "items": {
+                            "$ref": "#/$defs/item_decision"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "count",
+                        "empty",
+                        "accepted_items",
+                        "rejected_items"
+                      ]
+                    },
+                    "verification": {
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "CONFIRMED",
+                            "CANDIDATE",
+                            "FAILED"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reason"
+                      ]
+                    },
+                    "policy": {
+                      "properties": {
+                        "policy_version": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "load_classes": {
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "box",
+                              "pallet"
+                            ]
+                          },
+                          "type": "array",
+                          "minItems": 1
+                        },
+                        "min_confidence": {
+                          "type": "number",
+                          "maximum": 1.0,
+                          "minimum": 0.0
+                        },
+                        "min_overlap_ratio": {
+                          "type": "number",
+                          "maximum": 1.0,
+                          "minimum": 0.0
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "policy_version",
+                        "load_classes",
+                        "min_confidence",
+                        "min_overlap_ratio"
+                      ]
+                    },
+                    "metadata": {
+                      "properties": {
+                        "model": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "latency_ms": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "minimum": 0.0
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "model",
+                        "latency_ms"
+                      ]
+                    }
+                  },
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "source": {
+                            "const": "global_cam_01"
+                          }
+                        },
+                        "required": [
+                          "source"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "robot_id": {
+                            "type": "null"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "source": {
+                            "const": "tb3_1_picam"
+                          }
+                        },
+                        "required": [
+                          "source"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "robot_id": {
+                            "const": "tb3_1"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "source": {
+                            "const": "tb3_2_picam"
+                          }
+                        },
+                        "required": [
+                          "source"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "robot_id": {
+                            "const": "tb3_2"
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "properties": {
+                    "schema_version": {
+                      "type": "string",
+                      "const": "lift-roi-evidence.v1"
+                    },
+                    "evidence_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "global_cam_01",
+                        "tb3_1_picam",
+                        "tb3_2_picam"
+                      ]
+                    },
+                    "robot_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "tb3_1",
+                        "tb3_2",
+                        null
+                      ]
+                    },
+                    "frame_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "operation": {
+                      "type": "string",
+                      "enum": [
+                        "PICKUP",
+                        "DROPOFF",
+                        "MONITOR"
+                      ]
+                    },
+                    "task_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "image": {
+                      "$ref": "#/$defs/image"
+                    },
+                    "roi": {
+                      "$ref": "#/$defs/roi"
+                    },
+                    "expected_count": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 0.0
+                    },
+                    "stable_frames": {
+                      "type": "integer",
+                      "minimum": 1.0
+                    },
+                    "count_stable": {
+                      "type": "boolean"
+                    },
+                    "lift_sensor": {
+                      "$ref": "#/$defs/lift_sensor"
+                    },
+                    "load": {
+                      "$ref": "#/$defs/load_evaluation"
+                    },
+                    "dropped_item_count": {
+                      "type": "integer",
+                      "minimum": 0.0
+                    },
+                    "verification": {
+                      "$ref": "#/$defs/verification"
+                    },
+                    "policy": {
+                      "$ref": "#/$defs/policy"
+                    },
+                    "metadata": {
+                      "$ref": "#/$defs/metadata"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "schema_version",
+                    "evidence_id",
+                    "timestamp",
+                    "source",
+                    "robot_id",
+                    "frame_id",
+                    "operation",
+                    "task_id",
+                    "image",
+                    "roi",
+                    "expected_count",
+                    "stable_frames",
+                    "count_stable",
+                    "lift_sensor",
+                    "load",
+                    "dropped_item_count",
+                    "verification",
+                    "policy",
+                    "metadata"
+                  ],
+                  "title": "SmartFactory LiftRoiEvidence v1",
+                  "description": "AI Server evidence payload for lift ROI load counting and pickup/dropoff verification. This is separate from VisionEvent v1; WMS/Main owns final task and inventory state transitions."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lift-roi/evaluate-image": {
+      "post": {
+        "summary": "Evaluate Lift Roi Image",
+        "description": "Evaluate lift ROI evidence from an uploaded image using the configured segmenter.",
+        "operationId": "evaluate_lift_roi_image_api_v1_lift_roi_evaluate_image_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_evaluate_lift_roi_image_api_v1_lift_roi_evaluate_image_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Contract-valid LiftRoiEvidence v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "$id": "https://smartfactory.local/contracts/lift-roi-evidence.schema.json",
+                  "$defs": {
+                    "image": {
+                      "properties": {
+                        "width": {
+                          "type": "integer",
+                          "minimum": 1.0
+                        },
+                        "height": {
+                          "type": "integer",
+                          "minimum": 1.0
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "width",
+                        "height"
+                      ]
+                    },
+                    "point_xy": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "type": "array",
+                      "maxItems": 2,
+                      "minItems": 2
+                    },
+                    "roi": {
+                      "properties": {
+                        "roi_id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "LIFT",
+                            "DROPPED_ITEM",
+                            "TARGET_SLOT"
+                          ]
+                        },
+                        "polygon_xy": {
+                          "items": {
+                            "$ref": "#/$defs/point_xy"
+                          },
+                          "type": "array",
+                          "minItems": 3
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "roi_id",
+                        "kind",
+                        "polygon_xy"
+                      ]
+                    },
+                    "lift_sensor": {
+                      "properties": {
+                        "lift_up": {
+                          "type": [
+                            "boolean",
+                            "null"
+                          ]
+                        },
+                        "lift_down_complete": {
+                          "type": [
+                            "boolean",
+                            "null"
+                          ]
+                        },
+                        "backoff_complete": {
+                          "type": [
+                            "boolean",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "lift_up",
+                        "lift_down_complete",
+                        "backoff_complete"
+                      ]
+                    },
+                    "item_decision": {
+                      "properties": {
+                        "class_name": {
+                          "type": "string",
+                          "enum": [
+                            "box",
+                            "pallet",
+                            "unknown"
+                          ]
+                        },
+                        "bbox_xyxy": {
+                          "items": {
+                            "type": "number"
+                          },
+                          "type": "array",
+                          "maxItems": 4,
+                          "minItems": 4
+                        },
+                        "confidence": {
+                          "type": "number",
+                          "maximum": 1.0,
+                          "minimum": 0.0
+                        },
+                        "track_id": {
+                          "type": [
+                            "integer",
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "evidence_type": {
+                          "type": "string",
+                          "enum": [
+                            "bbox",
+                            "instance_mask"
+                          ]
+                        },
+                        "mask_area_px": {
+                          "type": [
+                            "integer",
+                            "null"
+                          ],
+                          "minimum": 0.0
+                        },
+                        "center_inside_roi": {
+                          "type": "boolean"
+                        },
+                        "overlap_ratio": {
+                          "type": "number",
+                          "maximum": 1.0,
+                          "minimum": 0.0
+                        },
+                        "reason": {
+                          "type": "string",
+                          "enum": [
+                            "accepted",
+                            "class_not_load",
+                            "low_confidence",
+                            "center_outside_roi",
+                            "insufficient_roi_overlap",
+                            "invalid_mask_shape",
+                            "unknown"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "class_name",
+                        "bbox_xyxy",
+                        "confidence",
+                        "track_id",
+                        "evidence_type",
+                        "mask_area_px",
+                        "center_inside_roi",
+                        "overlap_ratio",
+                        "reason"
+                      ]
+                    },
+                    "load_evaluation": {
+                      "properties": {
+                        "count": {
+                          "type": "integer",
+                          "minimum": 0.0
+                        },
+                        "empty": {
+                          "type": "boolean"
+                        },
+                        "accepted_items": {
+                          "items": {
+                            "$ref": "#/$defs/item_decision"
+                          },
+                          "type": "array"
+                        },
+                        "rejected_items": {
+                          "items": {
+                            "$ref": "#/$defs/item_decision"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "count",
+                        "empty",
+                        "accepted_items",
+                        "rejected_items"
+                      ]
+                    },
+                    "verification": {
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "CONFIRMED",
+                            "CANDIDATE",
+                            "FAILED"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "reason"
+                      ]
+                    },
+                    "policy": {
+                      "properties": {
+                        "policy_version": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "load_classes": {
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "box",
+                              "pallet"
+                            ]
+                          },
+                          "type": "array",
+                          "minItems": 1
+                        },
+                        "min_confidence": {
+                          "type": "number",
+                          "maximum": 1.0,
+                          "minimum": 0.0
+                        },
+                        "min_overlap_ratio": {
+                          "type": "number",
+                          "maximum": 1.0,
+                          "minimum": 0.0
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "policy_version",
+                        "load_classes",
+                        "min_confidence",
+                        "min_overlap_ratio"
+                      ]
+                    },
+                    "metadata": {
+                      "properties": {
+                        "model": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "latency_ms": {
+                          "type": [
+                            "number",
+                            "null"
+                          ],
+                          "minimum": 0.0
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "model",
+                        "latency_ms"
+                      ]
+                    }
+                  },
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "source": {
+                            "const": "global_cam_01"
+                          }
+                        },
+                        "required": [
+                          "source"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "robot_id": {
+                            "type": "null"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "source": {
+                            "const": "tb3_1_picam"
+                          }
+                        },
+                        "required": [
+                          "source"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "robot_id": {
+                            "const": "tb3_1"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "source": {
+                            "const": "tb3_2_picam"
+                          }
+                        },
+                        "required": [
+                          "source"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "robot_id": {
+                            "const": "tb3_2"
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "properties": {
+                    "schema_version": {
+                      "type": "string",
+                      "const": "lift-roi-evidence.v1"
+                    },
+                    "evidence_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "global_cam_01",
+                        "tb3_1_picam",
+                        "tb3_2_picam"
+                      ]
+                    },
+                    "robot_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "tb3_1",
+                        "tb3_2",
+                        null
+                      ]
+                    },
+                    "frame_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "operation": {
+                      "type": "string",
+                      "enum": [
+                        "PICKUP",
+                        "DROPOFF",
+                        "MONITOR"
+                      ]
+                    },
+                    "task_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "image": {
+                      "$ref": "#/$defs/image"
+                    },
+                    "roi": {
+                      "$ref": "#/$defs/roi"
+                    },
+                    "expected_count": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 0.0
+                    },
+                    "stable_frames": {
+                      "type": "integer",
+                      "minimum": 1.0
+                    },
+                    "count_stable": {
+                      "type": "boolean"
+                    },
+                    "lift_sensor": {
+                      "$ref": "#/$defs/lift_sensor"
+                    },
+                    "load": {
+                      "$ref": "#/$defs/load_evaluation"
+                    },
+                    "dropped_item_count": {
+                      "type": "integer",
+                      "minimum": 0.0
+                    },
+                    "verification": {
+                      "$ref": "#/$defs/verification"
+                    },
+                    "policy": {
+                      "$ref": "#/$defs/policy"
+                    },
+                    "metadata": {
+                      "$ref": "#/$defs/metadata"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "schema_version",
+                    "evidence_id",
+                    "timestamp",
+                    "source",
+                    "robot_id",
+                    "frame_id",
+                    "operation",
+                    "task_id",
+                    "image",
+                    "roi",
+                    "expected_count",
+                    "stable_frames",
+                    "count_stable",
+                    "lift_sensor",
+                    "load",
+                    "dropped_item_count",
+                    "verification",
+                    "policy",
+                    "metadata"
+                  ],
+                  "title": "SmartFactory LiftRoiEvidence v1",
+                  "description": "AI Server evidence payload for lift ROI load counting and pickup/dropoff verification. This is separate from VisionEvent v1; WMS/Main owns final task and inventory state transitions."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/detect/image": {
+      "post": {
+        "summary": "Detect Image",
+        "description": "Debug/offline detector endpoint.\n\nThe endpoint decodes uploaded images, runs deterministic marker detectors,\nand returns contract-valid VisionEvents for detections.",
+        "operationId": "detect_image_api_v1_detect_image_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_detect_image_api_v1_detect_image_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Image detection response with VisionEvent v1 events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "source": {
+                      "type": "string"
+                    },
+                    "emitted": {
+                      "type": "boolean"
+                    },
+                    "emit_disabled": {
+                      "type": "boolean"
+                    },
+                    "emit_results": {
+                      "items": {
+                        "properties": {
+                          "event_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "attempted": {
+                            "type": "boolean"
+                          },
+                          "ok": {
+                            "type": "boolean"
+                          },
+                          "status_code": {
+                            "type": [
+                              "integer",
+                              "null"
+                            ]
+                          },
+                          "error": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "response": {
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          }
+                        },
+                        "additionalProperties": true,
+                        "type": "object",
+                        "required": [
+                          "event_id",
+                          "attempted",
+                          "ok",
+                          "status_code",
+                          "error",
+                          "response"
+                        ]
+                      },
+                      "type": "array"
+                    },
+                    "events": {
+                      "items": {
+                        "$schema": "https://json-schema.org/draft/2020-12/schema",
+                        "$id": "https://smartfactory.local/contracts/vision-event.schema.json",
+                        "allOf": [
+                          {
+                            "if": {
+                              "properties": {
+                                "source": {
+                                  "const": "global_cam_01"
+                                }
+                              },
+                              "required": [
+                                "source"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "robot_id": {
+                                  "type": "null"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "if": {
+                              "properties": {
+                                "source": {
+                                  "const": "tb3_1_picam"
+                                }
+                              },
+                              "required": [
+                                "source"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "robot_id": {
+                                  "const": "tb3_1"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "if": {
+                              "properties": {
+                                "source": {
+                                  "const": "tb3_2_picam"
+                                }
+                              },
+                              "required": [
+                                "source"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "robot_id": {
+                                  "const": "tb3_2"
+                                }
+                              }
+                            }
+                          },
+                          {
+                            "if": {
+                              "properties": {
+                                "event_kind": {
+                                  "const": "STALE"
+                                }
+                              },
+                              "required": [
+                                "event_kind"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "class_name": {
+                                  "const": "unknown"
+                                },
+                                "confidence": {
+                                  "type": "null"
+                                },
+                                "bbox_xyxy": {
+                                  "type": "null"
+                                },
+                                "wms_hint": {
+                                  "const": "VISION_STALE"
+                                }
+                              },
+                              "required": [
+                                "class_name",
+                                "confidence",
+                                "wms_hint"
+                              ]
+                            }
+                          },
+                          {
+                            "if": {
+                              "properties": {
+                                "event_kind": {
+                                  "const": "CONFIRMED"
+                                },
+                                "class_name": {
+                                  "enum": [
+                                    "aruco_marker",
+                                    "qr_marker",
+                                    "apriltag_marker"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "event_kind",
+                                "class_name"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "marker_id": {
+                                  "type": "string",
+                                  "minLength": 1
+                                }
+                              },
+                              "required": [
+                                "marker_id"
+                              ]
+                            }
+                          },
+                          {
+                            "if": {
+                              "properties": {
+                                "event_kind": {
+                                  "enum": [
+                                    "CANDIDATE",
+                                    "CONFIRMED"
+                                  ]
+                                },
+                                "class_name": {
+                                  "enum": [
+                                    "person",
+                                    "obstacle",
+                                    "box",
+                                    "dropped_item",
+                                    "pallet",
+                                    "unknown"
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "event_kind",
+                                "class_name"
+                              ]
+                            },
+                            "then": {
+                              "properties": {
+                                "bbox_xyxy": {
+                                  "items": {
+                                    "type": "number"
+                                  },
+                                  "type": "array",
+                                  "maxItems": 4,
+                                  "minItems": 4
+                                }
+                              },
+                              "required": [
+                                "bbox_xyxy"
+                              ]
+                            }
+                          }
+                        ],
+                        "properties": {
+                          "schema_version": {
+                            "type": "string",
+                            "const": "vision-event.v1"
+                          },
+                          "event_id": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "timestamp": {
+                            "type": "string",
+                            "format": "date-time"
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": [
+                              "global_cam_01",
+                              "tb3_1_picam",
+                              "tb3_2_picam"
+                            ]
+                          },
+                          "robot_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              "tb3_1",
+                              "tb3_2",
+                              null
+                            ]
+                          },
+                          "frame_id": {
+                            "type": "string",
+                            "examples": [
+                              "global_camera_frame",
+                              "tb3_1_pi_camera_optical_frame"
+                            ]
+                          },
+                          "event_kind": {
+                            "type": "string",
+                            "enum": [
+                              "CANDIDATE",
+                              "CONFIRMED",
+                              "CLEARED",
+                              "STALE"
+                            ]
+                          },
+                          "class_name": {
+                            "type": "string",
+                            "enum": [
+                              "aruco_marker",
+                              "qr_marker",
+                              "apriltag_marker",
+                              "person",
+                              "obstacle",
+                              "box",
+                              "dropped_item",
+                              "pallet",
+                              "unknown"
+                            ]
+                          },
+                          "confidence": {
+                            "type": [
+                              "number",
+                              "null"
+                            ],
+                            "maximum": 1.0,
+                            "minimum": 0.0
+                          },
+                          "bbox_xyxy": {
+                            "items": {
+                              "type": "number"
+                            },
+                            "type": [
+                              "array",
+                              "null"
+                            ],
+                            "maxItems": 4,
+                            "minItems": 4
+                          },
+                          "track_id": {
+                            "type": [
+                              "integer",
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "marker_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Decoded marker ID. Required by policy before WMS confirms item/slot identity."
+                          },
+                          "zone": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "examples": [
+                              "INBOUND",
+                              "STORAGE_A",
+                              "OUTBOUND",
+                              "WAIT"
+                            ]
+                          },
+                          "roi_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "examples": [
+                              "STORAGE_A01_ROI",
+                              "ROBOT_PATH_FRONT_ROI"
+                            ]
+                          },
+                          "pose_estimate": {
+                            "properties": {
+                              "method": {
+                                "type": "string",
+                                "enum": [
+                                  "APRILTAG_POSE",
+                                  "ARUCO_POSE",
+                                  "GLOBAL_HOMOGRAPHY",
+                                  "KNOWN_SIZE_ESTIMATE"
+                                ]
+                              },
+                              "x": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
+                              },
+                              "y": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
+                              },
+                              "yaw": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ]
+                              },
+                              "confidence": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ],
+                                "maximum": 1.0,
+                                "minimum": 0.0
+                              }
+                            },
+                            "additionalProperties": false,
+                            "type": [
+                              "object",
+                              "null"
+                            ],
+                            "required": [
+                              "method",
+                              "x",
+                              "y",
+                              "yaw",
+                              "confidence"
+                            ],
+                            "description": "Optional 2D/tag-pose estimate only. No depth camera is required in MVP1."
+                          },
+                          "depth_median_m": {
+                            "type": "null",
+                            "description": "Reserved for future depth-camera variants. Must remain null in MVP1."
+                          },
+                          "wms_hint": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "enum": [
+                              "TAG_DETECTED",
+                              "SLOT_CANDIDATE",
+                              "ITEM_CANDIDATE",
+                              "PERSON_CANDIDATE",
+                              "OBSTACLE_CANDIDATE",
+                              "DROPPED_ITEM_CANDIDATE",
+                              "VISION_STALE",
+                              null
+                            ],
+                            "description": "Non-authoritative hint. WMS-lite decides final task/slot/exception state."
+                          },
+                          "metadata": {
+                            "properties": {
+                              "n_frame_count": {
+                                "type": "integer",
+                                "minimum": 0.0
+                              },
+                              "policy_version": {
+                                "type": "string"
+                              },
+                              "model": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "image_width": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ],
+                                "minimum": 1.0
+                              },
+                              "image_height": {
+                                "type": [
+                                  "integer",
+                                  "null"
+                                ],
+                                "minimum": 1.0
+                              },
+                              "latency_ms": {
+                                "type": [
+                                  "number",
+                                  "null"
+                                ],
+                                "minimum": 0.0
+                              }
+                            },
+                            "additionalProperties": false,
+                            "type": "object",
+                            "required": [
+                              "n_frame_count",
+                              "policy_version",
+                              "model"
+                            ]
+                          }
+                        },
+                        "additionalProperties": false,
+                        "type": "object",
+                        "required": [
+                          "schema_version",
+                          "event_id",
+                          "timestamp",
+                          "source",
+                          "event_kind",
+                          "class_name",
+                          "confidence",
+                          "metadata",
+                          "robot_id",
+                          "frame_id"
+                        ],
+                        "title": "SmartFactory VisionEvent v1",
+                        "description": "API-first contract for AI Server evidence events sent to Main Server/WMS-lite. AI Server emits evidence only; WMS-lite owns final state transitions."
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "source",
+                    "emitted",
+                    "emit_disabled",
+                    "emit_results",
+                    "events"
+                  ],
+                  "title": "Response Detect Image Api V1 Detect Image Post"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_detect_image_api_v1_detect_image_post": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "global_cam_01",
+              "tb3_1_picam",
+              "tb3_2_picam"
+            ],
+            "title": "Source"
+          },
+          "image": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Image"
+          },
+          "emit": {
+            "type": "boolean",
+            "title": "Emit",
+            "default": false
+          },
+          "pose_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pose Profile"
+          },
+          "marker_size_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Marker Size M"
+          },
+          "camera_fx": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Fx"
+          },
+          "camera_fy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Fy"
+          },
+          "camera_cx": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Cx"
+          },
+          "camera_cy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Cy"
+          },
+          "camera_dist_coeffs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Camera Dist Coeffs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "image"
+        ],
+        "title": "Body_detect_image_api_v1_detect_image_post"
+      },
+      "Body_evaluate_lift_roi_image_api_v1_lift_roi_evaluate_image_post": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "global_cam_01",
+              "tb3_1_picam",
+              "tb3_2_picam"
+            ],
+            "title": "Source"
+          },
+          "operation": {
+            "type": "string",
+            "title": "Operation"
+          },
+          "roi_json": {
+            "type": "string",
+            "title": "Roi Json"
+          },
+          "image": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Image"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "expected_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Count"
+          },
+          "stable_frames": {
+            "type": "integer",
+            "title": "Stable Frames",
+            "default": 1
+          },
+          "count_stable": {
+            "type": "boolean",
+            "title": "Count Stable",
+            "default": false
+          },
+          "lift_up": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lift Up"
+          },
+          "lift_down_complete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lift Down Complete"
+          },
+          "backoff_complete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backoff Complete"
+          },
+          "dropped_item_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dropped Item Count"
+          },
+          "policy_json": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Json"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "operation",
+          "roi_json",
+          "image"
+        ],
+        "title": "Body_evaluate_lift_roi_image_api_v1_lift_roi_evaluate_image_post"
+      },
+      "Body_ingest_and_process_frame_api_v1_vision_frame_process_post": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "global_cam_01",
+              "tb3_1_picam",
+              "tb3_2_picam"
+            ],
+            "title": "Source"
+          },
+          "image": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Image"
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "default": true
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "image"
+        ],
+        "title": "Body_ingest_and_process_frame_api_v1_vision_frame_process_post"
+      },
+      "Body_ingest_frame_api_v1_vision_frame_post": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "global_cam_01",
+              "tb3_1_picam",
+              "tb3_2_picam"
+            ],
+            "title": "Source"
+          },
+          "image": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Image"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "image"
+        ],
+        "title": "Body_ingest_frame_api_v1_vision_frame_post"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "SyntheticFrameRequest": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "global_cam_01",
+              "tb3_1_picam",
+              "tb3_2_picam"
+            ],
+            "title": "Source"
+          },
+          "marker_id": {
+            "type": "integer",
+            "maximum": 49.0,
+            "minimum": 0.0,
+            "title": "Marker Id",
+            "default": 7
+          },
+          "marker_size": {
+            "type": "integer",
+            "maximum": 512.0,
+            "minimum": 16.0,
+            "title": "Marker Size",
+            "default": 96
+          },
+          "padding": {
+            "type": "integer",
+            "maximum": 512.0,
+            "minimum": 0.0,
+            "title": "Padding",
+            "default": 32
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "default": false
+          },
+          "emit": {
+            "type": "boolean",
+            "title": "Emit",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "title": "SyntheticFrameRequest",
+        "description": "Robot-free synthetic frame ingest request for Lane B debug validation."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VisionWorkerTickRequest": {
+        "properties": {
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "enum": [
+              "global_cam_01",
+              "tb3_1_picam",
+              "tb3_2_picam"
+            ],
+            "title": "Source"
+          },
+          "force": {
+            "type": "boolean",
+            "title": "Force",
+            "default": false
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "default": false
+          },
+          "max_frame_age_s": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Frame Age S"
+          }
+        },
+        "type": "object",
+        "title": "VisionWorkerTickRequest",
+        "description": "Controlled one-shot latest-frame processing tick for Lane B validation."
+      }
+    }
+  }
+}

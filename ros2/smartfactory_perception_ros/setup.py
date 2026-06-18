@@ -12,6 +12,11 @@ setup(
         ('share/' + package_name + '/launch', [
             'launch/ai_snapshot_clients.launch.py',
             'launch/aruco_pose_monitor.launch.py',
+            'launch/vision_frame_gateway.launch.py',
+            'launch/vision_overlay_stream_bridge.launch.py',
+        ]),
+        ('share/' + package_name + '/config', [
+            'config/lane_c_domain_bridge_allowlist.yaml',
         ]),
     ],
     install_requires=['setuptools'],
@@ -25,6 +30,8 @@ setup(
         'console_scripts': [
             'image_snapshot_client = smartfactory_perception_ros.image_snapshot_client:main',
             'aruco_pose_monitor = smartfactory_perception_ros.aruco_pose_monitor:main',
+            'vision_frame_gateway = smartfactory_perception_ros.vision_frame_gateway:main',
+            'vision_overlay_stream_bridge = smartfactory_perception_ros.vision_overlay_stream_bridge:main',
         ],
     },
 )

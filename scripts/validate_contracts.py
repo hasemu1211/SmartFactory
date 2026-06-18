@@ -23,10 +23,10 @@ ROOT = Path(__file__).resolve().parents[1]
 VISION_EVENT_SCHEMA_PATH = ROOT / "docs/contracts/vision-event.schema.json"
 LIFT_ROI_EVIDENCE_SCHEMA_PATH = ROOT / "docs/contracts/lift-roi-evidence.schema.json"
 FIXTURE_DIR = ROOT / "docs/contracts/fixtures"
+SOURCE_REGISTRY_SNAPSHOT_PATH = ROOT / "docs/contracts/generated/source-registry.snapshot.json"
+SOURCE_REGISTRY_FIXTURE_PATH = FIXTURE_DIR / "source-registry.valid.json"
 MARKER_CLASSES = {"aruco_marker", "qr_marker", "apriltag_marker"}
 DETECTION_CLASSES = {"person", "obstacle", "box", "dropped_item", "pallet", "unknown"}
-
-
 class PolicyError(ValueError):
     """Raised when a fixture passes JSON Schema but violates MVP1 event policy."""
 
@@ -36,15 +36,24 @@ def load_json(path: Path) -> Any:
         return json.load(f)
 
 
+SOURCE_REGISTRY = (
+    load_json(SOURCE_REGISTRY_SNAPSHOT_PATH)
+    if SOURCE_REGISTRY_SNAPSHOT_PATH.exists()
+    else {"sources": []}
+)
+SOURCE_BY_ID = {item["source_id"]: item for item in SOURCE_REGISTRY.get("sources", [])}
+
+
 def validate_policy(event: dict[str, Any]) -> None:
     source = event.get("source")
     robot_id = event.get("robot_id")
-    if source == "global_cam_01" and robot_id is not None:
-        raise PolicyError("global camera events must use robot_id null")
-    if source == "tb3_1_picam" and robot_id != "tb3_1":
-        raise PolicyError("tb3_1_picam events must use robot_id tb3_1")
-    if source == "tb3_2_picam" and robot_id != "tb3_2":
-        raise PolicyError("tb3_2_picam events must use robot_id tb3_2")
+    expected = SOURCE_BY_ID.get(source)
+    if expected is None:
+        raise PolicyError(f"unknown source {source!r} is not in source registry")
+    if robot_id != expected.get("robot_id"):
+        raise PolicyError(f"{source} events must use robot_id {expected.get('robot_id')!r}")
+    if event.get("frame_id") != expected.get("frame_id"):
+        raise PolicyError(f"{source} events must use frame_id {expected.get('frame_id')!r}")
 
     if event.get("depth_median_m") is not None:
         raise PolicyError("depth_median_m must be null in MVP1")
@@ -87,12 +96,13 @@ def _validate_bbox_order(bbox: list[Any]) -> None:
 def validate_lift_roi_policy(payload: dict[str, Any]) -> None:
     source = payload.get("source")
     robot_id = payload.get("robot_id")
-    if source == "global_cam_01" and robot_id is not None:
-        raise PolicyError("global camera lift ROI evidence must use robot_id null")
-    if source == "tb3_1_picam" and robot_id != "tb3_1":
-        raise PolicyError("tb3_1_picam lift ROI evidence must use robot_id tb3_1")
-    if source == "tb3_2_picam" and robot_id != "tb3_2":
-        raise PolicyError("tb3_2_picam lift ROI evidence must use robot_id tb3_2")
+    expected = SOURCE_BY_ID.get(source)
+    if expected is None:
+        raise PolicyError(f"unknown source {source!r} is not in source registry")
+    if robot_id != expected.get("robot_id"):
+        raise PolicyError(f"{source} lift ROI evidence must use robot_id {expected.get('robot_id')!r}")
+    if payload.get("frame_id") != expected.get("frame_id"):
+        raise PolicyError(f"{source} lift ROI evidence must use frame_id {expected.get('frame_id')!r}")
 
     load = payload["load"]
     accepted = load["accepted_items"]
@@ -140,6 +150,25 @@ def validate_lift_roi_evidence(path: Path, schema: dict[str, Any]) -> None:
     validate_lift_roi_policy(payload)
 
 
+def validate_source_registry_surfaces(failures: list[str], vision_schema: dict[str, Any], lift_roi_schema: dict[str, Any]) -> None:
+    if not SOURCE_BY_ID:
+        failures.append("source registry snapshot is missing or empty")
+        return
+    source_ids = SOURCE_REGISTRY.get("source_ids")
+    if source_ids != list(SOURCE_BY_ID):
+        failures.append("source registry source_ids do not match sources order")
+    if vision_schema.get("properties", {}).get("source", {}).get("enum") != source_ids:
+        failures.append("VisionEvent source enum does not match source registry")
+    if lift_roi_schema.get("properties", {}).get("source", {}).get("enum") != source_ids:
+        failures.append("LiftRoiEvidence source enum does not match source registry")
+    if SOURCE_REGISTRY_FIXTURE_PATH.exists():
+        fixture = load_json(SOURCE_REGISTRY_FIXTURE_PATH)
+        if fixture != SOURCE_REGISTRY:
+            failures.append("source-registry.valid.json fixture does not match generated snapshot")
+    else:
+        failures.append("source-registry.valid.json fixture is missing")
+
+
 def validate_fixture_set(
     *,
     contract_name: str,
@@ -172,6 +201,8 @@ def main() -> int:
     vision_event_schema = load_json(VISION_EVENT_SCHEMA_PATH)
     lift_roi_schema = load_json(LIFT_ROI_EVIDENCE_SCHEMA_PATH)
     failures: list[str] = []
+
+    validate_source_registry_surfaces(failures, vision_event_schema, lift_roi_schema)
 
     validate_fixture_set(
         contract_name="VisionEvent",

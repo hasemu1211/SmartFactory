@@ -1,0 +1,42 @@
+services:
+  ai-server:
+    build:
+      context: .
+      dockerfile: services/ai-server/Dockerfile
+    image: smartfactory-ai-server:local
+    container_name: smartfactory-ai-server
+    restart: unless-stopped
+    environment:
+      AI_SERVER_HOST: 0.0.0.0
+      AI_SERVER_PORT: "8100"
+      MAIN_SERVER_URL: ${MAIN_SERVER_URL:-http://127.0.0.1:8000}
+      WMS_EMIT_ENABLED: ${WMS_EMIT_ENABLED:-false}
+      WMS_EMIT_TIMEOUT_S: ${WMS_EMIT_TIMEOUT_S:-2.0}
+      WMS_EMIT_RETRIES: ${WMS_EMIT_RETRIES:-0}
+      CAMERA_SOURCES: ${CAMERA_SOURCES:-global_cam_01,tb3_1_picam,tb3_2_picam}
+      ROS_IMAGE_TOPICS: ${ROS_IMAGE_TOPICS:-/global_camera/image_raw,/tb3_1/pi_camera/image_raw,/tb3_2/pi_camera/image_raw}
+      SOURCE_TARGET_FPS: ${SOURCE_TARGET_FPS:-10.0}
+      SOURCE_STALE_AFTER_S: ${SOURCE_STALE_AFTER_S:-2.0}
+      SOURCE_OFFLINE_AFTER_S: ${SOURCE_OFFLINE_AFTER_S:-30.0}
+      EVENT_STORE_MAXLEN: ${EVENT_STORE_MAXLEN:-200}
+      VISION_MODEL_PATH: ${VISION_MODEL_PATH:-}
+      VISION_MODEL_TASK: ${VISION_MODEL_TASK:-segment}
+      VISION_MODEL_CONF: ${VISION_MODEL_CONF:-0.5}
+      VISION_MODEL_IOU: ${VISION_MODEL_IOU:-0.5}
+      VISION_MODEL_IMGSZ: ${VISION_MODEL_IMGSZ:-640}
+      VISION_MODEL_DEVICE: ${VISION_MODEL_DEVICE:-cpu}
+      ARUCO_POSE_PROFILES_PATH: /app/config/perception/aruco_pose_profiles.example.json
+    ports:
+      - "${AI_SERVER_PORT:-8100}:8100"
+    volumes:
+      - ./config/perception:/app/config/perception:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/api/v1/health', timeout=2).read()"
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 15s

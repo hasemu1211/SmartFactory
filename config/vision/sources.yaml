@@ -1,0 +1,64 @@
+schema_version: vision-sources.v1
+sources:
+  - source_id: global_cam_01
+    kind: global_rgb
+    robot_id: null
+    frame_id: global_camera_frame
+    enabled: true
+    target_fps: 10.0
+    notes: overview/slot/zone evidence
+    physical_input:
+      topic: /global_camera/image_raw
+      message_type: sensor_msgs/msg/Image
+      content_type: image/raw
+      preferred_transport: raw
+    browser:
+      legacy_topic: null
+      legacy_message_type: null
+      primary_transport: rosbridge
+    normalized_topics:
+      image: /sf/vision/sources/global_cam_01/image/compressed
+      overlay: /sf/vision/sources/global_cam_01/overlay/compressed
+    evidence_event_topic: /sf/vision/events
+
+  - source_id: tb3_1_picam
+    kind: robot_pi_camera
+    robot_id: tb3_1
+    frame_id: tb3_1_pi_camera_optical_frame
+    enabled: true
+    target_fps: 10.0
+    notes: front marker/dock/local item evidence
+    physical_input:
+      topic: /tb3_1/camera/image_raw/compressed
+      message_type: sensor_msgs/msg/CompressedImage
+      content_type: image/jpeg
+      preferred_transport: compressed
+    browser:
+      legacy_topic: /mission/tb3_1/camera/compressed
+      legacy_message_type: sensor_msgs/msg/CompressedImage
+      primary_transport: rosbridge
+    normalized_topics:
+      image: /sf/vision/sources/tb3_1_picam/image/compressed
+      overlay: /sf/vision/sources/tb3_1_picam/overlay/compressed
+    evidence_event_topic: /sf/vision/events
+
+  - source_id: tb3_2_picam
+    kind: robot_pi_camera
+    robot_id: tb3_2
+    frame_id: tb3_2_pi_camera_optical_frame
+    enabled: true
+    target_fps: 10.0
+    notes: front marker/dock/local item evidence
+    physical_input:
+      topic: /tb3_2/camera/image_raw/compressed
+      message_type: sensor_msgs/msg/CompressedImage
+      content_type: image/jpeg
+      preferred_transport: compressed
+    browser:
+      legacy_topic: /mission/tb3_2/camera/compressed
+      legacy_message_type: sensor_msgs/msg/CompressedImage
+      primary_transport: rosbridge
+    normalized_topics:
+      image: /sf/vision/sources/tb3_2_picam/image/compressed
+      overlay: /sf/vision/sources/tb3_2_picam/overlay/compressed
+    evidence_event_topic: /sf/vision/events

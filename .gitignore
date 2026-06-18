@@ -4,6 +4,7 @@
 docs/confluence/captures/
 # Python / local env
 .venv/
+.venv-*/
 __pycache__/
 *.py[cod]
 .pytest_cache/
