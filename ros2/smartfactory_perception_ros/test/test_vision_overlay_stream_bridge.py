@@ -9,6 +9,7 @@ import rclpy
 from rclpy.qos import ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage
 
+from smartfactory_perception_ros.qos_profiles import build_bounded_image_qos_profile
 from smartfactory_perception_ros.vision_overlay_stream_bridge import (
     BOUNDARY,
     FrameSnapshot,
@@ -105,9 +106,13 @@ def test_clamp_max_fps_keeps_bridge_bounded():
 def test_overlay_stream_bridge_qos_profile_builder_is_configurable():
     reliable = build_qos_profile("reliable", depth=1, role="overlay subscribe")
     best_effort = build_qos_profile("best_effort", depth=1, role="overlay subscribe")
+    shared_best_effort = build_bounded_image_qos_profile(
+        "sensor_data", depth=1, role="shared overlay subscribe"
+    )
 
     assert reliable.reliability == ReliabilityPolicy.RELIABLE
     assert best_effort.reliability == ReliabilityPolicy.BEST_EFFORT
+    assert shared_best_effort.reliability == ReliabilityPolicy.BEST_EFFORT
 
     with pytest.raises(ValueError, match="QoS reliability"):
         build_qos_profile("bad", role="overlay subscribe")

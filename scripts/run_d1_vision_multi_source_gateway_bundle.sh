@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/vision_bundle_common.sh
+source "${SCRIPT_DIR}/lib/vision_bundle_common.sh"
+ROOT_DIR="$(sf_repo_root_from_script "${BASH_SOURCE[0]}")"
 ROS_DISTRO="${ROS_DISTRO:-jazzy}"
 ROS_SETUP="${ROS_SETUP:-/opt/ros/${ROS_DISTRO}/setup.bash}"
 LOCAL_ROS_PYTHONPATH="${ROOT_DIR}/ros2/smartfactory_perception_ros"
-DEFAULT_MODEL_EXTRA_PYTHONPATH="/home/codelab/venv/venv/lib/python3.12/site-packages"
+DEFAULT_MODEL_EXTRA_PYTHONPATH="$(sf_default_model_extra_pythonpath)"
 
 usage() {
   cat <<USAGE
@@ -41,43 +44,6 @@ Supporting/debug scripts remain available for narrower cases:
   scripts/run_d1_vision_domain_sidecar.sh   # extra source/domain sidecar
   scripts/run_d1_vision_stream_gateway.py   # public source mux implementation
 USAGE
-}
-
-is_private_ipv4() {
-  local ip="${1:-}"
-  [[ "${ip}" =~ ^10\. ]] \
-    || [[ "${ip}" =~ ^192\.168\. ]] \
-    || [[ "${ip}" =~ ^172\.(1[6-9]|2[0-9]|3[0-1])\. ]]
-}
-
-route_source_ip() {
-  local target="${1:-}"
-  [ -n "${target}" ] || return 1
-  command -v ip >/dev/null 2>&1 || return 1
-  ip route get "${target}" 2>/dev/null | awk '
-    {
-      for (i = 1; i <= NF; i++) {
-        if ($i == "src" && (i + 1) <= NF) {
-          print $(i + 1)
-          exit
-        }
-      }
-    }'
-}
-
-lan_ip() {
-  local routed=""
-  if [ -n "${VISION_MAIN_HOST:-}" ]; then
-    routed="$(route_source_ip "${VISION_MAIN_HOST}" || true)"
-    if is_private_ipv4 "${routed}"; then
-      printf '%s\n' "${routed}"
-      return 0
-    fi
-  fi
-  hostname -I 2>/dev/null | tr ' ' '\n' \
-    | grep -E '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)' \
-    | grep -v '^172\.17\.' \
-    | head -n1 || true
 }
 
 set_defaults() {
@@ -173,7 +139,7 @@ PY
 
 print_config() {
   local ip public_host
-  ip="$(lan_ip)"
+  ip="$(sf_lan_ip "${VISION_MAIN_HOST:-}")"
   ip="${ip:-127.0.0.1}"
   public_host="${VISION_PUBLIC_HOST:-smartfactory-vision.local}"
   cat <<CONFIG

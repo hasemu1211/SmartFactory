@@ -14,6 +14,31 @@
 - Keep ROS-aware, ROS-sidecar, hybrid, and real-robot validation paths open when evidence and safety gates justify them.
 - For major direction changes, compare alternatives through plan -> architect -> critic before `$ultragoal`/`$team` execution, then record decisions separately from open options.
 
+## Active refactor checkpoint policy
+
+- During refactor cycles, use `.omx/` artifacts as the detailed ledger and keep this file as a compact recovery index.
+- Update this file at phase boundaries only: P0 baseline, P0.5 ownership gate, P1 generator/app-factory seam, P1 route/script seam, P2 ROS seam, and final verification.
+- Each cycle should leave: current goal/checkpoint id, changed files, validation commands/results, real-robot usage status, and next safe resume step.
+- Do not edit live Confluence unless public API/operator wording changes and the live page has been freshly verified.
+- If time runs short, stop after a green checkpoint rather than starting a cross-file move that cannot be verified.
+
+## Current approved refactor route
+
+- Approved planning path: `.omx/plans/smartfactory-cleanup-refactor-execution-plan-v2-20260618.md` plus P0.5 addendum `.omx/plans/smartfactory-filesystem-ownership-p05-addendum-20260618.md`.
+- Consensus evidence: `.omx/reports/ralplan/smartfactory-filesystem-p05-consensus-handoff-20260618.md`.
+- Next execution order: P0 robot-free baseline -> P0.5 ownership/compatibility gate -> P1 `app.factory:create_app` generator-safe seam -> AI Server route seams -> script helper seams -> P2 ROS decomposition.
+- Current robot status for this route: real robot not used and not required; no live motion, `/cmd_vel`, Nav2 actions, teleop, robot-side persistence, or live systemd mutation.
+
+## Latest safe checkpoint
+
+- Checkpoint: G017 final review blocker resolution complete under Ultragoal; this resolves the prior G016 non-clean final gate (`SERVICE_VERSION` drift risk + runtime state injection WATCH).
+- Changed files since the approved refactor route began: `services/ai-server/app/factory.py`, `services/ai-server/app/runtime_routes.py`, `services/ai-server/app/runtime_state.py`, `services/ai-server/app/service_metadata.py`, `services/ai-server/app/main.py`, `scripts/generate_source_registry_surfaces.py`, `scripts/lib/vision_bundle_common.sh`, `scripts/run_d1_vision_multi_source_gateway_bundle.sh`, `scripts/run_d1_vision_bundle.sh`, `scripts/run_d1_vision_domain_sidecar.sh`, `ros2/smartfactory_perception_ros/smartfactory_perception_ros/qos_profiles.py`, ROS gateway/bridge files/tests, AI Server API/contract tests, and this recovery index.
+- Completed seams: G014 runtime-state seam, G015 shared script helper/default seam, G016 ROS QoS helper seam, and G017 explicit `RuntimeContext` injection + single `SERVICE_VERSION` source + MJPEG generator context capture.
+- Evidence logs: `.omx/reports/ralplan/g017-stream-context-fix-focused-verification-20260618.log`, `.omx/reports/ralplan/g017-stream-fix-full-verification-20260618.log`, `.omx/reports/ralplan/g017-final-post-cleaner-verification-20260618.log`, `.omx/reports/ai-slop-cleaner-g017-report-20260618.md`, `.omx/reports/ralplan/final-code-review-g017-streamfix-20260618.md`, `.omx/reports/final-quality-gate-g017-20260618.json`, and `.omx/checkpoints/refactor-g017-final-review-watch-resolved-20260618.json`.
+- Passed: focused stream-context regression (3 passed), `make ai-test` (142 passed), `make ros-test` (38 passed), contracts/deploy/docker/vision/source-registry gates, shell syntax, Python compile, `git diff --check`, ai-slop-cleaner, code-reviewer `APPROVE`, architect `CLEAR`.
+- Robot status: real robot not used; no live motion, `/cmd_vel`, Nav2 actions, teleop, robot-side persistence, parameter mutation, live systemd mutation, or whole-graph rosbridge.
+- Next safe resume step: after Ultragoal checkpoint reconciliation, discuss/choose the next bounded refactor slice; do not start broad folder moves without a fresh P0.5 ownership/compatibility gate.
+
 ## Current project boundaries
 
 1. AI/Vision Server is evidence-only. Main/WMS remains the only source of truth for task, inventory, DB-persisted state, and robot state; AI/Vision may supply evidence but must not create, complete, fail, or mutate authoritative task/inventory/DB records.

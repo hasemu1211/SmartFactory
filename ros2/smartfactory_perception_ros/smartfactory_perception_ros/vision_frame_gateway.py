@@ -11,12 +11,6 @@ from cv_bridge import CvBridge
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from rclpy.qos import (
-    DurabilityPolicy,
-    HistoryPolicy,
-    QoSProfile,
-    ReliabilityPolicy,
-)
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import String
 
@@ -26,6 +20,7 @@ from .image_snapshot_client import (
     encode_compressed_image_message,
     encode_image_message,
 )
+from .qos_profiles import build_bounded_image_qos_profile as build_qos_profile
 
 FORBIDDEN_TOPIC_FRAGMENTS = (
     "/cmd_vel",
@@ -67,48 +62,6 @@ class PendingOverlayPublish:
     content: bytes
     content_type: str | None
     frame_seq: int | None
-
-
-def build_qos_profile(
-    reliability: str,
-    *,
-    depth: int = 1,
-    role: str = "topic",
-) -> QoSProfile:
-    """Build an explicit, bounded QoS profile for camera/overlay image topics.
-
-    ``sensor_data`` preserves the ROS2 sensor-data default (best-effort,
-    low-latency). ``reliable`` is opt-in/configurable because a RELIABLE
-    subscriber is incompatible with a BEST_EFFORT publisher.
-    """
-
-    normalized = str(reliability or "").strip().lower().replace("-", "_")
-    bounded_depth = max(1, int(depth))
-    if normalized in {"sensor", "sensor_data", "qos_profile_sensor_data"}:
-        return QoSProfile(
-            history=HistoryPolicy.KEEP_LAST,
-            depth=bounded_depth,
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.VOLATILE,
-        )
-    if normalized in {"best_effort", "besteffort"}:
-        return QoSProfile(
-            history=HistoryPolicy.KEEP_LAST,
-            depth=bounded_depth,
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.VOLATILE,
-        )
-    if normalized == "reliable":
-        return QoSProfile(
-            history=HistoryPolicy.KEEP_LAST,
-            depth=bounded_depth,
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.VOLATILE,
-        )
-    raise ValueError(
-        f"{role} QoS reliability must be one of "
-        "'sensor_data', 'best_effort', or 'reliable'; got {reliability!r}"
-    )
 
 
 def build_ai_server_url(ai_server_url: str, path: str) -> str:

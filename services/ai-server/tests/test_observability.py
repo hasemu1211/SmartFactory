@@ -5,7 +5,7 @@ import logging
 
 from fastapi.testclient import TestClient
 
-import app.main as main_module
+from app import runtime_routes as main_module
 from app.main import app
 from generated_fixtures import aruco_png_bytes, blank_png_bytes
 

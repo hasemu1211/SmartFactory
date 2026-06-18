@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/vision_bundle_common.sh
+source "${SCRIPT_DIR}/lib/vision_bundle_common.sh"
+ROOT_DIR="$(sf_repo_root_from_script "${BASH_SOURCE[0]}")"
 ROS_DISTRO="${ROS_DISTRO:-jazzy}"
 ROS_SETUP="${ROS_SETUP:-/opt/ros/${ROS_DISTRO}/setup.bash}"
 LOCAL_ROS_PYTHONPATH="${ROOT_DIR}/ros2/smartfactory_perception_ros"
-DEFAULT_MODEL_EXTRA_PYTHONPATH="/home/codelab/venv/venv/lib/python3.12/site-packages"
+DEFAULT_MODEL_EXTRA_PYTHONPATH="$(sf_default_model_extra_pythonpath)"
 
 usage() {
   cat <<USAGE
@@ -47,13 +50,6 @@ Main/GUI receives from:
   http://<this-pc>:8090/api/v1/vision/bridge/status
   http://<this-pc>:8100/api/v1/detections/latest?source=tb3_1_picam&limit=10
 USAGE
-}
-
-lan_ip() {
-  hostname -I 2>/dev/null | tr ' ' '\n' \
-    | grep -E '^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)' \
-    | grep -v '^172\.17\.' \
-    | head -n1 || true
 }
 
 set_defaults() {
@@ -139,7 +135,7 @@ PY
 
 print_config() {
   local ip
-  ip="$(lan_ip)"
+  ip="$(sf_lan_ip)"
   ip="${ip:-127.0.0.1}"
   cat <<CONFIG
 D1 vision bundle config
