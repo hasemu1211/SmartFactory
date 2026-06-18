@@ -16,7 +16,7 @@
 
 ## Current project boundaries
 
-1. AI/Vision Server is evidence-only. Main/WMS remains source of truth for task, inventory, and robot state.
+1. AI/Vision Server is evidence-only. Main/WMS remains the only source of truth for task, inventory, DB-persisted state, and robot state; AI/Vision may supply evidence but must not create, complete, fail, or mutate authoritative task/inventory/DB records.
 2. MVP keeps Vision on the Central PC/process/container, but code and docs preserve a clean split for a later dedicated Vision/AI Server.
 3. Vision Gateway/stream bridge must not publish `/cmd_vel`, call Nav2 actions, expose teleop, mutate ROS parameters, or provide whole-graph rosbridge access.
 4. Current FastAPI AI Server avoids direct ROS responsibilities; ROS/domain handling currently lives in sidecar processes such as `vision_frame_gateway` and stream bridges. This is an implementation boundary, not a permanent architecture lock.
