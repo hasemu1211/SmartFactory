@@ -236,7 +236,7 @@
     "/api/v1/vision/streams": {
       "get": {
         "summary": "Vision Streams",
-        "description": "Describe Vision Gateway stream surfaces.\n\nROS/rosbridge remains the production browser stream plane. The local MJPEG\nendpoint is a debug/fallback helper for Lane B synthetic validation.",
+        "description": "Describe Vision Gateway stream surfaces.\n\nMain-facing production browser video uses the source-selected HTTP/MJPEG Vision Stream Gateway on :8090. ROS/rosbridge is internal allowlisted operator/prototype infrastructure unless a future ADR promotes it.",
         "operationId": "vision_streams_api_v1_vision_streams_get",
         "parameters": [
           {
@@ -599,7 +599,7 @@
     "/api/v1/vision/worker/tick": {
       "post": {
         "summary": "Vision Worker Tick",
-        "description": "Run one controlled latest-frame processing tick for Lane B validation.\n\nThis is a robot-free debug/control surface for the future evidence worker.\nIt processes only explicit configured sources and never publishes ROS motion\ncommands. Production browser video remains rosbridge 9090.",
+        "description": "Run one controlled latest-frame processing tick for Lane B validation.\n\nThis is a robot-free debug/control surface for the future evidence worker.\nIt processes only explicit configured sources and never publishes ROS motion\ncommands. Main-facing production browser video uses the source-selected HTTP/MJPEG Vision Stream Gateway on :8090; rosbridge is internal allowlisted operator/prototype infrastructure only.",
         "operationId": "vision_worker_tick_api_v1_vision_worker_tick_post",
         "requestBody": {
           "content": {
@@ -1562,7 +1562,7 @@
     "/api/v1/vision/frame/latest/image": {
       "get": {
         "summary": "Latest Frame Image",
-        "description": "Return latest raw frame image for one source.\n\nThis is a debug/fallback image endpoint for comparing raw frame evidence\nagainst rendered overlays. Production browser streaming remains rosbridge.",
+        "description": "Return latest raw frame image for one source.\n\nThis is a debug/fallback image endpoint for comparing raw frame evidence\nagainst rendered overlays. Main-facing production browser streaming uses the source-selected HTTP/MJPEG Vision Stream Gateway on :8090; rosbridge is internal allowlisted operator/prototype infrastructure only.",
         "operationId": "latest_frame_image_api_v1_vision_frame_latest_image_get",
         "parameters": [
           {
@@ -1959,7 +1959,7 @@
     "/api/v1/vision/stream/{source}.mjpeg": {
       "get": {
         "summary": "Debug Overlay Mjpeg Stream",
-        "description": "Debug/fallback MJPEG stream of latest overlays.\n\nThis is not the production browser stream plane; rosbridge 9090 remains the\ndefault production path per Lane 0.",
+        "description": "Debug/fallback MJPEG stream of latest overlays.\n\nThis stream is served behind the Main-facing :8090 HTTP/MJPEG gateway when exposed through the source-selected public gateway. ROS/rosbridge remains internal allowlisted operator/prototype infrastructure unless a future ADR promotes it.",
         "operationId": "debug_overlay_mjpeg_stream_api_v1_vision_stream__source__mjpeg_get",
         "parameters": [
           {
