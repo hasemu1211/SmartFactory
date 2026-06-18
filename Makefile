@@ -2,7 +2,7 @@ ROS2_WS ?= $(or $(SMARTFACTORY_ROS2_WS),/home/codelab/turtlebot3_ws)
 ROS_DISTRO ?= jazzy
 ROS_PACKAGES ?= smartfactory_bringup smartfactory_perception_ros
 
-.PHONY: ai-setup ai-test ai-run contracts source-registry-surfaces deploy-validate docker-ai-config ros-build-bringup ros-launch-smoke status
+.PHONY: ai-setup ai-test ai-run contracts source-registry-surfaces deploy-validate docker-ai-config vision-check vision-run vision-config vision-smoke-local ros-test ros-build-bringup ros-launch-smoke status
 
 ai-setup:
 	./scripts/setup_ai_server_env.sh
@@ -24,6 +24,21 @@ deploy-validate:
 
 docker-ai-config:
 	docker compose -f docker-compose.ai-server.yml config --quiet
+
+vision-check:
+	VISION_MODEL_WORKER_ENABLED=$${VISION_MODEL_WORKER_ENABLED:-false} ./scripts/run_d1_vision_multi_source_gateway_bundle.sh --check
+
+vision-run:
+	./scripts/run_d1_vision_multi_source_gateway_bundle.sh
+
+vision-config:
+	./scripts/run_d1_vision_multi_source_gateway_bundle.sh --print-config
+
+vision-smoke-local:
+	./scripts/run_d1_vision_multi_source_gateway_bundle.sh --smoke-local
+
+ros-test:
+	cd ros2/smartfactory_perception_ros && pytest -q
 
 ros-build-bringup:
 	bash -lc 'source /opt/ros/$(ROS_DISTRO)/setup.bash && cd $(ROS2_WS) && colcon build --symlink-install --packages-select $(ROS_PACKAGES)'
