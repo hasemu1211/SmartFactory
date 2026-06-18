@@ -24,6 +24,16 @@ def test_ai_server_docker_compose_declares_isolated_api_service():
     assert "/api/v1/health" in " ".join(service["healthcheck"]["test"])
 
 
+def test_ai_server_docker_compose_does_not_publish_ros_or_internal_stream_ports():
+    compose = yaml.safe_load((ROOT / "docker-compose.ai-server.yml").read_text(encoding="utf-8"))
+    ports = compose["services"]["ai-server"].get("ports", [])
+    published = "\n".join(str(port) for port in ports)
+
+    assert "${AI_SERVER_PORT:-8100}:8100" in ports
+    for forbidden_port in ("9090", "11311", "11811", "18090", "18091", "7400", "7600"):
+        assert forbidden_port not in published
+
+
 def test_ai_server_dockerfile_keeps_service_independent_from_ros_runtime():
     text = (ROOT / "services/ai-server/Dockerfile").read_text(encoding="utf-8").lower()
 
