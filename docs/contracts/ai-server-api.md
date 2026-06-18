@@ -1837,7 +1837,10 @@ Current recommended split:
   when allowlisted/read-only:
   `/sf/vision/sources/tb3_1_picam/overlay/compressed` and `/sf/vision/events`.
   Control topics such as `/cmd_vel`, teleop, Nav2 action/service topics, and
-  parameter mutation surfaces remain forbidden.
+  parameter mutation surfaces remain forbidden. Nav/Movement owns motion command
+  execution, Nav2 action/service invocation, and safety stop/slow execution; AI
+  Server, Vision Gateway, and Main-facing stream surfaces may provide evidence or
+  alerts only.
 
 AI model scope for D1:
 
@@ -1936,7 +1939,8 @@ This cycle adds a ROS package bridge, not a new AI Server FastAPI route. The
 bridge subscribes to the AI overlay ROS topic produced by `vision_frame_gateway`
 and serves a browser-friendly MJPEG view. It is read-only and must not expose
 `/cmd_vel`, Nav2, teleop, parameter mutation, `/rosout`, `/tf`, or a whole ROS
-graph.
+graph. It is not a Movement controller; motion/safety execution remains owned by
+Nav/Movement.
 
 Primary ROS input:
 

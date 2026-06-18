@@ -2,7 +2,7 @@
 
 **상태:** 2026-06-15 Asia/Seoul 기준 Lane 0 계약 정렬본 + Lane B synthetic frame/worker tick/stream metrics/source snapshot/max_fps/ROS handoff topics/latest raw frame/raw frame ingest/stale worker guard/worker status summary/worker tick summary/ROS ingest policy seam/ROS publish readiness/source filter/stream source filter/metrics source filter/source-scoped discovery links/stream sync status/stream summary/ROS ingest readiness/source snapshot ROS ingest/publish readiness/summary breakdown/requested_source/overlay latest sync/ROS ingest+publish runtime plan/topic exposure policy/summary preflight + debug snapshot/stream discovery mirror/debug source rosbridge subscription hints/ROS ingest adapter contract/ROS debug evidence event readiness mirror/stream evidence event readiness mirror/stream ROS overlay publish readiness mirror/stream ROS ingest readiness mirror/stream runtime policy mirror/stream motion-control safety mirror/Lane B robot-free e2e consistency/multi-source isolation validation/API-served overlay visual QA/multi-source latest-only backpressure validation/worker tick idempotency validation/worker status idempotency preview/OpenAPI drift guard 반영  
 **목적:** Main / GUI / Movement / Vision 팀이 같은 API 이름과 반환값을 기준으로 논의하기 위한 압축본  
-**주의:** 구현 완료 문서가 아니라 **Lane 0 합의용 계약 문서**입니다. 현재 구현과 target 계약을 구분합니다.
+**주의:** 구현 완료 문서가 아니라 **Lane 0 합의용 계약 문서**입니다. 현재 구현과 target 계약을 구분합니다. 2026-06-18 v2 contract supersedes stream-plane guidance below: Main-facing production video is the source-selected HTTP/MJPEG Vision Stream Gateway on `:8090`; ROS/rosbridge is internal allowlisted operator/prototype infrastructure unless a future ADR promotes it.
 
 ---
 
@@ -1164,9 +1164,9 @@ Required core fields: `schema_version`, `evidence_id`, `timestamp`, `source`, `r
 
 ## 6. ROS / Stream 계약
 
-- Browser production video path는 rosbridge `9090`입니다.
+- Historical Lane 0 note: browser production video path는 rosbridge `9090`로 기록되어 있었습니다.
+- Current v2 supersession: Main-facing production video는 source-selected HTTP/MJPEG Vision Stream Gateway on `:8090`입니다. ROS/rosbridge는 future ADR이 승격하기 전까지 internal allowlisted operator/prototype infrastructure입니다.
 - Main API는 video를 proxy하지 않습니다.
-- Vision HTTP/MJPEG/WS stream이 추가되더라도 debug/fallback입니다.
 
 Topic migration matrix는 Lane C 전 확정 필요합니다. 채택 방향은 `/mission/...` 회귀 없이 유지하면서 `/sf/...` 표준 topic을 병행 추가하는 것입니다:
 
