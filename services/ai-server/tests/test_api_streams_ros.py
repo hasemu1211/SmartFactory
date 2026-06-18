@@ -16,7 +16,7 @@ from api_test_helpers import (
     source_definition,
 )
 
-def test_vision_streams_declares_rosbridge_primary_and_debug_fallback():
+def test_vision_streams_declares_http_gateway_primary_and_internal_rosbridge_policy():
     main_module.store.reset()
     main_module.source_health.reset()
     main_module.frame_store.reset()
@@ -38,8 +38,14 @@ def test_vision_streams_declares_rosbridge_primary_and_debug_fallback():
     assert body["summary"]["ros_publish_payload_blocked_count"] == 3
     assert body["summary"]["ros_publish_status_counts"] == {"no_frame": 3}
     assert body["summary"]["evidence_event_publish_ready_count"] == 0
-    assert body["primary_stream_plane"] == "rosbridge"
-    assert body["debug_only"] is True
+    assert body["primary_stream_plane"] == "http_mjpeg_gateway"
+    assert body["stream_base_url"] == "http://<vision-host>:8090"
+    assert body["debug_only"] is False
+    assert body["internal_rosbridge"] == {
+        "scope": "operator_prototype_only",
+        "url": "ws://<vision-host>:9090",
+        "exposes_all_topics": False,
+    }
     assert body["motion_command_allowed"] is False
     assert body["control_topics_published"] == []
     assert body["topic_exposure_policy"] == expected_ros_topic_exposure_policy()
@@ -89,8 +95,9 @@ def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
     assert body["summary"]["ros_publish_payload_blocked_count"] == 1
     assert body["summary"]["ros_publish_status_counts"] == {"no_frame": 1}
     assert body["summary"]["evidence_event_publish_ready_count"] == 0
-    assert body["primary_stream_plane"] == "rosbridge"
-    assert body["debug_only"] is True
+    assert body["primary_stream_plane"] == "http_mjpeg_gateway"
+    assert body["stream_base_url"] == "http://<vision-host>:8090"
+    assert body["debug_only"] is False
     assert body["motion_command_allowed"] is False
     assert body["control_topics_published"] == []
     assert [item["source"] for item in body["sources"]] == ["tb3_1_picam"]
@@ -246,8 +253,14 @@ def test_vision_ros_topics_declares_safe_domain_bridge_handoff_matrix():
 
     assert response.status_code == 200
     body = response.json()
-    assert body["primary_stream_plane"] == "rosbridge"
+    assert body["primary_stream_plane"] == "http_mjpeg_gateway"
+    assert body["stream_base_url"] == "http://<vision-host>:8090"
     assert body["debug_only"] is True
+    assert body["internal_rosbridge"] == {
+        "scope": "operator_prototype_only",
+        "url": "ws://<vision-host>:9090",
+        "exposes_all_topics": False,
+    }
     assert body["motion_command_allowed"] is False
     assert body["control_topics_published"] == []
     assert body["topic_exposure_policy"] == expected_ros_topic_exposure_policy()

@@ -307,7 +307,8 @@ def test_vision_debug_sources_returns_readiness_snapshot_for_one_source():
 
     assert response.status_code == 200
     body = response.json()
-    assert body["primary_stream_plane"] == "rosbridge"
+    assert body["primary_stream_plane"] == "http_mjpeg_gateway"
+    assert body["stream_base_url"] == "http://<vision-host>:8090"
     assert body["requested_source"] == "tb3_1_picam"
     assert body["debug_only"] is True
     assert body["topic_exposure_policy"] == expected_ros_topic_exposure_policy()

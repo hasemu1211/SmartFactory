@@ -766,6 +766,11 @@ Response `200` excerpt:
   "stream_base_url": "http://<vision-host>:8090",
   "debug_only": false,
   "motion_command_allowed": false,
+  "internal_rosbridge": {
+    "scope": "operator_prototype_only",
+    "url": "ws://<vision-host>:9090",
+    "exposes_all_topics": false
+  },
   "control_topics_published": [],
   "summary": {
     "sources_total": 1,
@@ -836,6 +841,8 @@ Response `200` excerpt:
         "control_topics_allowed": []
       },
       "rosbridge_subscription_hints": {
+        "scope": "internal_operator_prototype_only",
+        "main_facing_video_transport": "http_mjpeg_gateway",
         "recommended_image_topic": "/sf/vision/sources/tb3_1_picam/image/compressed",
         "recommended_overlay_topic": "/sf/vision/sources/tb3_1_picam/overlay/compressed",
         "legacy_browser_topic": "/mission/tb3_1/camera/compressed",
@@ -906,7 +913,7 @@ Response `200` excerpt:
 }
 ```
 
-If `source` is provided, `sources` contains only that source. Response-level `summary` is computed over the returned rows only; with `source` filtering it summarizes that one source. `overlay_lag_count` counts sources where an overlay exists but has not caught up to the latest frame, `synced_overlay_count` counts sources whose latest overlay matches the latest frame, and `stale_overlay_count` counts stale visual overlays. Source entries now advertise `metrics_path=/api/v1/metrics?source=...` and `ros_handoff_source_path=/api/v1/vision/ros/topics?source=...` so GUI/debug callers can stay source-scoped across discovery, metrics, and ROS handoff. They also include `latest_frame_seq`, `latest_overlay_frame_seq`, `overlay_lag_frames`, and `overlay_visual_state` so a dashboard can see whether the debug overlay has caught up to the latest frame without opening `/vision/debug/sources`. `topic_exposure_policy`, `topic_exposure_summary`, per-source `topic_exposure`, and `rosbridge_subscription_hints` mirror the ROS/rosbridge allowlist preflight so GUI clients can choose safe rosbridge image/overlay topics directly from stream discovery. Top-level `debug_only`, `motion_command_allowed=false`, and `control_topics_published=[]` mirror `/api/v1/vision/ros/topics` so stream discovery also exposes the no-motion/no-control boundary. Top-level `runtime_policy` mirrors `/api/v1/vision/ros/topics` and states that HTTP handlers must not start, spin, or publish through ROS2. Per-source `ros_ingest_readiness` mirrors the read-only future ROS image subscriber preflight from `/api/v1/vision/ros/topics`; `summary.ros_ingest_contract_ready_count`, `summary.ros_ingest_runtime_subscriber_active_count`, and `summary.ros_ingest_status_counts` are computed over returned source rows. Per-source `ros_publish_readiness` mirrors the read-only future overlay compressed-image publisher preflight from `/api/v1/vision/ros/topics`; `summary.ros_publish_ready_count`, `summary.ros_publish_payload_available_count`, `summary.ros_publish_payload_blocked_count`, and `summary.ros_publish_status_counts` are computed over returned source rows. Per-source `evidence_event_publish_readiness` mirrors the read-only future `/sf/vision/events` publish preflight from `/api/v1/vision/ros/topics`, and `summary.evidence_event_publish_ready_count` counts returned sources that currently have a latest schema-valid `VisionEvent` eligible for future publish. Unknown source returns `400`.
+If `source` is provided, `sources` contains only that source. Response-level `summary` is computed over the returned rows only; with `source` filtering it summarizes that one source. `overlay_lag_count` counts sources where an overlay exists but has not caught up to the latest frame, `synced_overlay_count` counts sources whose latest overlay matches the latest frame, and `stale_overlay_count` counts stale visual overlays. Source entries now advertise `metrics_path=/api/v1/metrics?source=...` and `ros_handoff_source_path=/api/v1/vision/ros/topics?source=...` so GUI/debug callers can stay source-scoped across discovery, metrics, and ROS handoff. They also include `latest_frame_seq`, `latest_overlay_frame_seq`, `overlay_lag_frames`, and `overlay_visual_state` so a dashboard can see whether the debug overlay has caught up to the latest frame without opening `/vision/debug/sources`. `topic_exposure_policy`, `topic_exposure_summary`, per-source `topic_exposure`, and `rosbridge_subscription_hints` mirror the ROS/rosbridge allowlist preflight for internal/operator/prototype clients only; Main-facing video should use `stream_base_url` and the source-selected HTTP/MJPEG gateway. Top-level `debug_only=false` on `/api/v1/vision/streams` applies only to the public Main-facing HTTP/MJPEG gateway. `motion_command_allowed=false` and `control_topics_published=[]` mirror `/api/v1/vision/ros/topics` so stream discovery also exposes the no-motion/no-control boundary; ROS handoff/debug endpoints remain `debug_only=true`. Top-level `runtime_policy` mirrors `/api/v1/vision/ros/topics` and states that HTTP handlers must not start, spin, or publish through ROS2. Per-source `ros_ingest_readiness` mirrors the read-only future ROS image subscriber preflight from `/api/v1/vision/ros/topics`; `summary.ros_ingest_contract_ready_count`, `summary.ros_ingest_runtime_subscriber_active_count`, and `summary.ros_ingest_status_counts` are computed over returned source rows. Per-source `ros_publish_readiness` mirrors the read-only future overlay compressed-image publisher preflight from `/api/v1/vision/ros/topics`; `summary.ros_publish_ready_count`, `summary.ros_publish_payload_available_count`, `summary.ros_publish_payload_blocked_count`, and `summary.ros_publish_status_counts` are computed over returned source rows. Per-source `evidence_event_publish_readiness` mirrors the read-only future `/sf/vision/events` publish preflight from `/api/v1/vision/ros/topics`, and `summary.evidence_event_publish_ready_count` counts returned sources that currently have a latest schema-valid `VisionEvent` eligible for future publish. Unknown source returns `400`.
 
 ### `GET /api/v1/vision/ros/topics`
 
@@ -932,7 +939,12 @@ Response `200` excerpt:
   "requested_source": "tb3_1_picam",
   "primary_stream_plane": "http_mjpeg_gateway",
   "stream_base_url": "http://<vision-host>:8090",
-  "debug_only": false,
+  "debug_only": true,
+  "internal_rosbridge": {
+    "scope": "operator_prototype_only",
+    "url": "ws://<vision-host>:9090",
+    "exposes_all_topics": false
+  },
   "motion_command_allowed": false,
   "migration_policy": "keep existing /mission browser topics; add /sf normalized topics in parallel",
   "control_topics_published": [],
@@ -1264,7 +1276,8 @@ Response `200` excerpt:
   "generated_at": "2026-06-15T09:00:06+09:00",
   "requested_source": "tb3_1_picam",
   "primary_stream_plane": "http_mjpeg_gateway",
-  "debug_only": false,
+  "stream_base_url": "http://<vision-host>:8090",
+  "debug_only": true,
   "summary": {
     "sources_total": 1,
     "with_frame_count": 1,
@@ -1322,6 +1335,8 @@ Response `200` excerpt:
         "control_topics_allowed": []
       },
       "rosbridge_subscription_hints": {
+        "scope": "internal_operator_prototype_only",
+        "main_facing_video_transport": "http_mjpeg_gateway",
         "allowed_browser_topics": [
           "/mission/tb3_1/camera/compressed",
           "/sf/vision/sources/tb3_1_picam/image/compressed",
@@ -1398,7 +1413,7 @@ Response `200` excerpt:
 
 `overlay_lag_frames > 0` means a newer latest frame exists but the latest overlay
 still belongs to an older frame. A worker tick can reconcile this in debug mode.
-`requested_source` echoes the optional source filter. `topic_exposure_policy`, `topic_exposure_summary`, per-source `topic_exposure`, and `rosbridge_subscription_hints` mirror `/api/v1/vision/ros/topics` and `/api/v1/vision/streams` so GUI/Main can see the ROS/rosbridge allowlist preflight and the recommended image/overlay subscription topics from the source snapshot as well. `topic_exposure_summary` is computed over returned `sources`; when `source` is provided it summarizes that one source only. `summary` is also computed over returned `sources`; when `source` is provided it summarizes that one source only. `health_status_counts`, `ros_ingest_status_counts`, and `ros_publish_status_counts` provide dashboard-friendly breakdowns of the same returned rows. `ros_ingest_readiness` and `ros_publish_readiness` mirror the per-source ROS image subscriber and overlay publisher preflight from `/api/v1/vision/ros/topics?source=...`; they are read-only and do not start ROS2 or publish overlays. `ros_publish_readiness.publish_payload_preview` tells whether a future background publisher may publish the cached compressed overlay image for that source. `evidence_event_publish_readiness` mirrors `/api/v1/vision/ros/topics` and tells whether that source currently has a latest `VisionEvent` eligible for future `/sf/vision/events` publishing. `summary.ros_ingest_contract_ready_count`, `summary.ros_publish_payload_available_count`, and `summary.evidence_event_publish_ready_count` count returned sources whose ingest contract, overlay payload, or evidence event is ready/eligible. Errors: `400` unknown source.
+`requested_source` echoes the optional source filter. `topic_exposure_policy`, `topic_exposure_summary`, per-source `topic_exposure`, and `rosbridge_subscription_hints` mirror `/api/v1/vision/ros/topics` and `/api/v1/vision/streams` for internal/operator/prototype diagnostics; Main-facing video should use `stream_base_url` and the source-selected HTTP/MJPEG gateway rather than rosbridge. `topic_exposure_summary` is computed over returned `sources`; when `source` is provided it summarizes that one source only. `summary` is also computed over returned `sources`; when `source` is provided it summarizes that one source only. `health_status_counts`, `ros_ingest_status_counts`, and `ros_publish_status_counts` provide dashboard-friendly breakdowns of the same returned rows. `ros_ingest_readiness` and `ros_publish_readiness` mirror the per-source ROS image subscriber and overlay publisher preflight from `/api/v1/vision/ros/topics?source=...`; they are read-only and do not start ROS2 or publish overlays. `ros_publish_readiness.publish_payload_preview` tells whether a future background publisher may publish the cached compressed overlay image for that source. `evidence_event_publish_readiness` mirrors `/api/v1/vision/ros/topics` and tells whether that source currently has a latest `VisionEvent` eligible for future `/sf/vision/events` publishing. `summary.ros_ingest_contract_ready_count`, `summary.ros_publish_payload_available_count`, and `summary.evidence_event_publish_ready_count` count returned sources whose ingest contract, overlay payload, or evidence event is ready/eligible. Errors: `400` unknown source.
 
 ### `POST /api/v1/vision/frame`
 

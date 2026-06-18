@@ -29,11 +29,10 @@ Vision components are evidence/advisory surfaces only. They may observe camera f
 
 ## Required response invariants
 
-AI Server discovery/handoff endpoints must keep these invariant values unless a new safety review explicitly changes the contract:
+All Vision-facing discovery/handoff endpoints must keep the no-motion/no-control invariants unless a new safety review explicitly changes the contract:
 
 ```json
 {
-  "debug_only": true,
   "motion_command_allowed": false,
   "control_topics_published": [],
   "topic_exposure_policy": {
@@ -43,6 +42,8 @@ AI Server discovery/handoff endpoints must keep these invariant values unless a 
   }
 }
 ```
+
+`debug_only=true` applies only to internal debug, ROS handoff, and operator/prototype surfaces. The public Main-facing stream discovery may report `debug_only=false` only for the source-selected HTTP/MJPEG `:8090` gateway; that does not grant motion, control-topic, or whole-graph ROS authority.
 
 The forbidden topic glob list must include `/cmd_vel`, `*/cmd_vel`, Nav2 action-like topics, ROS parameter surfaces, `/tf`, `/tf_static`, and `/rosout` where those surfaces could leak whole-graph access.
 

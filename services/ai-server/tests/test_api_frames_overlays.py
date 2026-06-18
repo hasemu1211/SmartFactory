@@ -64,7 +64,7 @@ def test_lane_b_robot_free_e2e_surfaces_stay_consistent_across_stream_debug_ros_
 
     initial_stream = client.get("/api/v1/vision/streams", params={"source": source})
     assert initial_stream.status_code == 200
-    assert initial_stream.json()["debug_only"] is True
+    assert initial_stream.json()["debug_only"] is False
     assert initial_stream.json()["motion_command_allowed"] is False
     assert initial_stream.json()["control_topics_published"] == []
     assert initial_stream.json()["runtime_policy"]["ros2_started_by_http_request"] is False
@@ -135,8 +135,9 @@ def test_lane_b_robot_free_e2e_surfaces_stay_consistent_across_stream_debug_ros_
     debug_source = debug_body["sources"][0]
     ros_source = ros_body["sources"][0]
 
-    assert stream_body["primary_stream_plane"] == ros_body["primary_stream_plane"] == "rosbridge"
-    assert stream_body["debug_only"] is True
+    assert stream_body["primary_stream_plane"] == ros_body["primary_stream_plane"] == "http_mjpeg_gateway"
+    assert stream_body["stream_base_url"] == ros_body["stream_base_url"] == "http://<vision-host>:8090"
+    assert stream_body["debug_only"] is False
     assert ros_body["debug_only"] is True
     assert stream_body["motion_command_allowed"] is False
     assert ros_body["motion_command_allowed"] is False
