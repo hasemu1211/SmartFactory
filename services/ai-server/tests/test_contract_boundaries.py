@@ -96,6 +96,30 @@ def test_openapi_exposes_lane_b_overlay_debug_surfaces():
     assert "/api/v1/vision/debug/sources" in schema["paths"]
     assert "/api/v1/vision/ros/topics" in schema["paths"]
     assert "/api/v1/vision/streams" in schema["paths"]
+    stream_schema = schema["paths"]["/api/v1/vision/streams"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]
+    assert stream_schema["properties"]["primary_stream_plane"] == {
+        "const": "http_mjpeg_gateway",
+        "type": "string",
+    }
+    assert stream_schema["properties"]["debug_only"] == {"const": False, "type": "boolean"}
+    assert stream_schema["properties"]["motion_command_allowed"] == {
+        "const": False,
+        "type": "boolean",
+    }
+    assert stream_schema["properties"]["control_topics_published"]["maxItems"] == 0
+    assert "stream_base_url" in stream_schema["required"]
+    assert stream_schema["not"] == {"required": ["rosbridge_url"]}
+    internal_rosbridge_schema = stream_schema["properties"]["internal_rosbridge"]
+    assert internal_rosbridge_schema["properties"]["scope"] == {
+        "const": "operator_prototype_only",
+        "type": "string",
+    }
+    assert internal_rosbridge_schema["properties"]["exposes_all_topics"] == {
+        "const": False,
+        "type": "boolean",
+    }
     assert "/api/v1/vision/frame" in schema["paths"]
     assert "/api/v1/vision/frame/process" in schema["paths"]
     assert "/api/v1/vision/frame/latest" in schema["paths"]
