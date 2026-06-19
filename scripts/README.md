@@ -1,5 +1,7 @@
 # SmartFactory scripts guide
 
+Korean version: [`README.ko.md`](README.ko.md).
+
 This directory contains local operator/developer entrypoints. Prefer these
 scripts over ad-hoc commands so Main/Vision integration stays reproducible.
 
