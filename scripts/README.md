@@ -1,6 +1,7 @@
 # SmartFactory scripts guide
 
 Korean version: [`README.ko.md`](README.ko.md).
+Filesystem ownership / placement rules: [`../docs/technical/project-filesystem-ownership.md`](../docs/technical/project-filesystem-ownership.md).
 
 This directory contains local operator/developer entrypoints. Prefer these
 scripts over ad-hoc commands so Main/Vision integration stays reproducible.
@@ -23,11 +24,9 @@ Default behavior:
 Use this only for local/lab validation. Production should use router DHCP
 reservation plus DNS/mDNS hostname configuration:
 
-```text
-Vision PC MAC: a0:ad:9f:bd:63:1b
-Name: smartfactory-vision.local
-Current lab IP: 192.168.10.59
-```
+For dated lab DHCP/DNS handoff details, see
+[`docs/requests/main-vision-runtime-config-request-2026-06-19.md`](../docs/requests/main-vision-runtime-config-request-2026-06-19.md).
+Verify MAC/IP values before publishing externally or after DHCP/router changes.
 
 Dry check:
 
@@ -109,7 +108,7 @@ Expected while robots/cameras are absent:
 
 ## Notes
 
-- Run live processes inside tmux window `3:Development` when coordinating with
-  the current operator workflow.
+- Follow the active runbook/session evidence for where to keep live processes;
+  durable README files should not hard-code transient tmux pane/window IDs.
 - Keep robot motion, Nav2, teleop, and `/cmd_vel` outside these Vision scripts.
 - Do not commit generated `__pycache__` directories; they are local runtime cache.
