@@ -85,7 +85,7 @@ cd /home/codelab/Desktop/Project/SmartFactory
 실행 전 의존성/설정 확인:
 
 ```bash
-./scripts/run_d1_vision_multi_source_gateway_bundle.sh --check
+./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh --check
 ```
 
 성공 시 이런 항목이 출력됩니다.
@@ -103,7 +103,7 @@ pipeline: async=true, inline_process=true, frame_process_path=/api/v1/vision/fra
 ### 3.3 bundle 실행
 
 ```bash
-./scripts/run_d1_vision_multi_source_gateway_bundle.sh
+./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
 ```
 
 이 명령 하나가 local child process들을 함께 띄웁니다.
@@ -233,7 +233,7 @@ QoS 주의:
 
 ```bash
 VISION_GATEWAY_IMAGE_QOS_RELIABILITY=sensor_data \
-./scripts/run_d1_vision_multi_source_gateway_bundle.sh
+./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
 ```
 
 ---

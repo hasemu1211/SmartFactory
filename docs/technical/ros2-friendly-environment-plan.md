@@ -260,7 +260,7 @@ The AI Server may read camera frames through a small adapter, but heavy AI depen
 
 ## 7. Testing and QA plan
 
-1. Contract validation: `python3 scripts/validate_contracts.py` from this repository.
+1. Contract validation: `python3 scripts/validate/validate_contracts.py` from this repository.
 2. ROS package build: `colcon build --symlink-install` in `/home/codelab/turtlebot3_ws`; `make ros-build-bringup` currently builds `smartfactory_bringup smartfactory_perception_ros`.
 3. Launch smoke test: `ros2 launch smartfactory_bringup central_pc_bringup.launch.py use_ai_server:=false use_nav2:=false`.
 4. Topic smoke test: verify camera topics exist with `ros2 topic list` and `ros2 topic hz`.

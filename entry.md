@@ -32,7 +32,7 @@
 ## Latest safe checkpoint
 
 - Checkpoint: G017 final review blocker resolution complete under Ultragoal; this resolves the prior G016 non-clean final gate (`SERVICE_VERSION` drift risk + runtime state injection WATCH).
-- Changed files since the approved refactor route began: `services/ai-server/app/factory.py`, `services/ai-server/app/runtime_routes.py`, `services/ai-server/app/runtime_state.py`, `services/ai-server/app/service_metadata.py`, `services/ai-server/app/main.py`, `scripts/generate_source_registry_surfaces.py`, `scripts/lib/vision_bundle_common.sh`, `scripts/run_d1_vision_multi_source_gateway_bundle.sh`, `scripts/run_d1_vision_bundle.sh`, `scripts/run_d1_vision_domain_sidecar.sh`, `ros2/smartfactory_perception_ros/smartfactory_perception_ros/qos_profiles.py`, ROS gateway/bridge files/tests, AI Server API/contract tests, and this recovery index.
+- Changed files since the approved refactor route began: `services/ai-server/app/factory.py`, `services/ai-server/app/runtime_routes.py`, `services/ai-server/app/runtime_state.py`, `services/ai-server/app/service_metadata.py`, `services/ai-server/app/main.py`, `scripts/generate/generate_source_registry_surfaces.py`, `scripts/lib/vision_bundle_common.sh`, `scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh`, `scripts/vision/run_d1_vision_bundle.sh`, `scripts/vision/run_d1_vision_domain_sidecar.sh`, `ros2/smartfactory_perception_ros/smartfactory_perception_ros/qos_profiles.py`, ROS gateway/bridge files/tests, AI Server API/contract tests, and this recovery index.
 - Completed seams: G014 runtime-state seam, G015 shared script helper/default seam, G016 ROS QoS helper seam, and G017 explicit `RuntimeContext` injection + single `SERVICE_VERSION` source + MJPEG generator context capture.
 - Evidence logs: `.omx/reports/ralplan/g017-stream-context-fix-focused-verification-20260618.log`, `.omx/reports/ralplan/g017-stream-fix-full-verification-20260618.log`, `.omx/reports/ralplan/g017-final-post-cleaner-verification-20260618.log`, `.omx/reports/ai-slop-cleaner-g017-report-20260618.md`, `.omx/reports/ralplan/final-code-review-g017-streamfix-20260618.md`, `.omx/reports/final-quality-gate-g017-20260618.json`, and `.omx/checkpoints/refactor-g017-final-review-watch-resolved-20260618.json`.
 - Passed: focused stream-context regression (3 passed), `make ai-test` (142 passed), `make ros-test` (38 passed), contracts/deploy/docker/vision/source-registry gates, shell syntax, Python compile, `git diff --check`, ai-slop-cleaner, code-reviewer `APPROVE`, architect `CLEAR`.
@@ -70,7 +70,7 @@
 - ROS sidecar code: `ros2/smartfactory_perception_ros`.
   - `vision_frame_gateway` posts latest frames to AI Server and can publish safe overlay/evidence topics.
   - `vision_overlay_stream_bridge` / Vision Stream Gateway provide read-only HTTP/MJPEG overlay/raw streams.
-- Deployment helpers: `scripts/run_ai_server.sh`, `scripts/setup_ai_server_env.sh`, `scripts/run_d1_vision_multi_source_gateway_bundle.sh`, `docker-compose.ai-server.yml`, `ops/systemd/smartfactory-ai-server.service`.
+- Deployment helpers: `scripts/ai/run_ai_server.sh`, `scripts/ai/setup_ai_server_env.sh`, `scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh`, `docker-compose.ai-server.yml`, `ops/systemd/smartfactory-ai-server.service`.
 
 ## Live Confluence verification snapshot
 
@@ -92,22 +92,22 @@ Treat older `entry.md` Confluence references as historical unless they are also 
 
 ```bash
 cd /home/codelab/Desktop/Project/SmartFactory
-./scripts/setup_ai_server_env.sh
-./scripts/test_ai_server.sh -q
+./scripts/ai/setup_ai_server_env.sh
+./scripts/ai/test_ai_server.sh -q
 make ros-build-bringup
 ```
 
 Optional runtime smoke:
 
 ```bash
-./scripts/run_ai_server.sh
+./scripts/ai/run_ai_server.sh
 curl http://127.0.0.1:8100/api/v1/health
 ```
 
 D1 multi-source gateway bundle check:
 
 ```bash
-./scripts/run_d1_vision_multi_source_gateway_bundle.sh --check
+./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh --check
 ```
 
 ## Validation policy for future edits

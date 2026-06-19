@@ -46,7 +46,7 @@ Run API server:
 ```bash
 make ai-run
 # or
-./scripts/run_ai_server.sh --reload
+./scripts/ai/run_ai_server.sh --reload
 ```
 
 Health check:
@@ -69,7 +69,7 @@ pytest plugins do not leak into the API service tests.
 ```bash
 make contracts
 # or
-python3 scripts/validate_contracts.py
+python3 scripts/validate/validate_contracts.py
 ```
 
 This validates all `docs/contracts/fixtures/*.json` against

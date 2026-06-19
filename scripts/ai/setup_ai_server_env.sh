@@ -29,5 +29,5 @@ Run:
   uvicorn app.main:app --host 127.0.0.1 --port 8100 --reload
 
 Test:
-  ./scripts/test_ai_server.sh
+  ./scripts/ai/test_ai_server.sh
 MSG

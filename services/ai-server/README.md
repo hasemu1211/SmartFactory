@@ -10,7 +10,7 @@ instead of directly controlling robots.
 
 ```bash
 cd /home/codelab/Desktop/Project/SmartFactory
-./scripts/setup_ai_server_env.sh
+./scripts/ai/setup_ai_server_env.sh
 ```
 
 ## Run
@@ -19,14 +19,14 @@ cd /home/codelab/Desktop/Project/SmartFactory
 cd /home/codelab/Desktop/Project/SmartFactory/services/ai-server
 source .venv/bin/activate
 cp .env.example .env.local  # optional; edit if needed
-./scripts/run_ai_server.sh --reload
+./scripts/ai/run_ai_server.sh --reload
 ```
 
 ## Test
 
 ```bash
 cd /home/codelab/Desktop/Project/SmartFactory
-./scripts/test_ai_server.sh
+./scripts/ai/test_ai_server.sh
 ```
 
 ## Current endpoints
@@ -61,7 +61,7 @@ detections. Frames without ArUco markers return an empty `events` array.
 `config/vision/sources.yaml` is the source of truth for MVP1 source IDs, robot IDs, frame IDs, and ROS topic handoff metadata. Regenerate schema/OpenAPI/fixture surfaces after source edits:
 
 ```bash
-python3 scripts/generate_source_registry_surfaces.py
+python3 scripts/generate/generate_source_registry_surfaces.py
 ```
 
 Generated surfaces include `docs/contracts/generated/source-registry.snapshot.json`, `docs/contracts/fixtures/source-registry.valid.json`, source enums in both contract schemas, and `docs/contracts/ai-server-openapi.json`.
@@ -165,7 +165,7 @@ AI Server errors use a common envelope and also return `X-Request-ID`:
 The default service environment keeps heavy model packages out of the API path. For D1-AI overlay streaming, create a project-local model environment:
 
 ```bash
-./scripts/setup_ai_server_model_env.sh
+./scripts/ai/setup_ai_server_model_env.sh
 ```
 
 Then run AI Server with pretrained YOLO candidates enabled:
@@ -179,7 +179,7 @@ VISION_MODEL_PATH=yolov8n.pt \
 VISION_MODEL_TASK=detect \
 VISION_MODEL_CLASS_MAP_JSON='{"bottle":"box","person":"person"}' \
 VISION_MODEL_UNMAPPED_CLASS=unknown \
-./scripts/run_ai_server.sh
+./scripts/ai/run_ai_server.sh
 ```
 
 When enabled, worker/tick model candidates are normalized to public `VisionEvent v1` classes and rendered into overlays. The high-FPS AI overlay viewing path remains ROS: `vision_frame_gateway publish_overlay=true` publishes `/sf/vision/sources/<source>/overlay/compressed`, and GUI/Main should view that topic through an allowlisted read-only bridge. HTTP image/MJPEG endpoints are debug/fallback only.

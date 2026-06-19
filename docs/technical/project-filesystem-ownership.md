@@ -9,7 +9,7 @@ This document defines how to organize files by **actual purpose, callers, and ru
 
 - Keep root operator entrypoints stable until a wrapper-backed move is implemented and verified.
 - Do not broad-move `scripts/`, `ros2/`, `ops/`, or `services/` only to make the tree look cleaner.
-- If a file is referenced by Makefile, tests, systemd, Docker, runbooks, or operator commands, either keep it in place or leave a root compatibility wrapper.
+- If a file is referenced by Makefile, tests, systemd, Docker, runbooks, or operator commands, update those references to the grouped owner path in the same change.
 - Preserve the current Main/Vision contract:
   - `MAIN_SERVER_URL=http://smartfactory-main.local:8088`
   - Main-facing stream base: `http://smartfactory-vision.local:8090`
@@ -24,7 +24,7 @@ This document defines how to organize files by **actual purpose, callers, and ru
 |---|---|---|---|
 | `services/ai-server/` | FastAPI AI/Vision evidence service | HTTP APIs, app factory, route modules, runtime state, source registry integration, detection/evidence/cache logic, service tests | ROS node startup, shell process orchestration, systemd install steps |
 | `ros2/smartfactory_perception_ros/` | ROS2 sidecars and adapters | ROS launch files, ROS nodes, camera snapshot clients, frame gateway, overlay stream bridge, ROS-specific tests/config | FastAPI app construction, WMS/Main DB ownership, operator shell bundles |
-| `scripts/` | Operator/developer entrypoints | Local setup/run/test/smoke/generate/validate/report helpers; stable root wrappers for commands users type | Long-lived service internals that should be importable modules; live system mutation without explicit ops gate |
+| `scripts/` | Operator/developer entrypoints | Local setup/run/test/smoke/generate/validate/report helpers under purpose-specific subdirectories | Long-lived service internals that should be importable modules; live system mutation without explicit ops gate |
 | `ops/` | Deployment assets | systemd units, future env examples, deployment runbooks, deploy validators | Local dev-only scripts, service implementation code |
 | `docs/` | Draft docs/contracts/runbooks/reports | local contracts, requests, runbooks, technical plans, reports | Unverified public/timeline claims without Confluence/user confirmation |
 | `config/` | Runtime/config source of truth | source registry, perception profiles, vision config | generated docs or ad-hoc runtime cache |
@@ -53,31 +53,27 @@ Future service moves should be by route/domain ownership:
 
 ## `scripts/` placement rules
 
-Root scripts are the stable compatibility surface. Implementation files are
-classified by purpose under subdirectories, while the root wrapper names stay
-stable for Makefile targets, runbooks, service files, and operator muscle memory.
+Root `scripts/` is documentation-only. Runnable files live under
+purpose-specific subdirectories. Current automation, runbooks, systemd assets,
+and tests should reference those grouped paths directly.
 
-| Class | Root compatibility entrypoints | Implementation location | Placement decision |
+| Class | Runnable location | Examples | Placement decision |
 |---|---|---|---|
-| AI Server | `run_ai_server.sh`, `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh`, `test_ai_server.sh` | `scripts/ai/` | Root wrappers stay stable; implementation owns AI Server setup/run/test behavior |
-| Vision/Main operator entrypoints | `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `run_d1_vision_bundle.sh`, `run_d1_vision_domain_sidecar.sh`, `smoke_main_dashboard_gateway.sh`, `prepare_docking_tuning_session.sh` | `scripts/vision/` | Root wrappers preserve existing operator commands; implementation owns Vision/Main lab runtime helpers |
-| Validation | `validate_contracts.py`, `validate_deployment_assets.py` | `scripts/validate/` | Root wrappers preserve Makefile/docs/tests |
-| Generation | `generate_source_registry_surfaces.py` | `scripts/generate/` | Root wrapper preserves contract generation command |
-| Reports/assets | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` | `scripts/reports/` | Report generators are separated from runtime/operator scripts |
-| Ops checks | `check-confluence-env.sh` | `scripts/ops/` | Ops/environment checks are not runtime service internals |
-| Shared shell helpers | n/a | `scripts/lib/vision_bundle_common.sh` | Source-only helpers; no process starts or filesystem mutation |
+| AI Server | `scripts/ai/` | `run_ai_server.sh`, `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh`, `test_ai_server.sh` | Owns AI Server setup/run/test behavior |
+| Vision/Main operator entrypoints | `scripts/vision/` | `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `run_d1_vision_bundle.sh`, `run_d1_vision_domain_sidecar.sh`, `smoke_main_dashboard_gateway.sh`, `prepare_docking_tuning_session.sh` | Owns Vision/Main lab runtime helpers |
+| Validation | `scripts/validate/` | `validate_contracts.py`, `validate_deployment_assets.py` | Owns contract/deployment validators |
+| Generation | `scripts/generate/` | `generate_source_registry_surfaces.py` | Owns generated contract/source registry surfaces |
+| Reports/assets | `scripts/reports/` | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` | Report generators are separated from runtime/operator scripts |
+| Ops checks | `scripts/ops/` | `check-confluence-env.sh` | Ops/environment checks are not runtime service internals |
+| Shared shell helpers | `scripts/lib/` | `vision_bundle_common.sh` | Source-only helpers; no process starts or filesystem mutation |
 
-Wrapper rule:
+External compatibility exception rule:
 
-```bash
-#!/usr/bin/env bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "${SCRIPT_DIR}/<group>/<implementation>.sh" "$@"
-```
-
-The wrapper must preserve arguments, environment defaults, exit codes, and
-operator-visible output. Python wrappers use the same compatibility principle by
-`execv`-ing the grouped implementation with the same interpreter and arguments.
+- Do not add root-level executable wrappers for ordinary repo commands.
+- If an external deployment temporarily requires a compatibility shim, document
+  the owner, sunset condition, and verification command in this file first.
+- Such a wrapper must preserve arguments, environment defaults, exit codes, and
+  operator-visible output.
 
 ## `ros2/` placement rules
 
@@ -97,7 +93,7 @@ operator-visible output. Python wrappers use the same compatibility principle by
 | Class | Destination | Notes |
 |---|---|---|
 | Contracts/API snapshots | `docs/contracts/` | Keep generated surfaces byte-stable unless intentional |
-| Operator runbooks | `docs/runbooks/` | Commands must match root wrappers or updated entrypoints |
+| Operator runbooks | `docs/runbooks/` | Commands must match grouped script entrypoints |
 | Requests/handoffs | `docs/requests/` | Use for external/Main/router/DNS requests |
 | Technical architecture/plans | `docs/technical/` | Local draft unless verified externally |
 | Reports/evidence | `docs/reports/` or `.omx/reports/` | `.omx/reports` for workflow evidence; `docs/reports` for durable human-facing reports |

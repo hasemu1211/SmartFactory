@@ -137,12 +137,10 @@ def test_vision_bundle_scripts_share_common_shell_helpers():
         "run_d1_vision_bundle.sh",
         "run_d1_vision_domain_sidecar.sh",
     ):
-        wrapper_source = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
-        implementation_source = (ROOT / "scripts" / "vision" / script_name).read_text(encoding="utf-8")
-        assert f'exec "${{SCRIPT_DIR}}/vision/{script_name}" "$@"' in wrapper_source
-        assert 'source "${SCRIPT_DIR}/../lib/vision_bundle_common.sh"' in implementation_source
-        assert '$(sf_repo_root_from_script "${BASH_SOURCE[0]}")' in implementation_source
-        assert "$(sf_lan_ip" in implementation_source
+        script_source = (ROOT / "scripts" / "vision" / script_name).read_text(encoding="utf-8")
+        assert 'source "${SCRIPT_DIR}/../lib/vision_bundle_common.sh"' in script_source
+        assert '$(sf_repo_root_from_script "${BASH_SOURCE[0]}")' in script_source
+        assert "$(sf_lan_ip" in script_source
 
 
 

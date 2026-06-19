@@ -24,7 +24,7 @@ or robot-side persistent services. Robot camera/domain bridge must already be
 publishing the configured camera topic.
 
 Common run:
-  ./scripts/run_d1_vision_bundle.sh
+  ./scripts/vision/run_d1_vision_bundle.sh
 
 Useful environment overrides:
   ROS_DOMAIN_ID                         default: 2
@@ -106,7 +106,7 @@ check_prereqs() {
   fi
   if [ ! -x "${AI_SERVER_VENV_DIR}/bin/uvicorn" ]; then
     echo "ERROR: AI Server venv not found at ${AI_SERVER_VENV_DIR}" >&2
-    echo "       Run ./scripts/setup_ai_server_env.sh or set AI_SERVER_VENV_DIR." >&2
+    echo "       Run ./scripts/ai/setup_ai_server_env.sh or set AI_SERVER_VENV_DIR." >&2
     return 1
   fi
   if [ "${VISION_MODEL_WORKER_ENABLED}" = "true" ] && [ ! -f "${VISION_MODEL_PATH}" ]; then
@@ -189,7 +189,7 @@ start_ai_server() {
   echo "[bundle] starting AI Server"
   (
     cd "${ROOT_DIR}"
-    exec ./scripts/run_ai_server.sh
+    exec ./scripts/ai/run_ai_server.sh
   ) &
   PIDS+=("$!")
   NAMES+=("ai-server")

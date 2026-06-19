@@ -148,7 +148,7 @@ Target `task_id` migration:
 
 ### Phase C — generated surfaces
 
-- Update `scripts/generate_source_registry_surfaces.py` so snapshots preserve v2 capability/depth metadata.
+- Update `scripts/generate/generate_source_registry_surfaces.py` so snapshots preserve v2 capability/depth metadata.
 - Keep source enum generation stable for `VisionEvent` and `LiftRoiEvidence`.
 - Regenerate:
   - `docs/contracts/generated/source-registry.snapshot.json`
@@ -213,9 +213,9 @@ Add these tests before/with Phase E:
 Suggested commands:
 
 ```bash
-python3 scripts/generate_source_registry_surfaces.py
-python3 scripts/validate_contracts.py
-cd services/ai-server && ./scripts/test_ai_server.sh -q
+python3 scripts/generate/generate_source_registry_surfaces.py
+python3 scripts/validate/validate_contracts.py
+cd services/ai-server && ./scripts/ai/test_ai_server.sh -q
 # or targeted:
 cd services/ai-server && .venv/bin/python -m pytest -q \
   tests/test_source_registry.py \

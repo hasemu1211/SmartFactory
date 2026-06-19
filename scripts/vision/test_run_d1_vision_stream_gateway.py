@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-MODULE_PATH = Path(__file__).resolve().parent / "vision" / "run_d1_vision_stream_gateway.py"
+MODULE_PATH = Path(__file__).resolve().parent / "run_d1_vision_stream_gateway.py"
 spec = importlib.util.spec_from_file_location("run_d1_vision_stream_gateway", MODULE_PATH)
 gateway = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
@@ -89,9 +89,9 @@ def test_mutating_http_methods_are_read_only() -> None:
 
 def test_multi_source_bundle_print_config_keeps_source_bridges_loopback_only() -> None:
     result = subprocess.run(
-        ["bash", "scripts/run_d1_vision_multi_source_gateway_bundle.sh", "--print-config"],
+        ["bash", "scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh", "--print-config"],
         check=True,
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=Path(__file__).resolve().parents[2],
         text=True,
         capture_output=True,
     )

@@ -162,7 +162,7 @@ source /opt/ros/jazzy/setup.bash
 ros2 launch turtlebot3_bringup camera.launch.py
 
 # Local AI Server pane: Smartfactory:3.3
-AI_SERVER_HOST=0.0.0.0 AI_SERVER_PORT=8100 ./scripts/run_ai_server.sh
+AI_SERVER_HOST=0.0.0.0 AI_SERVER_PORT=8100 ./scripts/ai/run_ai_server.sh
 
 # Local gateway pane: Smartfactory:3.5
 export ROS_DOMAIN_ID=2
@@ -679,7 +679,7 @@ Observed runtime state:
 Temporary runtime caveat:
 
 - For this smoke, AI Server reused the known YOLO/Torch environment via `PYTHONPATH=/home/codelab/venv/venv/lib/python3.12/site-packages` while running the service `.venv`.
-- For reproducible project runs, use `./scripts/setup_ai_server_model_env.sh` and `AI_SERVER_VENV_DIR=services/ai-server/.venv-yolo`.
+- For reproducible project runs, use `./scripts/ai/setup_ai_server_model_env.sh` and `AI_SERVER_VENV_DIR=services/ai-server/.venv-yolo`.
 
 ## 17. Detection overlay runtime correction
 
@@ -687,7 +687,7 @@ Captured on 2026-06-16 14:23 KST.
 
 Issue observed: browser video was visible, but detection boxes were not visible.
 
-Root cause: `scripts/run_ai_server.sh` clears inherited `PYTHONPATH` to keep the
+Root cause: `scripts/ai/run_ai_server.sh` clears inherited `PYTHONPATH` to keep the
 AI Server isolated from ROS2. The temporary YOLO/Torch environment path was
 therefore not visible to uvicorn, and model inference failed closed with zero
 model candidates.
@@ -716,7 +716,7 @@ http://192.168.10.63:8090/api/v1/vision/overlay/view?source=tb3_1_picam
 
 Added on 2026-06-16 KST.
 
-`./scripts/run_d1_vision_bundle.sh` is the recommended local supervisor for Main/GUI smoke. It starts AI Server, `vision_frame_gateway`, and `vision_overlay_stream_bridge` together while preserving the ROS/FastAPI safety boundary.
+`./scripts/vision/run_d1_vision_bundle.sh` is the recommended local supervisor for Main/GUI smoke. It starts AI Server, `vision_frame_gateway`, and `vision_overlay_stream_bridge` together while preserving the ROS/FastAPI safety boundary.
 
 Main should consume this bundle through:
 

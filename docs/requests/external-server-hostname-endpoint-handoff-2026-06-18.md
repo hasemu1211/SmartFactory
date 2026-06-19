@@ -123,7 +123,7 @@ Main dashboard/proxy와 함께 report-only smoke를 남길 때:
 MAIN_DASHBOARD_URL=http://<main-host>:8088/dashboard/overview \
 VISION_STREAM_FALLBACK_BASE_URL=http://<operator-configured-vision-lan-ip>:8090 \
 VISION_API_FALLBACK_BASE_URL=http://<operator-configured-vision-lan-ip>:8100 \
-scripts/smoke_main_dashboard_gateway.sh
+scripts/vision/smoke_main_dashboard_gateway.sh
 ```
 
 이 smoke script는 `.omx/reports`에 결과를 남기며, DNS/IP/hosts/route/ROS/robot motion/Main config를 변경하지 않습니다.

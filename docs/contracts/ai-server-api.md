@@ -37,7 +37,7 @@ Lane A source metadata is generated from `config/vision/sources.yaml`:
 Regenerate them after source/topic edits:
 
 ```bash
-python3 scripts/generate_source_registry_surfaces.py
+python3 scripts/generate/generate_source_registry_surfaces.py
 ```
 
 Current MVP1 sources are `global_cam_01`, `tb3_1_picam`, and `tb3_2_picam`. Robot PiCam physical input topics are compressed image handoff topics (`/tb3_1/camera/image_raw/compressed`, `/tb3_2/camera/image_raw/compressed`) while legacy `/mission/.../camera/compressed` browser topics remain preserved during migration.
@@ -1585,7 +1585,7 @@ Errors: `400` unknown source, `404` no overlay image available yet, `422` invali
 
 Purpose: authoritative ingest point for one AI evidence event.
 
-Request body: one `VisionEvent` conforming to `docs/contracts/vision-event.schema.json` and policy validation in `scripts/validate_contracts.py`.
+Request body: one `VisionEvent` conforming to `docs/contracts/vision-event.schema.json` and policy validation in `scripts/validate/validate_contracts.py`.
 
 Response `202` accepted:
 
@@ -1695,7 +1695,7 @@ Minimum message shape:
 The Lane B API surfaces are also covered by an integrated robot-free scenario test:
 
 ```bash
-./scripts/test_ai_server.sh -q tests/test_api.py tests/test_contract_boundaries.py
+./scripts/ai/test_ai_server.sh -q tests/test_api.py tests/test_contract_boundaries.py
 ```
 
 The scenario `test_lane_b_robot_free_e2e_surfaces_stay_consistent_across_stream_debug_ros_and_metrics` verifies the single-source end-to-end debug/fallback flow:
@@ -1746,7 +1746,7 @@ Lane B overlay visual output is covered by an API-served visual QA test and save
 Test:
 
 ```bash
-./scripts/test_ai_server.sh -q tests/test_api.py tests/test_overlay.py tests/test_contract_boundaries.py
+./scripts/ai/test_ai_server.sh -q tests/test_api.py tests/test_overlay.py tests/test_contract_boundaries.py
 ```
 
 The scenario `test_lane_b_api_served_overlay_visual_qa_distinguishes_fresh_and_stale_warning_band` verifies that overlays returned by `GET /api/v1/vision/overlay/latest/image` differ visually between fresh and stale evidence:
@@ -1808,7 +1808,7 @@ Fixture directory: `docs/contracts/fixtures/`
 Validation command:
 
 ```bash
-python3 scripts/validate_contracts.py
+python3 scripts/validate/validate_contracts.py
 ```
 
 ## Merge gates
@@ -1818,7 +1818,7 @@ Before parallel implementation:
 - [x] `docs/contracts/vision-event.schema.json` exists.
 - [x] Example valid event fixtures exist for each source under `docs/contracts/fixtures/`.
 - [x] Example invalid event fixtures cover wrong source/robot pairing and non-null depth.
-- [x] Contract validation can run locally via `python3 scripts/validate_contracts.py`.
+- [x] Contract validation can run locally via `python3 scripts/validate/validate_contracts.py`.
 - [ ] AI Server, WMS ingest, and GUI lanes agree on event names and `/api/v1` paths.
 - [ ] Git repository is initialized before multi-worker source implementation.
 
@@ -1943,10 +1943,10 @@ VISION_MODEL_PATH=yolov8n.pt \
 VISION_MODEL_TASK=detect \
 VISION_MODEL_CLASS_MAP_JSON='{"bottle":"box","person":"person"}' \
 VISION_MODEL_UNMAPPED_CLASS=unknown \
-./scripts/run_ai_server.sh
+./scripts/ai/run_ai_server.sh
 ```
 
-The companion setup helper is `./scripts/setup_ai_server_model_env.sh`, which creates `services/ai-server/.venv-yolo` from `services/ai-server/requirements-model.txt`.
+The companion setup helper is `./scripts/ai/setup_ai_server_model_env.sh`, which creates `services/ai-server/.venv-yolo` from `services/ai-server/requirements-model.txt`.
 
 ## D1 read-only ROS overlay stream bridge endpoints
 
@@ -2028,7 +2028,7 @@ colcon test --packages-select smartfactory_perception_ros --event-handlers conso
 
 ## D1 live model runtime correction: `AI_SERVER_EXTRA_PYTHONPATH`
 
-`./scripts/run_ai_server.sh` intentionally unsets inherited `PYTHONPATH` so the
+`./scripts/ai/run_ai_server.sh` intentionally unsets inherited `PYTHONPATH` so the
 FastAPI AI Server does not accidentally import ROS2 runtime packages. For a
 project-local model environment, prefer `AI_SERVER_VENV_DIR=services/ai-server/.venv-yolo`.
 For a temporary live smoke using an already-known model-only environment, the
@@ -2053,7 +2053,7 @@ VISION_MODEL_IMGSZ=320 \
 VISION_MODEL_CONF=0.35 \
 VISION_MODEL_CLASS_MAP_JSON='{"bottle":"box","person":"person"}' \
 VISION_MODEL_UNMAPPED_CLASS=unknown \
-./scripts/run_ai_server.sh
+./scripts/ai/run_ai_server.sh
 ```
 
 Validation after this correction produced a fresh `tb3_1_picam` overlay with

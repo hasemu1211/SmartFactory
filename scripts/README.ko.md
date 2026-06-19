@@ -8,7 +8,7 @@
 현재 `smartfactory-vision.local`은 다음 helper 프로세스가 살아있는 동안만 임시로 mDNS 방송됩니다.
 
 ```bash
-./scripts/publish_vision_mdns_alias.py
+./scripts/vision/publish_vision_mdns_alias.py
 ```
 
 이 helper는 다음을 하지 않습니다.
@@ -31,19 +31,19 @@ MAC/IP 값은 외부 공개 또는 DHCP/router 변경 후 사용 전에 반드�
 live 프로세스를 어느 tmux 창/패널에 둘지는 현재 runbook/session evidence를 따르세요. durable README에는 일시적인 pane/window ID를 고정하지 않습니다.
 
 ```bash
-./scripts/publish_vision_mdns_alias.py
+./scripts/vision/publish_vision_mdns_alias.py
 ```
 
 동작 확인만 하고 싶으면:
 
 ```bash
-./scripts/publish_vision_mdns_alias.py --print-only
+./scripts/vision/publish_vision_mdns_alias.py --print-only
 ```
 
 ### 2. Main-compatible Vision bundle 실행
 
 ```bash
-VISION_MODEL_WORKER_ENABLED=false ./scripts/run_d1_vision_multi_source_gateway_bundle.sh
+VISION_MODEL_WORKER_ENABLED=false ./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
 ```
 
 이 bundle은 다음을 띄웁니다.
@@ -77,25 +77,24 @@ curl http://smartfactory-main.local:8088/api/v1/vision/bridge/status
 
 ## 스크립트 그룹과 실제 배치
 
-루트 파일은 안정적인 compatibility entrypoint입니다. 실제 구현 파일은 이제
-용도별 하위 폴더에 있습니다. 그래서 기존 명령인 `./scripts/run_ai_server.sh`,
-`make vision-bundle-check` 같은 호출은 그대로 유지됩니다.
+이제 루트 `scripts/`에는 문서만 남깁니다. 실행 가능한 스크립트는 용도별
+하위 폴더에 직접 배치되어 있고, 현재 문서/Makefile/systemd 참조도 실제 경로를 직접 가리킵니다.
 
-| 그룹 | 루트 호환 진입점 | 실제 구현 위치 |
+| 그룹 | 실행 위치 | 예시 |
 |---|---|---|
-| AI Server | `run_ai_server.sh`, `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh`, `test_ai_server.sh` | `scripts/ai/` |
-| D1 Vision / Main 연동 | `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `run_d1_vision_bundle.sh`, `run_d1_vision_domain_sidecar.sh`, `smoke_main_dashboard_gateway.sh`, `prepare_docking_tuning_session.sh` | `scripts/vision/` |
-| 계약/검증 | `validate_contracts.py`, `validate_deployment_assets.py` | `scripts/validate/` |
-| 계약 산출물 생성 | `generate_source_registry_surfaces.py` | `scripts/generate/` |
-| 보고서/Confluence 산출물 | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` | `scripts/reports/` |
-| 운영 확인 | `check-confluence-env.sh` | `scripts/ops/` |
-| 공용 shell helper | 해당 없음 | `scripts/lib/` |
+| AI Server | `scripts/ai/` | `run_ai_server.sh`, `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh`, `test_ai_server.sh` |
+| D1 Vision / Main 연동 | `scripts/vision/` | `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `smoke_main_dashboard_gateway.sh` |
+| 계약/검증 | `scripts/validate/` | `validate_contracts.py`, `validate_deployment_assets.py` |
+| 계약 산출물 생성 | `scripts/generate/` | `generate_source_registry_surfaces.py` |
+| 보고서/Confluence 산출물 | `scripts/reports/` | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` |
+| 운영 확인 | `scripts/ops/` | `check-confluence-env.sh` |
+| 공용 shell helper | `scripts/lib/` | `vision_bundle_common.sh` |
 
-호환 규칙:
+배치 규칙:
 
-- 문서, Makefile, 운영자가 직접 치는 명령은 루트 entrypoint를 우선 사용합니다.
+- 새 문서와 자동화에는 용도별 실제 경로를 직접 사용합니다.
+- 외부 배포 호환 전환이 필요한 경우가 아니면 루트 실행 shim을 만들지 않습니다.
 - 구현 변경은 용도에 맞는 하위 폴더에서 합니다.
-- 루트 wrapper는 인자, 환경변수, exit code, operator-visible output을 보존해야 합니다.
 
 ## 안전 경계
 
