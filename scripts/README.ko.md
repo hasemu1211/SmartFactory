@@ -1,6 +1,7 @@
 # SmartFactory scripts 안내서 (한국어)
 
 이 디렉토리는 SmartFactory 로컬 개발/운영 보조 스크립트의 진입점입니다. 특히 Main/Vision 연동은 임의 명령보다 이 디렉토리의 스크립트를 우선 사용하세요.
+파일시스템 ownership / 용도별 배치 기준: [`../docs/technical/project-filesystem-ownership.md`](../docs/technical/project-filesystem-ownership.md).
 
 ## 현재 결론: `smartfactory-vision.local`은 자동 영구 설정이 아님
 
@@ -19,17 +20,15 @@
 
 따라서 “사용자가 신경 쓰지 않아도 되는 운영 상태”를 만들려면 라우터/DNS 쪽에서 고정해야 합니다.
 
-```text
-Vision PC MAC: a0:ad:9f:bd:63:1b
-권장 이름: smartfactory-vision.local
-현재 lab IP: 192.168.10.59
-```
+날짜가 박힌 lab DHCP/DNS handoff 세부값은
+[`docs/requests/main-vision-runtime-config-request-2026-06-19.md`](../docs/requests/main-vision-runtime-config-request-2026-06-19.md)를 보세요.
+MAC/IP 값은 외부 공개 또는 DHCP/router 변경 후 사용 전에 반드시 재확인하세요.
 
 ## 빠른 실행 순서
 
 ### 1. 임시 hostname 방송
 
-tmux window `3:Development` 안에서 실행하는 것을 권장합니다.
+live 프로세스를 어느 tmux 창/패널에 둘지는 현재 runbook/session evidence를 따르세요. durable README에는 일시적인 pane/window ID를 고정하지 않습니다.
 
 ```bash
 ./scripts/publish_vision_mdns_alias.py
