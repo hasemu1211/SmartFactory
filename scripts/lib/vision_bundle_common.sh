@@ -4,7 +4,16 @@
 
 sf_repo_root_from_script() {
   local script_path="$1"
-  cd "$(dirname "${script_path}")/.." && pwd
+  local dir
+  dir="$(cd "$(dirname "${script_path}")" && pwd)"
+  while [ "${dir}" != "/" ]; do
+    if [ -d "${dir}/services" ] && [ -d "${dir}/scripts" ]; then
+      printf '%s\n' "${dir}"
+      return 0
+    fi
+    dir="$(dirname "${dir}")"
+  done
+  return 1
 }
 
 sf_default_model_extra_pythonpath() {

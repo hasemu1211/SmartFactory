@@ -74,37 +74,27 @@ Expected while robots/cameras are absent:
 - `motion_command_allowed=false`
 - sources may show `no_frame` or offline/stale state until camera frames arrive
 
-## Script groups
+## Script groups and physical layout
 
-### AI Server
+Root files are stable compatibility entrypoints. The implementation files now live
+in purpose-specific subdirectories, so existing commands such as
+`./scripts/run_ai_server.sh` and Makefile targets continue to work.
 
-- `setup_ai_server_env.sh` — create/update the AI Server Python environment
-- `setup_ai_server_model_env.sh` — model/runtime dependency setup helper
-- `run_ai_server.sh` — AI Server only (`:8100`)
-- `test_ai_server.sh` — local AI Server test helper
+| Group | Root compatibility entrypoint(s) | Implementation location |
+|---|---|---|
+| AI Server | `run_ai_server.sh`, `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh`, `test_ai_server.sh` | `scripts/ai/` |
+| D1 Vision / Main integration | `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `run_d1_vision_bundle.sh`, `run_d1_vision_domain_sidecar.sh`, `smoke_main_dashboard_gateway.sh`, `prepare_docking_tuning_session.sh` | `scripts/vision/` |
+| Contracts / validation | `validate_contracts.py`, `validate_deployment_assets.py` | `scripts/validate/` |
+| Generated contract surfaces | `generate_source_registry_surfaces.py` | `scripts/generate/` |
+| Reports / Confluence assets | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` | `scripts/reports/` |
+| Ops checks | `check-confluence-env.sh` | `scripts/ops/` |
+| Shared shell helpers | n/a | `scripts/lib/` |
 
-### D1 Vision / Main integration
+Compatibility rule:
 
-- `publish_vision_mdns_alias.py` — temporary `smartfactory-vision.local` mDNS A record publisher
-- `run_d1_vision_multi_source_gateway_bundle.sh` — official local/Main integration bundle
-- `run_d1_vision_stream_gateway.py` — ROS-free public HTTP/MJPEG source mux (`:8090`)
-- `run_d1_vision_bundle.sh` — narrower single-source debug bundle
-- `run_d1_vision_domain_sidecar.sh` — extra source/domain sidecar
-- `smoke_main_dashboard_gateway.sh` — report-only Main/Vision endpoint smoke check
-
-### Contracts / validation / generated surfaces
-
-- `validate_contracts.py` — contract/schema checks
-- `generate_source_registry_surfaces.py` — source-registry-derived fixtures/OpenAPI snapshot
-- `validate_deployment_assets.py` — Docker/systemd deployment asset checks
-
-### Miscellaneous reports/assets
-
-- `check-confluence-env.sh`
-- `prepare_docking_tuning_session.sh`
-- `generate-drawio-architectures.py`
-- `render-scenario-sequence-diagrams.py`
-- `create_sprint3_presentation_pptx.py`
+- Prefer root entrypoints in docs, Makefile targets, and operator commands.
+- Put implementation changes in the matching subdirectory.
+- Root wrappers must preserve args, env, exit codes, and operator-visible output.
 
 ## Notes
 

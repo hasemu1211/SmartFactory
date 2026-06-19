@@ -53,28 +53,31 @@ Future service moves should be by route/domain ownership:
 
 ## `scripts/` placement rules
 
-Root scripts are currently the compatibility surface. Do not physically move them first.
+Root scripts are the stable compatibility surface. Implementation files are
+classified by purpose under subdirectories, while the root wrapper names stay
+stable for Makefile targets, runbooks, service files, and operator muscle memory.
 
-| Class | Current examples | Placement decision |
-|---|---|---|
-| Operator run entrypoints | `run_ai_server.sh`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_bundle.sh`, `run_d1_vision_domain_sidecar.sh` | Keep root; if internals move later, root file becomes wrapper |
-| Temporary hostname helper | `publish_vision_mdns_alias.py` | Keep root while operator types it directly; document temporary nature |
-| Test/check entrypoints | `test_ai_server.sh`, `test_run_d1_vision_stream_gateway.py` | Keep root until Makefile/tests are updated or wrappers exist |
-| Validation | `validate_contracts.py`, `validate_deployment_assets.py` | Keep root for Makefile compatibility; future `scripts/validate/` only with root wrapper or Makefile/docs update |
-| Generation | `generate_source_registry_surfaces.py` | Keep root for Makefile/docs/tests; future `scripts/generate/` only wrapper-backed |
-| Smoke checks | `smoke_main_dashboard_gateway.sh` | Keep root for `make vision-smoke-main`; future `scripts/smoke/` only wrapper-backed |
-| Setup | `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh` | Keep root while README and users call them directly |
-| Reports/assets | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` | Lowest-risk future candidates for `scripts/reports/`, still require wrappers or docs updates |
-| Shared shell helpers | `scripts/lib/vision_bundle_common.sh` | Internal helper location is appropriate |
+| Class | Root compatibility entrypoints | Implementation location | Placement decision |
+|---|---|---|---|
+| AI Server | `run_ai_server.sh`, `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh`, `test_ai_server.sh` | `scripts/ai/` | Root wrappers stay stable; implementation owns AI Server setup/run/test behavior |
+| Vision/Main operator entrypoints | `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `run_d1_vision_bundle.sh`, `run_d1_vision_domain_sidecar.sh`, `smoke_main_dashboard_gateway.sh`, `prepare_docking_tuning_session.sh` | `scripts/vision/` | Root wrappers preserve existing operator commands; implementation owns Vision/Main lab runtime helpers |
+| Validation | `validate_contracts.py`, `validate_deployment_assets.py` | `scripts/validate/` | Root wrappers preserve Makefile/docs/tests |
+| Generation | `generate_source_registry_surfaces.py` | `scripts/generate/` | Root wrapper preserves contract generation command |
+| Reports/assets | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` | `scripts/reports/` | Report generators are separated from runtime/operator scripts |
+| Ops checks | `check-confluence-env.sh` | `scripts/ops/` | Ops/environment checks are not runtime service internals |
+| Shared shell helpers | n/a | `scripts/lib/vision_bundle_common.sh` | Source-only helpers; no process starts or filesystem mutation |
 
-Wrapper rule for future moves:
+Wrapper rule:
 
 ```bash
 #!/usr/bin/env bash
-exec "$(dirname "$0")/run/<new-implementation>.sh" "$@"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "${SCRIPT_DIR}/<group>/<implementation>.sh" "$@"
 ```
 
-The wrapper must preserve arguments, environment defaults, exit codes, and operator-visible output.
+The wrapper must preserve arguments, environment defaults, exit codes, and
+operator-visible output. Python wrappers use the same compatibility principle by
+`execv`-ing the grouped implementation with the same interpreter and arguments.
 
 ## `ros2/` placement rules
 

@@ -25,7 +25,7 @@ def test_factory_creates_runtime_app_without_generator_bridge():
 
 
 def test_source_registry_generator_uses_factory_seam_not_main_app_import():
-    script = (ROOT / "scripts" / "generate_source_registry_surfaces.py").read_text(
+    script = (ROOT / "scripts" / "generate" / "generate_source_registry_surfaces.py").read_text(
         encoding="utf-8"
     )
 
@@ -137,10 +137,12 @@ def test_vision_bundle_scripts_share_common_shell_helpers():
         "run_d1_vision_bundle.sh",
         "run_d1_vision_domain_sidecar.sh",
     ):
-        script_source = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
-        assert 'source "${SCRIPT_DIR}/lib/vision_bundle_common.sh"' in script_source
-        assert '$(sf_repo_root_from_script "${BASH_SOURCE[0]}")' in script_source
-        assert "$(sf_lan_ip" in script_source
+        wrapper_source = (ROOT / "scripts" / script_name).read_text(encoding="utf-8")
+        implementation_source = (ROOT / "scripts" / "vision" / script_name).read_text(encoding="utf-8")
+        assert f'exec "${{SCRIPT_DIR}}/vision/{script_name}" "$@"' in wrapper_source
+        assert 'source "${SCRIPT_DIR}/../lib/vision_bundle_common.sh"' in implementation_source
+        assert '$(sf_repo_root_from_script "${BASH_SOURCE[0]}")' in implementation_source
+        assert "$(sf_lan_ip" in implementation_source
 
 
 
@@ -345,7 +347,7 @@ def test_ai_server_dependencies_exclude_yolo_torch_and_ros2_imports():
 
 
 def test_ai_test_script_clears_ros_pythonpath_contamination():
-    script = (ROOT / "scripts" / "test_ai_server.sh").read_text(encoding="utf-8")
+    script = (ROOT / "scripts" / "ai" / "test_ai_server.sh").read_text(encoding="utf-8")
 
     assert "unset PYTHONPATH" in script
     assert "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1" in script
