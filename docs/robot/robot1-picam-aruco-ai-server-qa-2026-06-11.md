@@ -50,7 +50,7 @@ AI Server가 꺼져 있으면 SmartFactory repo root에서 먼저 실행한다.
 
 ```bash
 cd /home/codelab/Desktop/Project/SmartFactory
-./scripts/run_ai_server.sh
+./scripts/ai/run_ai_server.sh
 ```
 
 AI Server 상태:

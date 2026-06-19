@@ -6,7 +6,7 @@ SERVICE_DIR="${ROOT_DIR}/services/ai-server"
 VENV_DIR="${SERVICE_DIR}/.venv"
 
 if [ ! -x "${VENV_DIR}/bin/python" ]; then
-  echo "AI Server venv not found. Run ./scripts/setup_ai_server_env.sh first." >&2
+  echo "AI Server venv not found. Run ./scripts/ai/setup_ai_server_env.sh first." >&2
   exit 1
 fi
 
@@ -18,4 +18,4 @@ export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 cd "${SERVICE_DIR}"
 "${VENV_DIR}/bin/python" -m pytest tests "$@"
 cd "${ROOT_DIR}"
-python3 "${ROOT_DIR}/scripts/validate_contracts.py"
+python3 "${ROOT_DIR}/scripts/validate/validate_contracts.py"

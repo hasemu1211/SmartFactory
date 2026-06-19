@@ -56,7 +56,7 @@ The forbidden topic glob list must include `/cmd_vel`, `*/cmd_vel`, Nav2 action-
 | ROS frame gateway | `ros2/smartfactory_perception_ros/test/test_vision_frame_gateway.py` rejects `/cmd_vel` input/publish topics and asserts no command/Nav2 publishers. |
 | ROS overlay bridge | `ros2/smartfactory_perception_ros/test/test_vision_overlay_stream_bridge.py` enforces source/topic allowlists, read-only mutation rejection, and no command/Nav2 publishers. |
 | Passive docking monitor | `ros2/smartfactory_perception_ros/test/test_aruco_pose_monitor.py` checks advisory-only output and no `/cmd_vel` publishers. |
-| Run scripts | `scripts/run_d1_vision_bundle.sh`, `scripts/run_d1_vision_multi_source_gateway_bundle.sh`, and `scripts/run_d1_vision_domain_sidecar.sh` state that no robot motion, Nav2, teleop, `/cmd_vel`, robot-side persistent services, or whole-graph bridge are started. |
+| Run scripts | `scripts/vision/run_d1_vision_bundle.sh`, `scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh`, and `scripts/vision/run_d1_vision_domain_sidecar.sh` state that no robot motion, Nav2, teleop, `/cmd_vel`, robot-side persistent services, or whole-graph bridge are started. |
 
 ## Verification commands
 

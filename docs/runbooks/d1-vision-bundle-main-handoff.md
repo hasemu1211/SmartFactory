@@ -4,7 +4,7 @@ Date: 2026-06-16 KST
 
 ## Purpose
 
-`./scripts/run_d1_vision_bundle.sh` is the local one-command supervisor for the AI-included vision path. It keeps the ROS/FastAPI safety boundary intact while making the runtime easier to operate.
+`./scripts/vision/run_d1_vision_bundle.sh` is the local one-command supervisor for the AI-included vision path. It keeps the ROS/FastAPI safety boundary intact while making the runtime easier to operate.
 
 It is a **single supervisor process** that starts and stops these child processes together:
 
@@ -36,19 +36,19 @@ Current demo/default profile:
 
 ```bash
 cd /home/codelab/Desktop/Project/SmartFactory
-./scripts/run_d1_vision_bundle.sh
+./scripts/vision/run_d1_vision_bundle.sh
 ```
 
 Dry check without starting processes:
 
 ```bash
-./scripts/run_d1_vision_bundle.sh --check
+./scripts/vision/run_d1_vision_bundle.sh --check
 ```
 
 Help:
 
 ```bash
-./scripts/run_d1_vision_bundle.sh --help
+./scripts/vision/run_d1_vision_bundle.sh --help
 ```
 
 If replacing the currently running separate panes, stop only these local panes first: AI Server, `vision_frame_gateway`, and `vision_overlay_stream_bridge`. Keep the robot camera pane running unless the operator wants to stop the camera.
@@ -76,7 +76,7 @@ If replacing the currently running separate panes, stop only these local panes f
 
 Recommended hostname-first Main target is `smartfactory-vision.local`; use the detected LAN IP printed by `make vision-config` only as an explicitly configured fallback:
 
-Hostname prerequisite: `smartfactory-vision.local` must resolve from the Main Server PC. This repo does not mutate DNS, `/etc/hosts`, router DHCP, or local IP aliases. Until mDNS/DNS/operator-managed host alias is configured, `scripts/smoke_main_dashboard_gateway.sh` may report `hostname_unresolved`; in that case Main may use an explicit fallback such as `VISION_STREAM_FALLBACK_BASE_URL=http://<detected-vision-lan-ip>:8090`.
+Hostname prerequisite: `smartfactory-vision.local` must resolve from the Main Server PC. This repo does not mutate DNS, `/etc/hosts`, router DHCP, or local IP aliases. Until mDNS/DNS/operator-managed host alias is configured, `scripts/vision/smoke_main_dashboard_gateway.sh` may report `hostname_unresolved`; in that case Main may use an explicit fallback such as `VISION_STREAM_FALLBACK_BASE_URL=http://<detected-vision-lan-ip>:8090`.
 
 | Purpose | Method / URL | Output |
 |---|---|---|
@@ -132,7 +132,7 @@ ROS_DOMAIN_ID=5 \
 VISION_SOURCE_ID=tb3_2_picam \
 VISION_IMAGE_TOPIC=/camera/image_raw/compressed \
 VISION_STREAM_PORT=8091 \
-./scripts/run_d1_vision_domain_sidecar.sh
+./scripts/vision/run_d1_vision_domain_sidecar.sh
 ```
 
 Historical/operator-only URLs; do **not** publish these as Main contract:
@@ -176,7 +176,7 @@ The internal ports are not Main contract. Main should know only `:8090` and `sou
 Run command, inside tmux `Smartfactory:3` only:
 
 ```bash
-./scripts/run_d1_vision_multi_source_gateway_bundle.sh
+./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
 ```
 
 Current 2026-06-16 runtime note: Robot1 is updating through the single gateway. Robot2 delivered initial frames but then became stale after `192.168.10.89` stopped responding to ping/SSH; restart Robot2 camera once that host is reachable again.
@@ -197,7 +197,7 @@ Robot camera compressed topic
   -> Main proxy / HTML dashboard
 ```
 
-Key defaults in `./scripts/run_d1_vision_multi_source_gateway_bundle.sh`:
+Key defaults in `./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh`:
 
 | Env | Default | Meaning |
 |---|---:|---|

@@ -54,7 +54,7 @@ Vision repo는 다음을 제공합니다.
 
 ```bash
 make vision-config
-scripts/smoke_main_dashboard_gateway.sh
+scripts/vision/smoke_main_dashboard_gateway.sh
 ```
 
 `make vision-config`는 hostname-first 권장 URL과 detected LAN fallback evidence를 출력합니다.  
@@ -66,7 +66,7 @@ scripts/smoke_main_dashboard_gateway.sh
 MAIN_DASHBOARD_URL=http://<main-host>:8088/dashboard/overview \
 VISION_STREAM_FALLBACK_BASE_URL=http://<detected-vision-lan-ip>:8090 \
 VISION_API_FALLBACK_BASE_URL=http://<detected-vision-lan-ip>:8100 \
-scripts/smoke_main_dashboard_gateway.sh
+scripts/vision/smoke_main_dashboard_gateway.sh
 ```
 
 ## 비범위 / 안전 경계

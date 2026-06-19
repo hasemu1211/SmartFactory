@@ -62,7 +62,7 @@ cp "$CONFIG_TEMPLATE" "$SESSION_DIR/docking_tuning.yaml"
 cat > "$SESSION_DIR/README.md" <<README
 # Docking tuning session $STAMP
 
-Mode prepared by: scripts/prepare_docking_tuning_session.sh
+Mode prepared by: scripts/vision/prepare_docking_tuning_session.sh
 
 Safety default: passive only; do not publish /cmd_vel without explicit user permission.
 

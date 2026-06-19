@@ -20,5 +20,5 @@ Run with:
   VISION_MODEL_PATH=yolov8n.pt \\
   VISION_MODEL_TASK=detect \\
   VISION_MODEL_CLASS_MAP_JSON='{"bottle":"box","person":"person"}' \\
-  ./scripts/run_ai_server.sh
+  ./scripts/ai/run_ai_server.sh
 MSG

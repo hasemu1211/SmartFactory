@@ -106,7 +106,7 @@ the profile file, restart the AI Server because profiles are cached in process.
 Use the helper script from repo root:
 
 ```bash
-./scripts/prepare_docking_tuning_session.sh
+./scripts/vision/prepare_docking_tuning_session.sh
 ```
 
 It creates a session folder under `.omx/reports/docking-tuning/` and copies the config template.
@@ -114,13 +114,13 @@ It creates a session folder under `.omx/reports/docking-tuning/` and copies the 
 To print safe passive ROS check commands without running them:
 
 ```bash
-./scripts/prepare_docking_tuning_session.sh --print-commands
+./scripts/vision/prepare_docking_tuning_session.sh --print-commands
 ```
 
 To run passive checks later from the managed ROS CLI pane only:
 
 ```bash
-./scripts/prepare_docking_tuning_session.sh --passive-check
+./scripts/vision/prepare_docking_tuning_session.sh --passive-check
 ```
 
 `--passive-check` must not publish motion commands. It only inspects topic list/type/hz.

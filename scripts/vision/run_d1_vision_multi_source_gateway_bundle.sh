@@ -39,10 +39,10 @@ Makefile aliases are intentionally thin wrappers around this script:
   make vision-smoke-local # curl local health/status endpoints if already running
 
 Supporting/debug scripts remain available for narrower cases:
-  scripts/run_ai_server.sh                  # AI Server only
-  scripts/run_d1_vision_bundle.sh           # single-source bundle
-  scripts/run_d1_vision_domain_sidecar.sh   # extra source/domain sidecar
-  scripts/run_d1_vision_stream_gateway.py   # public source mux implementation
+  scripts/ai/run_ai_server.sh                  # AI Server only
+  scripts/vision/run_d1_vision_bundle.sh           # single-source bundle
+  scripts/vision/run_d1_vision_domain_sidecar.sh   # extra source/domain sidecar
+  scripts/vision/run_d1_vision_stream_gateway.py   # public source mux implementation
 USAGE
 }
 
@@ -117,7 +117,7 @@ check_prereqs() {
     echo "ERROR: VISION_MODEL_PATH does not exist: ${VISION_MODEL_PATH}" >&2
     return 1
   fi
-  python3 -m py_compile "${ROOT_DIR}/scripts/run_d1_vision_stream_gateway.py"
+  python3 -m py_compile "${ROOT_DIR}/scripts/vision/run_d1_vision_stream_gateway.py"
   (
     # shellcheck disable=SC1090
     unset PYTHONPATH
@@ -196,7 +196,7 @@ start_ai_server() {
   echo "[multi-gateway] starting AI Server"
   (
     cd "${ROOT_DIR}"
-    exec ./scripts/run_ai_server.sh
+    exec ./scripts/ai/run_ai_server.sh
   ) &
   PIDS+=("$!")
   echo "[multi-gateway] ai-server pid=${PIDS[-1]}"
@@ -308,7 +308,7 @@ start_public_gateway() {
   echo "[multi-gateway] starting public Vision Stream Gateway"
   (
     cd "${ROOT_DIR}"
-    exec python3 scripts/run_d1_vision_stream_gateway.py
+    exec python3 scripts/vision/run_d1_vision_stream_gateway.py
   ) &
   PIDS+=("$!")
   echo "[multi-gateway] public-gateway pid=${PIDS[-1]}"

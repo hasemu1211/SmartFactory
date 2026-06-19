@@ -229,7 +229,7 @@ Ready-to-use tuning assets:
 - Runbook: `docs/robot/docking-tuning-runbook.md`
 - Config template: `config/perception/docking_tuning.example.yaml`
 - AI Server pose profile template: `config/perception/aruco_pose_profiles.example.json`
-- Session helper: `scripts/prepare_docking_tuning_session.sh`
+- Session helper: `scripts/vision/prepare_docking_tuning_session.sh`
 
 ### C. Passive robot-available tuning — no motion
 

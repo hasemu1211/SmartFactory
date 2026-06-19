@@ -11,7 +11,7 @@ scripts over ad-hoc commands so Main/Vision integration stays reproducible.
 ### 1. Publish the temporary Vision hostname for a lab session
 
 ```bash
-./scripts/publish_vision_mdns_alias.py
+./scripts/vision/publish_vision_mdns_alias.py
 ```
 
 Default behavior:
@@ -31,13 +31,13 @@ Verify MAC/IP values before publishing externally or after DHCP/router changes.
 Dry check:
 
 ```bash
-./scripts/publish_vision_mdns_alias.py --print-only
+./scripts/vision/publish_vision_mdns_alias.py --print-only
 ```
 
 ### 2. Start the Main-compatible Vision bundle
 
 ```bash
-VISION_MODEL_WORKER_ENABLED=false ./scripts/run_d1_vision_multi_source_gateway_bundle.sh
+VISION_MODEL_WORKER_ENABLED=false ./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
 ```
 
 The bundle starts:
@@ -76,25 +76,25 @@ Expected while robots/cameras are absent:
 
 ## Script groups and physical layout
 
-Root files are stable compatibility entrypoints. The implementation files now live
-in purpose-specific subdirectories, so existing commands such as
-`./scripts/run_ai_server.sh` and Makefile targets continue to work.
+Root `scripts/` now contains documentation only. Runnable scripts live directly
+in purpose-specific subdirectories, and current docs/Makefile/systemd references
+point to those real paths directly.
 
-| Group | Root compatibility entrypoint(s) | Implementation location |
+| Group | Runnable location | Examples |
 |---|---|---|
-| AI Server | `run_ai_server.sh`, `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh`, `test_ai_server.sh` | `scripts/ai/` |
-| D1 Vision / Main integration | `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `run_d1_vision_bundle.sh`, `run_d1_vision_domain_sidecar.sh`, `smoke_main_dashboard_gateway.sh`, `prepare_docking_tuning_session.sh` | `scripts/vision/` |
-| Contracts / validation | `validate_contracts.py`, `validate_deployment_assets.py` | `scripts/validate/` |
-| Generated contract surfaces | `generate_source_registry_surfaces.py` | `scripts/generate/` |
-| Reports / Confluence assets | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` | `scripts/reports/` |
-| Ops checks | `check-confluence-env.sh` | `scripts/ops/` |
-| Shared shell helpers | n/a | `scripts/lib/` |
+| AI Server | `scripts/ai/` | `run_ai_server.sh`, `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh`, `test_ai_server.sh` |
+| D1 Vision / Main integration | `scripts/vision/` | `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `smoke_main_dashboard_gateway.sh` |
+| Contracts / validation | `scripts/validate/` | `validate_contracts.py`, `validate_deployment_assets.py` |
+| Generated contract surfaces | `scripts/generate/` | `generate_source_registry_surfaces.py` |
+| Reports / Confluence assets | `scripts/reports/` | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` |
+| Ops checks | `scripts/ops/` | `check-confluence-env.sh` |
+| Shared shell helpers | `scripts/lib/` | `vision_bundle_common.sh` |
 
-Compatibility rule:
+Placement rule:
 
-- Prefer root entrypoints in docs, Makefile targets, and operator commands.
-- Put implementation changes in the matching subdirectory.
-- Root wrappers must preserve args, env, exit codes, and operator-visible output.
+- Use the grouped script paths directly in new docs and automation.
+- Do not add root-level executable shims unless an external deployment requires a documented transition.
+- Keep implementation changes in the matching purpose directory.
 
 ## Notes
 

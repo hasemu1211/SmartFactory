@@ -55,7 +55,7 @@ def test_systemd_unit_launches_existing_isolated_runner():
         parser.read_file(f)
 
     assert parser["Service"]["WorkingDirectory"] == str(ROOT)
-    assert parser["Service"]["ExecStart"] == str(ROOT / "scripts/run_ai_server.sh")
+    assert parser["Service"]["ExecStart"] == str(ROOT / "scripts/ai/run_ai_server.sh")
     assert "PYTHONPATH=" in parser["Service"]["Environment"]
     assert "VISION_MODEL_TASK=segment" in parser["Service"]["Environment"]
     assert "MAIN_SERVER_URL=http://smartfactory-main.local:8088" in parser["Service"]["Environment"]
@@ -65,7 +65,7 @@ def test_systemd_unit_launches_existing_isolated_runner():
 
 def test_deployment_asset_validator_passes():
     result = subprocess.run(
-        ["python3", "scripts/validate_deployment_assets.py"],
+        ["python3", "scripts/validate/validate_deployment_assets.py"],
         cwd=ROOT,
         text=True,
         capture_output=True,

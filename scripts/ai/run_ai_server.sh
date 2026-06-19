@@ -6,7 +6,7 @@ SERVICE_DIR="${ROOT_DIR}/services/ai-server"
 VENV_DIR="${AI_SERVER_VENV_DIR:-${SERVICE_DIR}/.venv}"
 
 if [ ! -x "${VENV_DIR}/bin/uvicorn" ]; then
-  echo "AI Server venv not found at ${VENV_DIR}. Run ./scripts/setup_ai_server_env.sh or set AI_SERVER_VENV_DIR to a prepared env." >&2
+  echo "AI Server venv not found at ${VENV_DIR}. Run ./scripts/ai/setup_ai_server_env.sh or set AI_SERVER_VENV_DIR to a prepared env." >&2
   exit 1
 fi
 

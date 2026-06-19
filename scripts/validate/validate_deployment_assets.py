@@ -70,8 +70,8 @@ def validate_systemd_unit() -> None:
     require(parser.has_section("Install"), "systemd unit missing [Install]")
     service = parser["Service"]
     require(
-        service.get("ExecStart", "").endswith("scripts/run_ai_server.sh"),
-        "systemd unit must launch scripts/run_ai_server.sh",
+        service.get("ExecStart", "").endswith("scripts/ai/run_ai_server.sh"),
+        "systemd unit must launch scripts/ai/run_ai_server.sh",
     )
     require(service.get("Restart") == "on-failure", "systemd unit must restart on failure")
     require(service.get("NoNewPrivileges") == "true", "systemd unit must set NoNewPrivileges")

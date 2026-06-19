@@ -25,7 +25,7 @@ Example Robot2/domain5:
   VISION_SOURCE_ID=tb3_2_picam \
   VISION_IMAGE_TOPIC=/camera/image_raw/compressed \
   VISION_STREAM_PORT=8091 \
-  ./scripts/run_d1_vision_domain_sidecar.sh
+  ./scripts/vision/run_d1_vision_domain_sidecar.sh
 USAGE
 }
 

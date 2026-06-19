@@ -5,40 +5,40 @@ ROS_PACKAGES ?= smartfactory_bringup smartfactory_perception_ros
 .PHONY: ai-setup ai-test ai-run contracts source-registry-surfaces deploy-validate docker-ai-config vision-check vision-run vision-config vision-smoke-local vision-smoke-main ros-test ros-build-bringup ros-launch-smoke status
 
 ai-setup:
-	./scripts/setup_ai_server_env.sh
+	./scripts/ai/setup_ai_server_env.sh
 
 ai-test:
-	./scripts/test_ai_server.sh -q
+	./scripts/ai/test_ai_server.sh -q
 
 ai-run:
-	./scripts/run_ai_server.sh --reload
+	./scripts/ai/run_ai_server.sh --reload
 
 contracts:
-	python3 scripts/validate_contracts.py
+	python3 scripts/validate/validate_contracts.py
 
 source-registry-surfaces:
-	python3 scripts/generate_source_registry_surfaces.py
+	python3 scripts/generate/generate_source_registry_surfaces.py
 
 deploy-validate:
-	python3 scripts/validate_deployment_assets.py
+	python3 scripts/validate/validate_deployment_assets.py
 
 docker-ai-config:
 	docker compose -f docker-compose.ai-server.yml config --quiet
 
 vision-check:
-	VISION_MODEL_WORKER_ENABLED=$${VISION_MODEL_WORKER_ENABLED:-false} ./scripts/run_d1_vision_multi_source_gateway_bundle.sh --check
+	VISION_MODEL_WORKER_ENABLED=$${VISION_MODEL_WORKER_ENABLED:-false} ./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh --check
 
 vision-run:
-	./scripts/run_d1_vision_multi_source_gateway_bundle.sh
+	./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
 
 vision-config:
-	./scripts/run_d1_vision_multi_source_gateway_bundle.sh --print-config
+	./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh --print-config
 
 vision-smoke-local:
-	./scripts/run_d1_vision_multi_source_gateway_bundle.sh --smoke-local
+	./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh --smoke-local
 
 vision-smoke-main:
-	./scripts/smoke_main_dashboard_gateway.sh
+	./scripts/vision/smoke_main_dashboard_gateway.sh
 
 ros-test:
 	cd ros2/smartfactory_perception_ros && pytest -q

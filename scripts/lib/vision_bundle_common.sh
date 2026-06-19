@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared, source-only helpers for SmartFactory Vision bundle wrapper scripts.
+# Shared, source-only helpers for SmartFactory Vision bundle entrypoint scripts.
 # Keep this file side-effect free: no exports, no process starts, no filesystem mutation.
 
 sf_repo_root_from_script() {
