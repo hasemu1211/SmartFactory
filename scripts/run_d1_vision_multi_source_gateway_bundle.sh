@@ -54,6 +54,7 @@ set_defaults() {
   export AI_SERVER_URL="${AI_SERVER_URL:-http://127.0.0.1:${AI_SERVER_PORT}}"
   export AI_SERVER_VENV_DIR="${AI_SERVER_VENV_DIR:-${ROOT_DIR}/services/ai-server/.venv}"
   export VISION_PUBLIC_HOST="${VISION_PUBLIC_HOST:-smartfactory-vision.local}"
+  export MAIN_SERVER_URL="${MAIN_SERVER_URL:-http://smartfactory-main.local:8088}"
   if [ -z "${AI_SERVER_EXTRA_PYTHONPATH:-}" ] && [ -d "${DEFAULT_MODEL_EXTRA_PYTHONPATH}" ]; then
     export AI_SERVER_EXTRA_PYTHONPATH="${DEFAULT_MODEL_EXTRA_PYTHONPATH}"
   fi
@@ -158,6 +159,11 @@ Main/GUI recommended stable base URLs (hostname-first):
   VISION_API_BASE_URL=http://${public_host}:${AI_SERVER_PORT}
   VISION_STREAM_BASE_URL=http://${public_host}:${VISION_STREAM_GATEWAY_PORT}
   LMS_VISION_STREAM_BASE_URL=http://${public_host}:${VISION_STREAM_GATEWAY_PORT}
+
+Vision -> Main callback settings:
+  MAIN_SERVER_URL=${MAIN_SERVER_URL}
+  WMS_VISION_EVENTS_PATH=${WMS_VISION_EVENTS_PATH:-/api/v1/vision/events}
+  WMS_EMIT_ENABLED=${WMS_EMIT_ENABLED:-false}
   Overlay ${VISION_SOURCE_1_ID}: http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_SOURCE_1_ID}&max_fps=${VISION_STREAM_MAX_FPS}
   Overlay ${VISION_SOURCE_2_ID}: http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_SOURCE_2_ID}&max_fps=${VISION_STREAM_MAX_FPS}
   Raw ${VISION_SOURCE_1_ID}:     http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=${VISION_SOURCE_1_ID}&max_fps=${VISION_STREAM_MAX_FPS}

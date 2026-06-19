@@ -9,7 +9,7 @@ services:
     environment:
       AI_SERVER_HOST: 0.0.0.0
       AI_SERVER_PORT: "8100"
-      MAIN_SERVER_URL: ${MAIN_SERVER_URL:-http://127.0.0.1:8000}
+      MAIN_SERVER_URL: ${MAIN_SERVER_URL:-http://smartfactory-main.local:8088}
       WMS_EMIT_ENABLED: ${WMS_EMIT_ENABLED:-false}
       WMS_EMIT_TIMEOUT_S: ${WMS_EMIT_TIMEOUT_S:-2.0}
       WMS_EMIT_RETRIES: ${WMS_EMIT_RETRIES:-0}

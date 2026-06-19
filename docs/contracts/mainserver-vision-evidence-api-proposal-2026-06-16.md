@@ -109,7 +109,7 @@ ros2 launch smartfactory_perception_ros vision_frame_gateway.launch.py \
 {
   "health": {
     "status": "ok",
-    "main_server_url": "http://127.0.0.1:8000",
+    "main_server_url": "http://smartfactory-main.local:8088",
     "ai_server_bind": "0.0.0.0:8100",
     "ai_server_lan_base": "http://192.168.10.63:8100",
     "source_summary": {
@@ -187,7 +187,7 @@ AI Server에는 Main/WMS-style outbound client가 이미 있다.
 
 | 환경변수 | 기본값 | 설명 |
 |---|---|---|
-| `MAIN_SERVER_URL` | `http://127.0.0.1:8000` | Mainserver base URL |
+| `MAIN_SERVER_URL` | `http://smartfactory-main.local:8088` | Mainserver callback base URL for VisionEvent ingest |
 | `WMS_VISION_EVENTS_PATH` | `/api/v1/vision/events` | Mainserver VisionEvent ingest path |
 | `WMS_EMIT_ENABLED` | `false` | `true`일 때만 outbound POST 시도 |
 | `WMS_EMIT_TIMEOUT_S` | `2.0` | Mainserver POST timeout |
@@ -196,12 +196,14 @@ AI Server에는 Main/WMS-style outbound client가 이미 있다.
 예시:
 
 ```bash
-export MAIN_SERVER_URL="http://<mainserver-host>:<port>"
+export MAIN_SERVER_URL="http://smartfactory-main.local:8088"
 export WMS_VISION_EVENTS_PATH="/api/v1/vision/events"
 export WMS_EMIT_ENABLED="true"
 export WMS_EMIT_TIMEOUT_S="2.0"
 export WMS_EMIT_RETRIES="0"
 ```
+
+2026-06-19 Main handoff update: Main is currently advertised at `http://smartfactory-main.local:8088`; `:8000` is not a listener for the LMS dashboard/API callback surface. Vision-side runtime examples should therefore use `MAIN_SERVER_URL=http://smartfactory-main.local:8088` unless an operator intentionally moves Main.
 
 AI Server outbound URL 계산식:
 
