@@ -38,6 +38,10 @@ def validate_compose() -> None:
     require("/api/v1/health" in text, "compose healthcheck must use AI health endpoint")
     require("VISION_MODEL_TASK" in text, "compose must expose optional model task config")
     require("VISION_MODEL_PATH" in text, "compose must expose optional model path config")
+    require(
+        "MAIN_SERVER_URL: ${MAIN_SERVER_URL:-http://smartfactory-main.local:8088}" in text,
+        "compose must default Main callback URL to current handoff port",
+    )
 
     docker = shutil.which("docker")
     if docker is None:
@@ -75,6 +79,10 @@ def validate_systemd_unit() -> None:
     environment = service.get("Environment", "")
     require("VISION_MODEL_TASK=segment" in environment, "systemd unit must default to segment task")
     require("VISION_MODEL_PATH=" in environment, "systemd unit must expose optional model path")
+    require(
+        "MAIN_SERVER_URL=http://smartfactory-main.local:8088" in environment,
+        "systemd unit must default Main callback URL to current handoff port",
+    )
 
 
 def main() -> int:

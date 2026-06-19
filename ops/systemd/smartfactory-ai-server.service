@@ -7,7 +7,7 @@ After=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/home/codelab/Desktop/Project/SmartFactory
-Environment=AI_SERVER_HOST=127.0.0.1 AI_SERVER_PORT=8100 MAIN_SERVER_URL=http://127.0.0.1:8000 WMS_EMIT_ENABLED=false EVENT_STORE_MAXLEN=200 VISION_MODEL_PATH= VISION_MODEL_TASK=segment VISION_MODEL_DEVICE=cpu PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=
+Environment=AI_SERVER_HOST=127.0.0.1 AI_SERVER_PORT=8100 MAIN_SERVER_URL=http://smartfactory-main.local:8088 WMS_EMIT_ENABLED=false EVENT_STORE_MAXLEN=200 VISION_MODEL_PATH= VISION_MODEL_TASK=segment VISION_MODEL_DEVICE=cpu PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=
 ExecStart=/home/codelab/Desktop/Project/SmartFactory/scripts/run_ai_server.sh
 Restart=on-failure
 RestartSec=5s

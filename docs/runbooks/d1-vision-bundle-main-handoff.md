@@ -98,12 +98,12 @@ Main should treat video and semantic evidence separately:
 Existing AI Server outbound client support already exists for `POST {MAIN_SERVER_URL}{WMS_VISION_EVENTS_PATH}` with defaults:
 
 ```text
-MAIN_SERVER_URL=http://<main-host>:<main-port>
+MAIN_SERVER_URL=http://smartfactory-main.local:8088
 WMS_VISION_EVENTS_PATH=/api/v1/vision/events
 WMS_EMIT_ENABLED=true
 ```
 
-Current continuous live camera path publishes semantic snapshots to ROS `/sf/vision/events` and keeps AI cache updated. Continuous HTTP auto-post from worker tick to Main is not part of this bundle yet; it should be a small follow-up relay/emitter slice if Main wants push instead of polling.
+Main callback port note (2026-06-19): Main/LMS currently listens on `http://smartfactory-main.local:8088`; `:8000` is not active for callback ingest in the current handoff. Current continuous live camera path publishes semantic snapshots to ROS `/sf/vision/events` and keeps AI cache updated. Continuous HTTP auto-post from worker tick to Main is not part of this bundle yet; it should be a small follow-up relay/emitter slice if Main wants push instead of polling.
 
 ## Safety guarantees
 

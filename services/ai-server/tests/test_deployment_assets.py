@@ -20,6 +20,9 @@ def test_ai_server_docker_compose_declares_isolated_api_service():
     )
     assert service["environment"]["VISION_MODEL_TASK"] == "${VISION_MODEL_TASK:-segment}"
     assert service["environment"]["VISION_MODEL_DEVICE"] == "${VISION_MODEL_DEVICE:-cpu}"
+    assert service["environment"]["MAIN_SERVER_URL"] == (
+        "${MAIN_SERVER_URL:-http://smartfactory-main.local:8088}"
+    )
     assert "./config/perception:/app/config/perception:ro" in service["volumes"]
     assert "/api/v1/health" in " ".join(service["healthcheck"]["test"])
 
@@ -55,6 +58,7 @@ def test_systemd_unit_launches_existing_isolated_runner():
     assert parser["Service"]["ExecStart"] == str(ROOT / "scripts/run_ai_server.sh")
     assert "PYTHONPATH=" in parser["Service"]["Environment"]
     assert "VISION_MODEL_TASK=segment" in parser["Service"]["Environment"]
+    assert "MAIN_SERVER_URL=http://smartfactory-main.local:8088" in parser["Service"]["Environment"]
     assert parser["Service"]["Restart"] == "on-failure"
     assert parser["Service"]["NoNewPrivileges"] == "true"
 

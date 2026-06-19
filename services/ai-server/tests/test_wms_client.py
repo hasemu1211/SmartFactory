@@ -26,6 +26,17 @@ def _settings(**overrides) -> Settings:
     return Settings(**values)
 
 
+
+
+def test_default_main_server_url_matches_current_main_handoff(monkeypatch):
+    monkeypatch.delenv("MAIN_SERVER_URL", raising=False)
+    settings = Settings(_env_file=None)
+
+    assert settings.main_server_url == "http://smartfactory-main.local:8088"
+    assert build_wms_ingest_url(settings) == (
+        "http://smartfactory-main.local:8088/api/v1/vision/events"
+    )
+
 def test_build_wms_ingest_url_joins_base_and_path():
     settings = _settings(
         main_server_url="http://wms.local",

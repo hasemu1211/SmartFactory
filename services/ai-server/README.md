@@ -124,7 +124,7 @@ POST {MAIN_SERVER_URL}/api/v1/vision/events
 Runtime emission is disabled by default. To enable it for local integration:
 
 ```env
-MAIN_SERVER_URL=http://127.0.0.1:8000
+MAIN_SERVER_URL=http://smartfactory-main.local:8088
 WMS_EMIT_ENABLED=true
 WMS_EMIT_TIMEOUT_S=2.0
 WMS_EMIT_RETRIES=0
