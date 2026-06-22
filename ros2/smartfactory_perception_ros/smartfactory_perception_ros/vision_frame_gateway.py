@@ -80,6 +80,15 @@ class VisionFrameGateway(Node):
     ) -> None:
         super().__init__("vision_frame_gateway")
 
+        self._declare_gateway_parameters()
+        self._load_gateway_parameters()
+        self._validate_gateway_parameters()
+        self._initialize_runtime_state(session=session, bridge=bridge)
+        self._setup_ros_interfaces()
+        self._start_async_worker_if_enabled()
+        self._log_gateway_ready()
+
+    def _declare_gateway_parameters(self) -> None:
         self.declare_parameter("source_id", "tb3_1_picam")
         self.declare_parameter("image_topic", "/tb3_1/camera/image_raw/compressed")
         self.declare_parameter("image_transport", "compressed")
@@ -110,6 +119,7 @@ class VisionFrameGateway(Node):
         self.declare_parameter("publish_overlay", False)
         self.declare_parameter("publish_evidence", False)
 
+    def _load_gateway_parameters(self) -> None:
         self.source_id = str(self.get_parameter("source_id").value)
         self.image_topic = str(self.get_parameter("image_topic").value)
         self.image_transport = str(self.get_parameter("image_transport").value).strip().lower()
@@ -154,6 +164,7 @@ class VisionFrameGateway(Node):
         self.publish_overlay_enabled = bool(self.get_parameter("publish_overlay").value)
         self.publish_evidence_enabled = bool(self.get_parameter("publish_evidence").value)
 
+    def _validate_gateway_parameters(self) -> None:
         if self.source_id not in VALID_SOURCE_IDS:
             self.get_logger().warning(
                 f"source_id {self.source_id!r} is not one of {sorted(VALID_SOURCE_IDS)}"
@@ -167,6 +178,12 @@ class VisionFrameGateway(Node):
         assert_safe_publish_topic(self.overlay_topic, role="overlay")
         assert_safe_publish_topic(self.evidence_topic, role="evidence")
 
+    def _initialize_runtime_state(
+        self,
+        *,
+        session: requests.Session | None,
+        bridge: CvBridge | None,
+    ) -> None:
         self._bridge = bridge or CvBridge()
         self._session = session or requests.Session()
         self._latest_lock = threading.Lock()
@@ -196,7 +213,9 @@ class VisionFrameGateway(Node):
         self._pending_overlay_lock = threading.Lock()
         self._pending_overlay_publish: PendingOverlayPublish | None = None
         self._pending_evidence_payload: str | None = None
+        self._worker_thread: threading.Thread | None = None
 
+    def _setup_ros_interfaces(self) -> None:
         image_qos = build_qos_profile(
             self.image_qos_reliability,
             depth=self.image_qos_depth,
@@ -222,7 +241,8 @@ class VisionFrameGateway(Node):
             self.create_subscription(Image, self.image_topic, self._on_image, image_qos)
         self.create_timer(self.publish_period_sec, self._on_timer)
         self.create_timer(self.publish_output_period_sec, self._publish_pending_outputs)
-        self._worker_thread: threading.Thread | None = None
+
+    def _start_async_worker_if_enabled(self) -> None:
         if self.async_pipeline:
             self._worker_thread = threading.Thread(
                 target=self._http_worker_loop,
@@ -231,6 +251,7 @@ class VisionFrameGateway(Node):
             )
             self._worker_thread.start()
 
+    def _log_gateway_ready(self) -> None:
         self.get_logger().info(
             "SmartFactory Lane C vision frame gateway ready: "
             f"source_id={self.source_id}, image_topic={self.image_topic}, "
@@ -245,6 +266,9 @@ class VisionFrameGateway(Node):
 
     @property
     def diagnostics(self) -> dict[str, int | str | bool]:
+        return self._diagnostics_snapshot()
+
+    def _diagnostics_snapshot(self) -> dict[str, int | str | bool]:
         return {
             "source_id": self.source_id,
             "image_topic": self.image_topic,
@@ -611,15 +635,21 @@ class VisionFrameGateway(Node):
             )
 
     def destroy_node(self) -> bool:
+        self._stop_worker_thread()
+        self._close_session()
+        return super().destroy_node()
+
+    def _stop_worker_thread(self) -> None:
         self._shutdown_event.set()
         with self._work_condition:
             self._work_condition.notify_all()
         if self._worker_thread is not None and self._worker_thread.is_alive():
             self._worker_thread.join(timeout=2.0)
+
+    def _close_session(self) -> None:
         close = getattr(self._session, "close", None)
         if callable(close):
             close()
-        return super().destroy_node()
 
 
 def main(args: list[str] | None = None) -> None:

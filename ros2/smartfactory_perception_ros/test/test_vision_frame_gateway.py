@@ -45,6 +45,7 @@ class FakeSession:
         self.get_responses = []
         self.post_exc = None
         self.get_exc = None
+        self.closed = False
 
     def post(self, url, **kwargs):
         self.post_calls.append({"url": url, **kwargs})
@@ -61,6 +62,9 @@ class FakeSession:
         if self.get_responses:
             return self.get_responses.pop(0)
         return FakeResponse(404, {"detail": "missing"})
+
+    def close(self):
+        self.closed = True
 
 
 def make_compressed_image_msg(width=16, height=12, image_format="jpeg") -> CompressedImage:
@@ -267,6 +271,78 @@ def test_gateway_default_inline_processes_latest_compressed_frame():
         assert node.diagnostics["worker_tick_attempts"] == 0
     finally:
         node.destroy_node()
+        rclpy.shutdown()
+
+
+def test_gateway_diagnostics_shape_stays_stable():
+    rclpy.init(
+        args=[
+            "--ros-args",
+            "-p",
+            "source_id:=tb3_1_picam",
+            "-p",
+            "image_topic:=/camera/image_raw/compressed",
+            "-p",
+            "async_pipeline:=false",
+        ]
+    )
+    node = VisionFrameGateway(session=FakeSession())
+    try:
+        assert set(node.diagnostics) == {
+            "source_id",
+            "image_topic",
+            "overlay_topic",
+            "evidence_topic",
+            "process_with_worker_tick",
+            "publish_overlay",
+            "publish_evidence",
+            "async_pipeline",
+            "process_frame_inline",
+            "image_qos_reliability",
+            "overlay_pub_qos_reliability",
+            "received_frames",
+            "frame_post_attempts",
+            "frame_post_successes",
+            "frame_post_failures",
+            "worker_tick_attempts",
+            "worker_tick_successes",
+            "overlay_publish_attempts",
+            "overlay_publish_successes",
+            "overlay_publish_skips",
+            "evidence_publish_attempts",
+            "evidence_publish_successes",
+            "work_enqueued",
+            "work_replaced",
+            "work_processed",
+            "work_retries",
+        }
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+def test_gateway_async_shutdown_stops_worker_and_closes_session():
+    rclpy.init(
+        args=[
+            "--ros-args",
+            "-p",
+            "source_id:=tb3_1_picam",
+            "-p",
+            "image_topic:=/camera/image_raw/compressed",
+            "-p",
+            "async_pipeline:=true",
+        ]
+    )
+    session = FakeSession()
+    node = VisionFrameGateway(session=session)
+    worker_thread = node._worker_thread
+
+    node.destroy_node()
+    try:
+        assert session.closed is True
+        assert worker_thread is not None
+        assert worker_thread.is_alive() is False
+    finally:
         rclpy.shutdown()
 
 
