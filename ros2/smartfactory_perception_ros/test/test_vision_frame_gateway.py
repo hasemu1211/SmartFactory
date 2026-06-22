@@ -231,6 +231,45 @@ def test_gateway_posts_latest_compressed_frame_and_does_not_create_motion_publis
         rclpy.shutdown()
 
 
+def test_gateway_default_inline_processes_latest_compressed_frame():
+    rclpy.init(
+        args=[
+            "--ros-args",
+            "-p",
+            "source_id:=tb3_1_picam",
+            "-p",
+            "image_topic:=/camera/image_raw/compressed",
+            "-p",
+            "async_pipeline:=false",
+        ]
+    )
+    session = FakeSession()
+    session.post_responses.append(
+        FakeResponse(200, {"frame_seq": 7, "overlay": {"frame_seq": 7}})
+    )
+    node = VisionFrameGateway(session=session)
+    try:
+        node._on_compressed_image(make_compressed_image_msg())
+        node._on_timer()
+
+        assert len(session.post_calls) == 1
+        call = session.post_calls[0]
+        assert call["url"].endswith("/api/v1/vision/frame/process")
+        assert call["data"] == {
+            "source": "tb3_1_picam",
+            "force": "false",
+            "stale": "false",
+        }
+        assert node.diagnostics["process_frame_inline"] is True
+        assert node.diagnostics["frame_post_attempts"] == 1
+        assert node.diagnostics["frame_post_successes"] == 1
+        assert node.diagnostics["work_processed"] == 1
+        assert node.diagnostics["worker_tick_attempts"] == 0
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
 def test_gateway_can_publish_safe_overlay_and_evidence_from_ai_server_state():
     rclpy.init(
         args=[
