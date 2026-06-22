@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ..config import get_settings
+from ..evidence_cache import DEFAULT_VIEW_ID, normalize_view_id
 from ..runtime_state import RuntimeContext
 
 
@@ -509,10 +510,11 @@ def _ros_ingest_readiness_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 def frame_overlay_sync_status(
-    source: str, *, runtime_context: RuntimeContext
+    source: str, *, runtime_context: RuntimeContext, view: str = DEFAULT_VIEW_ID
 ) -> dict[str, Any]:
+    view_id = normalize_view_id(view)
     frame = runtime_context.frame_store.latest(source)
-    overlay = runtime_context.overlay_cache.latest(source)
+    overlay = runtime_context.overlay_cache.latest(source, view=view_id)
     frame_seq = frame.frame_seq if frame is not None else None
     overlay_frame_seq = overlay.get("frame_seq") if isinstance(overlay, dict) else None
     overlay_lag_frames = (

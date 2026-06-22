@@ -142,8 +142,9 @@ def test_overlay_helpers_return_metadata_and_image_without_route_wrapper():
     metadata = build_latest_overlay_response(
         source="tb3_1_picam",
         runtime_context=context,
-        frame_overlay_sync_status=lambda source, *, runtime_context: {
+        frame_overlay_sync_status=lambda source, *, runtime_context, view: {
             "source": source,
+            "view": view,
             "runtime_context_bound": runtime_context is context,
         },
         now_iso=lambda: "2026-06-22T00:00:02+00:00",
@@ -157,7 +158,11 @@ def test_overlay_helpers_return_metadata_and_image_without_route_wrapper():
         "generated_at": "2026-06-22T00:00:02+00:00",
         "requested_source": "tb3_1_picam",
         "requested_view": "full",
-        "sync": {"source": "tb3_1_picam", "runtime_context_bound": True},
+        "sync": {
+            "source": "tb3_1_picam",
+            "view": "full",
+            "runtime_context_bound": True,
+        },
         "overlay": {
             "source": "tb3_1_picam",
             "view": "full",

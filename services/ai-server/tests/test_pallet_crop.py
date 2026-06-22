@@ -20,6 +20,7 @@ def test_synthetic_fixture_models_full_workspace_pallet_and_40mm_parts():
 
     assert fixture.frame_size_px == (1920, 1080)
     assert fixture.workspace_bbox_xyxy == (420, 0, 1500, 1080)
+    assert fixture.inspection_scene_width_mm == 1800.0
     assert fixture.mm_per_px == pytest.approx(1800 / 1080)
     assert fixture.pallet_size_mm == (90.0, 45.0)
     assert fixture.pallet_size_px[0] == pytest.approx(54.0)
@@ -27,6 +28,25 @@ def test_synthetic_fixture_models_full_workspace_pallet_and_40mm_parts():
     assert fixture.part_short_side_mm == 40.0
     assert fixture.part_short_side_px == pytest.approx(24.0, abs=1.0)
     assert len(fixture.part_centers_xy) == 2
+
+
+@pytest.mark.parametrize("scene_width_mm", [450.0, 600.0, 900.0])
+@pytest.mark.parametrize("part_short_side_mm", [5.0, 10.0, 15.0, 20.0])
+def test_inspection_width_fixtures_scale_small_parts(scene_width_mm, part_short_side_mm):
+    fixture = synthetic_pallet_workspace_fixture(
+        inspection_scene_width_mm=scene_width_mm,
+        part_short_side_mm=part_short_side_mm,
+    )
+
+    expected_mm_per_px = scene_width_mm / fixture.frame_size_px[1]
+    assert fixture.workspace_size_mm == scene_width_mm
+    assert fixture.inspection_scene_width_mm == scene_width_mm
+    assert fixture.mm_per_px == pytest.approx(expected_mm_per_px)
+    assert fixture.part_short_side_px == pytest.approx(
+        part_short_side_mm / expected_mm_per_px,
+        abs=1.5,
+    )
+    assert find_pallet_roi_candidates(fixture.image)
 
 
 def test_no_fiducial_contour_candidate_and_normalized_crop_find_parts():
@@ -98,6 +118,69 @@ def test_full_frame_direct_detection_downgrades_while_crop_first_is_candidate():
     assert crop_readiness.failed_quality_gates == ()
 
 
+@pytest.mark.parametrize("part_short_side_mm", [5.0, 10.0, 15.0, 20.0])
+def test_full_square_direct_detection_remains_downgraded_for_small_parts(
+    part_short_side_mm,
+):
+    fixture = synthetic_pallet_workspace_fixture(part_short_side_mm=part_short_side_mm)
+    full_budget = estimate_full_frame_part_budget(
+        fixture.frame_size_px,
+        part_short_side_mm=part_short_side_mm,
+    )
+    readiness = assess_part_readiness(
+        fixture.image,
+        processing_mode="full_frame_direct",
+        pixel_budget=full_budget,
+        count_history=[2, 2, 2, 2, 2],
+        expected_count=2,
+        confirm_when_eligible=True,
+    )
+
+    assert readiness.evidence_status == "CANDIDATE"
+    assert readiness.reason == "insufficient_part_pixels"
+    assert "insufficient_part_pixels" in readiness.failed_quality_gates
+    assert not readiness.internal_detection_eligible
+
+
+@pytest.mark.parametrize("scene_width_mm", [450.0, 600.0, 900.0])
+@pytest.mark.parametrize("part_short_side_mm", [5.0, 10.0, 15.0, 20.0])
+def test_inspection_width_crop_first_requires_all_quality_gates(
+    scene_width_mm,
+    part_short_side_mm,
+):
+    fixture = synthetic_pallet_workspace_fixture(
+        inspection_scene_width_mm=scene_width_mm,
+        part_short_side_mm=part_short_side_mm,
+    )
+    candidate = find_pallet_roi_candidates(fixture.image)[0]
+    crop = normalize_pallet_crop(fixture.image, candidate)
+    crop_budget = estimate_crop_first_part_budget(
+        candidate,
+        workspace_size_mm=scene_width_mm,
+        frame_size_px=fixture.frame_size_px,
+        part_short_side_mm=part_short_side_mm,
+    )
+
+    readiness = assess_part_readiness(
+        crop.image,
+        processing_mode="crop_first",
+        pixel_budget=crop_budget,
+        count_history=[2, 2, 2, 2, 2],
+        expected_count=2,
+        confirm_when_eligible=True,
+    )
+
+    if crop_budget.native_part_short_side_px >= 20.0:
+        assert readiness.evidence_status == "CONFIRMED"
+        assert readiness.internal_detection_eligible
+        assert readiness.reason == "crop_first_candidate"
+        assert readiness.failed_quality_gates == ()
+    else:
+        assert readiness.evidence_status == "CANDIDATE"
+        assert not readiness.internal_detection_eligible
+        assert "insufficient_part_pixels" in readiness.failed_quality_gates
+
+
 def test_quality_gates_downgrade_low_contrast_and_unstable_counts():
     fixture = synthetic_pallet_workspace_fixture()
     candidate = find_pallet_roi_candidates(fixture.image)[0]
@@ -132,6 +215,62 @@ def test_quality_gates_downgrade_low_contrast_and_unstable_counts():
     assert unstable_readiness.temporal_stability == "unstable_part_count"
     assert temporally_stable_count([2, 2, 1, 2, 2], expected_count=2)
     assert not temporally_stable_count([2, 1, 2, 1, 3], expected_count=2)
+
+
+def test_quality_gates_downgrade_exposure_lighting_and_white_balance():
+    fixture = synthetic_pallet_workspace_fixture(
+        inspection_scene_width_mm=600.0,
+        part_short_side_mm=20.0,
+    )
+    candidate = find_pallet_roi_candidates(fixture.image)[0]
+    crop = normalize_pallet_crop(fixture.image, candidate)
+    crop_budget = estimate_crop_first_part_budget(
+        candidate,
+        workspace_size_mm=600.0,
+        frame_size_px=fixture.frame_size_px,
+        part_short_side_mm=20.0,
+    )
+
+    overexposed = np.full(crop.image.shape, 230, dtype=np.uint8)
+    overexposed[40:140, 80:280] = 255
+    overexposed_readiness = assess_part_readiness(
+        overexposed,
+        processing_mode="crop_first",
+        pixel_budget=crop_budget,
+        count_history=[2, 2, 2, 2, 2],
+        expected_count=2,
+    )
+    assert "bad_exposure" in overexposed_readiness.failed_quality_gates
+    assert overexposed_readiness.exposure_quality == "bad_exposure"
+
+    flat_lighting = np.full(crop.image.shape, 70, dtype=np.uint8)
+    flat_lighting[80:100, 160:200] = 74
+    flat_readiness = assess_part_readiness(
+        flat_lighting,
+        processing_mode="crop_first",
+        pixel_budget=crop_budget,
+        count_history=[2, 2, 2, 2, 2],
+        expected_count=2,
+    )
+    assert "poor_lighting" in flat_readiness.failed_quality_gates
+    assert flat_readiness.lighting_quality == "poor_lighting"
+
+    blue_cast = synthetic_pallet_workspace_fixture(
+        inspection_scene_width_mm=600.0,
+        part_short_side_mm=20.0,
+        white_balance_bgr=(2.5, 0.6, 0.6),
+    )
+    blue_candidate = find_pallet_roi_candidates(blue_cast.image)[0]
+    blue_crop = normalize_pallet_crop(blue_cast.image, blue_candidate)
+    blue_readiness = assess_part_readiness(
+        blue_crop.image,
+        processing_mode="crop_first",
+        pixel_budget=crop_budget,
+        count_history=[2, 2, 2, 2, 2],
+        expected_count=2,
+    )
+    assert "bad_white_balance" in blue_readiness.failed_quality_gates
+    assert blue_readiness.white_balance_quality == "bad_white_balance"
 
 
 def test_missing_pallet_contour_returns_no_candidates():

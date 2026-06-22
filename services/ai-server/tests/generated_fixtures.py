@@ -12,6 +12,7 @@ class SyntheticPalletFixture:
     frame_size_px: tuple[int, int]
     workspace_bbox_xyxy: tuple[int, int, int, int]
     workspace_size_mm: float
+    inspection_scene_width_mm: float
     mm_per_px: float
     pallet_box_xy: tuple[tuple[float, float], ...]
     pallet_size_mm: tuple[float, float]
@@ -58,18 +59,27 @@ def synthetic_pallet_workspace_fixture(
     *,
     frame_size_px: tuple[int, int] = (1920, 1080),
     workspace_size_mm: float = 1800.0,
+    inspection_scene_width_mm: float | None = None,
     pallet_size_mm: tuple[float, float] = (90.0, 45.0),
     part_short_side_mm: float = 40.0,
     part_count: int = 2,
     pallet_angle_deg: float = 0.0,
+    exposure_offset: float = 0.0,
+    white_balance_bgr: tuple[float, float, float] = (1.0, 1.0, 1.0),
 ) -> SyntheticPalletFixture:
     """Generate a D435-like full frame with a centered 1.8m square workspace."""
 
     frame_width, frame_height = frame_size_px
     if frame_width <= 0 or frame_height <= 0:
         raise ValueError("frame_size_px must be positive")
+    if inspection_scene_width_mm is not None:
+        workspace_size_mm = float(inspection_scene_width_mm)
+    if workspace_size_mm <= 0:
+        raise ValueError("workspace_size_mm must be positive")
     if part_count not in {0, 1, 2}:
         raise ValueError("part_count must be 0, 1, or 2 for this compact pallet fixture")
+    if len(white_balance_bgr) != 3 or any(value <= 0 for value in white_balance_bgr):
+        raise ValueError("white_balance_bgr must contain three positive multipliers")
 
     mm_per_px = workspace_size_mm / frame_height
     workspace_width_px = round(workspace_size_mm / mm_per_px)
@@ -127,11 +137,18 @@ def synthetic_pallet_workspace_fixture(
             lineType=cv2.LINE_AA,
         )
 
+    if exposure_offset or white_balance_bgr != (1.0, 1.0, 1.0):
+        adjusted = image.astype(np.float32)
+        adjusted *= np.asarray(white_balance_bgr, dtype=np.float32).reshape(1, 1, 3)
+        adjusted += float(exposure_offset)
+        image = np.clip(adjusted, 0, 255).astype(np.uint8)
+
     return SyntheticPalletFixture(
         image=image,
         frame_size_px=frame_size_px,
         workspace_bbox_xyxy=workspace_bbox,
         workspace_size_mm=workspace_size_mm,
+        inspection_scene_width_mm=float(workspace_size_mm),
         mm_per_px=float(mm_per_px),
         pallet_box_xy=pallet_box,
         pallet_size_mm=pallet_size_mm,

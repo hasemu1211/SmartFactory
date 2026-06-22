@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ..config import get_settings
+from ..evidence_cache import DEFAULT_VIEW_ID
 from ..runtime_state import RuntimeContext
 from .vision_read_model_ros import (
     FrameAgeGetter,
@@ -92,6 +93,8 @@ def debug_source_snapshot(
     sync_status = frame_overlay_sync_status(source, runtime_context=runtime_context)
     return {
         "source": source,
+        "default_view": DEFAULT_VIEW_ID,
+        "available_views": list(settings.source_registry.get(source).view_ids),
         "kind": _source_kind(source),
         "robot_id": _robot_id_for_source(source),
         "health": {

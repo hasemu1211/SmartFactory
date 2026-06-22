@@ -384,6 +384,8 @@ def test_vision_debug_sources_returns_readiness_snapshot_for_one_source():
     )
     assert source["stream_metrics"]["frames_sent_total"] == 1
     assert source["drop_metrics"]["dropped_frames"] == 1
+    assert source["default_view"] == "full"
+    assert source["available_views"] == ["full"]
     assert source["debug_paths"]["frame_metadata"] == (
         "/api/v1/vision/frame/latest?source=tb3_1_picam"
     )

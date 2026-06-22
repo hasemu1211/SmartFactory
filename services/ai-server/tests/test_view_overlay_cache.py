@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import numpy as np
+
 from app.api import vision as vision_module
 from app.api.vision_overlay_endpoints import (
     build_latest_overlay_image_response,
     build_latest_overlay_response,
 )
+from app.api.vision_read_model_ros import frame_overlay_sync_status
 from app.overlay import OverlayRenderResult
 from app.runtime_state import create_runtime_context
 
@@ -38,8 +41,9 @@ def test_latest_overlay_metadata_cache_is_partitioned_by_source_view():
     full = build_latest_overlay_response(
         source="global_depth_01",
         runtime_context=context,
-        frame_overlay_sync_status=lambda source, *, runtime_context: {
+        frame_overlay_sync_status=lambda source, *, runtime_context, view: {
             "source": source,
+            "view": view,
             "runtime_context_bound": runtime_context is context,
         },
         now_iso=lambda: "2026-06-22T00:00:02+00:00",
@@ -48,16 +52,19 @@ def test_latest_overlay_metadata_cache_is_partitioned_by_source_view():
         source="global_depth_01",
         view="pallet_zoom",
         runtime_context=context,
-        frame_overlay_sync_status=lambda source, *, runtime_context: {
+        frame_overlay_sync_status=lambda source, *, runtime_context, view: {
             "source": source,
+            "view": view,
             "runtime_context_bound": runtime_context is context,
         },
         now_iso=lambda: "2026-06-22T00:00:02+00:00",
     )
 
     assert full["requested_view"] == "full"
+    assert full["sync"]["view"] == "full"
     assert full["overlay"]["frame_seq"] == 10
     assert zoom["requested_view"] == "pallet_zoom"
+    assert zoom["sync"]["view"] == "pallet_zoom"
     assert zoom["overlay"]["frame_seq"] == 20
     assert context.overlay_cache.latest("global_depth_01")["frame_seq"] == 10
     assert context.overlay_cache.latest("global_depth_01", view="pallet_zoom")[
@@ -104,3 +111,44 @@ def test_latest_overlay_image_cache_keeps_full_and_pallet_zoom_separate():
     assert explicit_full is full
     assert explicit_zoom is zoom
     assert zoom_response.body == b"zoom-jpeg"
+
+
+def test_overlay_sync_status_uses_requested_view_bucket():
+    context = create_runtime_context()
+    image = np.zeros((8, 8, 3), dtype=np.uint8)
+    for _ in range(25):
+        context.frame_store.put_decoded(source="global_depth_01", image_bgr=image)
+    context.overlay_cache.add(
+        {
+            "source": "global_depth_01",
+            "view": "full",
+            "frame_seq": 10,
+            "visual_state": "fresh",
+        }
+    )
+    context.overlay_cache.add(
+        {
+            "source": "global_depth_01",
+            "view": "pallet_zoom",
+            "frame_seq": 20,
+            "visual_state": "stale",
+        }
+    )
+
+    full_sync = frame_overlay_sync_status(
+        "global_depth_01",
+        runtime_context=context,
+    )
+    zoom = build_latest_overlay_response(
+        source="global_depth_01",
+        view="pallet_zoom",
+        runtime_context=context,
+        frame_overlay_sync_status=frame_overlay_sync_status,
+        now_iso=lambda: "2026-06-22T00:00:02+00:00",
+    )
+
+    assert full_sync["latest_overlay_frame_seq"] == 10
+    assert full_sync["overlay_lag_frames"] == 15
+    assert zoom["sync"]["latest_overlay_frame_seq"] == 20
+    assert zoom["sync"]["overlay_lag_frames"] == 5
+    assert zoom["sync"]["overlay_visual_state"] == "stale"

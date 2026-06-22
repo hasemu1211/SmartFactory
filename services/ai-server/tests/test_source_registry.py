@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.config import REPO_ROOT, get_settings
+from app.config import REPO_ROOT, _legacy_source_registry, get_settings
 from app.main import app
 
 client = TestClient(app)
@@ -44,6 +44,19 @@ def test_source_registry_view_contract_keeps_realsense_planned_and_view_scoped()
         assert exc.args == ("bad_view",)
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("unknown source view must be rejected")
+
+
+def test_legacy_source_registry_keeps_implicit_full_view_contract():
+    registry = _legacy_source_registry(
+        source_ids=["legacy_cam"],
+        image_topics=["/legacy/camera/image_raw"],
+    )
+    source = registry.get("legacy_cam")
+
+    assert registry.source_ids == ["legacy_cam"]
+    assert source.view_ids == ("full",)
+    assert source.resolve_view().view_id == "full"
+    assert not registry.can_confirm_internal_color_indexing("legacy_cam")
 
 
 def test_contract_schema_source_enums_match_registry():

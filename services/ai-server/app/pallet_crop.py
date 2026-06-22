@@ -54,6 +54,16 @@ class PartBlob:
 
 
 @dataclass(frozen=True)
+class ImageQualityAssessment:
+    exposure_quality: str
+    lighting_quality: str
+    white_balance_quality: str
+    luminance_mean: float
+    luminance_stddev: float
+    white_balance_delta: float
+
+
+@dataclass(frozen=True)
 class PalletPartReadiness:
     evidence_status: EvidenceStatus
     reason: str
@@ -66,6 +76,12 @@ class PalletPartReadiness:
     contrast_delta: float
     contrast_quality: str
     temporal_stability: str
+    exposure_quality: str
+    lighting_quality: str
+    white_balance_quality: str
+    luminance_mean: float
+    luminance_stddev: float
+    white_balance_delta: float
 
 
 def workspace_mm_per_px(
@@ -303,8 +319,55 @@ def _resolution_status(value_px: float, *, minimum_px: float, preferred_px: floa
 
 def crop_contrast_delta(image: np.ndarray) -> float:
     gray = _as_gray(image).astype(np.float32)
-    p10, p90 = np.percentile(gray, [10, 90])
-    return float(p90 - p10)
+    # Small parts occupy little crop area; p2/p98 keeps localized contrast visible.
+    p2, p98 = np.percentile(gray, [2, 98])
+    return float(p98 - p2)
+
+
+def assess_image_quality(
+    image: np.ndarray,
+    *,
+    min_luminance_mean: float = 35.0,
+    max_luminance_mean: float = 220.0,
+    min_luminance_stddev: float = 6.0,
+    max_white_balance_delta: float = 55.0,
+) -> ImageQualityAssessment:
+    if min_luminance_mean < 0 or max_luminance_mean <= min_luminance_mean:
+        raise ValueError("luminance mean thresholds must be ordered and non-negative")
+    if min_luminance_stddev < 0:
+        raise ValueError("min_luminance_stddev must be non-negative")
+    if max_white_balance_delta < 0:
+        raise ValueError("max_white_balance_delta must be non-negative")
+
+    gray = _as_gray(image).astype(np.float32)
+    luminance_mean = float(np.mean(gray))
+    luminance_stddev = float(np.std(gray))
+    exposure_quality = "ok"
+    if luminance_mean < min_luminance_mean or luminance_mean > max_luminance_mean:
+        exposure_quality = "bad_exposure"
+
+    lighting_quality = "ok"
+    if luminance_stddev < min_luminance_stddev:
+        lighting_quality = "poor_lighting"
+
+    white_balance_delta = 0.0
+    if image.ndim == 3:
+        channel_means = (
+            image.astype(np.float32).reshape(-1, image.shape[2]).mean(axis=0)
+        )
+        white_balance_delta = float(np.max(channel_means) - np.min(channel_means))
+    white_balance_quality = "ok"
+    if white_balance_delta > max_white_balance_delta:
+        white_balance_quality = "bad_white_balance"
+
+    return ImageQualityAssessment(
+        exposure_quality=exposure_quality,
+        lighting_quality=lighting_quality,
+        white_balance_quality=white_balance_quality,
+        luminance_mean=luminance_mean,
+        luminance_stddev=luminance_stddev,
+        white_balance_delta=white_balance_delta,
+    )
 
 
 def temporally_stable_count(
@@ -338,6 +401,11 @@ def assess_part_readiness(
     min_contrast_delta: float = 18.0,
     required_stable_frames: int = 5,
     min_agreeing_frames: int = 4,
+    min_luminance_mean: float = 35.0,
+    max_luminance_mean: float = 220.0,
+    min_luminance_stddev: float = 6.0,
+    max_white_balance_delta: float = 55.0,
+    confirm_when_eligible: bool = False,
 ) -> PalletPartReadiness:
     failed: list[str] = []
     if processing_mode == "full_frame_direct":
@@ -354,6 +422,20 @@ def assess_part_readiness(
     if contrast_delta < min_contrast_delta:
         contrast_quality = "low_contrast"
         failed.append("low_contrast")
+
+    image_quality = assess_image_quality(
+        image,
+        min_luminance_mean=min_luminance_mean,
+        max_luminance_mean=max_luminance_mean,
+        min_luminance_stddev=min_luminance_stddev,
+        max_white_balance_delta=max_white_balance_delta,
+    )
+    if image_quality.exposure_quality != "ok":
+        failed.append(image_quality.exposure_quality)
+    if image_quality.lighting_quality != "ok":
+        failed.append(image_quality.lighting_quality)
+    if image_quality.white_balance_quality != "ok":
+        failed.append(image_quality.white_balance_quality)
 
     temporal_stability = "ok"
     if not temporally_stable_count(
@@ -372,9 +454,12 @@ def assess_part_readiness(
         reason = "crop_first_candidate"
     else:
         reason = "full_frame_internal_detection_disabled"
+    evidence_status: EvidenceStatus = "CANDIDATE"
+    if internal_detection_eligible and confirm_when_eligible:
+        evidence_status = "CONFIRMED"
 
     return PalletPartReadiness(
-        evidence_status="CANDIDATE",
+        evidence_status=evidence_status,
         reason=reason,
         failed_quality_gates=tuple(failed),
         processing_mode=processing_mode,
@@ -385,6 +470,12 @@ def assess_part_readiness(
         contrast_delta=float(contrast_delta),
         contrast_quality=contrast_quality,
         temporal_stability=temporal_stability,
+        exposure_quality=image_quality.exposure_quality,
+        lighting_quality=image_quality.lighting_quality,
+        white_balance_quality=image_quality.white_balance_quality,
+        luminance_mean=image_quality.luminance_mean,
+        luminance_stddev=image_quality.luminance_stddev,
+        white_balance_delta=image_quality.white_balance_delta,
     )
 
 

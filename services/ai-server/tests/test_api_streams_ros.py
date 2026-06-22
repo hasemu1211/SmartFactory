@@ -103,6 +103,8 @@ def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
     assert [item["source"] for item in body["sources"]] == ["tb3_1_picam"]
     source = body["sources"][0]
     assert source["mjpeg_path"] == "/api/v1/vision/stream/tb3_1_picam.mjpeg"
+    assert source["default_view"] == "full"
+    assert source["available_views"] == ["full"]
     assert source["frame_metadata_path"] == "/api/v1/vision/frame/latest?source=tb3_1_picam"
     assert source["overlay_metadata_path"] == "/api/v1/vision/overlay/latest?source=tb3_1_picam"
     assert source["metrics_path"] == "/api/v1/metrics?source=tb3_1_picam"

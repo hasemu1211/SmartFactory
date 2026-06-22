@@ -35,7 +35,11 @@ def build_latest_overlay_response(
         "generated_at": now_iso(),
         "requested_source": source,
         "requested_view": view_id,
-        "sync": frame_overlay_sync_status(source, runtime_context=runtime_context),
+        "sync": frame_overlay_sync_status(
+            source,
+            runtime_context=runtime_context,
+            view=view_id,
+        ),
         "overlay": overlay,
     }
 

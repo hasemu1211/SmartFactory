@@ -4,6 +4,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ..config import get_settings
+from ..evidence_cache import DEFAULT_VIEW_ID
 from ..runtime_state import RuntimeContext
 from .vision_read_model_ros import (
     FrameAgeGetter,
@@ -31,10 +32,13 @@ def vision_stream_source_entry(
     latest_overlay_image: LatestOverlayImageGetter,
     frame_age_s: FrameAgeGetter,
 ) -> dict[str, Any]:
+    source_definition = get_settings().source_registry.get(source)
     physical_topic = _physical_input_topic_for_source(source)
     topic_exposure = _source_topic_exposure(source, physical_topic)
     return {
         "source": source,
+        "default_view": DEFAULT_VIEW_ID,
+        "available_views": list(source_definition.view_ids),
         "has_frame": runtime_context.frame_store.latest(source) is not None,
         "has_overlay": runtime_context.overlay_cache.latest(source) is not None,
         **frame_overlay_sync_status(source, runtime_context=runtime_context),

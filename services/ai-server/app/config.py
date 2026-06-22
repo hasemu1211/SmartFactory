@@ -81,7 +81,13 @@ class Settings(BaseSettings):
 
 def _legacy_source_registry(*, source_ids: list[str], image_topics: list[str]) -> SourceRegistry:
     # Fallback for older local envs that have not mounted config/vision/sources.yaml.
-    from .source_registry import BrowserSurface, NormalizedTopics, PhysicalInput, SourceDefinition
+    from .source_registry import (
+        BrowserSurface,
+        NormalizedTopics,
+        PhysicalInput,
+        SourceDefinition,
+        SourceViewDefinition,
+    )
 
     sources: list[SourceDefinition] = []
     for index, source_id in enumerate(source_ids):
@@ -127,6 +133,13 @@ def _legacy_source_registry(*, source_ids: list[str], image_topics: list[str]) -
                     overlay=f"/sf/vision/sources/{source_id}/overlay/compressed",
                 ),
                 evidence_event_topic="/sf/vision/events",
+                views=(
+                    SourceViewDefinition(
+                        view_id="full",
+                        kind="full_frame",
+                        can_confirm_internal_color_indexing=False,
+                    ),
+                ),
             )
         )
     return SourceRegistry(schema_version="vision-sources.legacy", sources=tuple(sources))
