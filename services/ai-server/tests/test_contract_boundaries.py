@@ -1,3 +1,4 @@
+import ast
 import json
 from pathlib import Path
 
@@ -123,6 +124,49 @@ def test_app_main_is_only_runtime_entrypoint_wrapper():
     assert "include_runtime_routes" not in main_source
     assert "from .factory import create_app" in main_source
     assert "app = create_app()" in main_source
+
+
+def test_vision_read_model_import_boundary_uses_facade_and_one_way_core():
+    api_dir = SERVICE_DIR / "app" / "api"
+    vision_tree = ast.parse((api_dir / "vision.py").read_text(encoding="utf-8"))
+    facade_tree = ast.parse((api_dir / "vision_read_models.py").read_text(encoding="utf-8"))
+    ros_core_tree = ast.parse((api_dir / "vision_read_model_ros.py").read_text(encoding="utf-8"))
+
+    vision_imports = {
+        node.module
+        for node in ast.walk(vision_tree)
+        if isinstance(node, ast.ImportFrom)
+    }
+    assert "vision_read_models" in vision_imports
+    assert not any(
+        module and module.startswith("vision_read_model_")
+        for module in vision_imports
+    )
+
+    facade_imports = {
+        node.module
+        for node in ast.walk(facade_tree)
+        if isinstance(node, ast.ImportFrom)
+    }
+    assert {
+        "vision_read_model_debug",
+        "vision_read_model_metrics",
+        "vision_read_model_ros",
+        "vision_read_model_streams",
+        "vision_read_model_worker",
+    }.issubset(facade_imports)
+
+    ros_core_imports = {
+        node.module
+        for node in ast.walk(ros_core_tree)
+        if isinstance(node, ast.ImportFrom)
+    }
+    assert not {
+        "vision_read_model_debug",
+        "vision_read_model_metrics",
+        "vision_read_model_streams",
+        "vision_read_model_worker",
+    } & ros_core_imports
 
 
 def test_vision_bundle_scripts_share_common_shell_helpers():
