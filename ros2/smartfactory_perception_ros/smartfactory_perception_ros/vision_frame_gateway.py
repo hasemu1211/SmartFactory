@@ -21,31 +21,23 @@ from .image_snapshot_client import (
     encode_image_message,
 )
 from .qos_profiles import build_bounded_image_qos_profile as build_qos_profile
-
-FORBIDDEN_TOPIC_FRAGMENTS = (
-    "/cmd_vel",
-    "cmd_vel",
-    "/nav2",
-    "nav2",
-    "/navigate_to_pose",
-    "/follow_path",
-    "/controller_server",
-    "/bt_navigator",
-    "/waypoint_follower",
-    "/parameter_events",
-    "/rosout",
+from .vision_frame_gateway_helpers import (
+    _json_path_int,
+    assert_safe_input_topic,
+    assert_safe_publish_topic,
+    build_ai_server_url,
+    frame_seq_from_post_response,
+    overlay_seq_from_metadata,
+    topic_has_forbidden_fragment,
 )
-SAFE_PUBLISH_PREFIX = "/sf/vision/"
-
-
-@dataclass(frozen=True)
-class HttpResult:
-    ok: bool
-    status_code: int | None
-    error: str | None = None
-    json_body: Any | None = None
-    content: bytes | None = None
-    content_type: str | None = None
+from .vision_frame_gateway_http import (
+    HttpResult,
+    get_bytes,
+    get_json,
+    post_frame,
+    post_frame_process,
+    post_worker_tick,
+)
 
 
 @dataclass(frozen=True)
@@ -64,233 +56,11 @@ class PendingOverlayPublish:
     frame_seq: int | None
 
 
-def build_ai_server_url(ai_server_url: str, path: str) -> str:
-    base = ai_server_url.rstrip("/")
-    normalized_path = (path or "").strip() or "/"
-    return f"{base}/{normalized_path.lstrip('/')}"
-
-
-def topic_has_forbidden_fragment(topic: str) -> bool:
-    normalized = f"/{topic.strip().lstrip('/')}"
-    return any(fragment in normalized for fragment in FORBIDDEN_TOPIC_FRAGMENTS)
-
-
-def assert_safe_input_topic(topic: str) -> None:
-    if not topic.strip().startswith("/"):
-        raise ValueError("ROS topic must be absolute")
-    if topic_has_forbidden_fragment(topic):
-        raise ValueError(f"unsafe input topic is forbidden for Lane C: {topic}")
-
-
-def assert_safe_publish_topic(topic: str, *, role: str) -> None:
-    if not topic.strip().startswith("/"):
-        raise ValueError(f"{role} topic must be absolute")
-    if not topic.startswith(SAFE_PUBLISH_PREFIX):
-        raise ValueError(
-            f"{role} topic must stay under {SAFE_PUBLISH_PREFIX!r} for Lane C safety: {topic}"
-        )
-    if topic_has_forbidden_fragment(topic):
-        raise ValueError(f"unsafe {role} topic is forbidden for Lane C: {topic}")
-
-
-def _response_json(response: requests.Response) -> Any | None:
-    try:
-        return response.json()
-    except ValueError:
-        return None
-
-
-def post_frame(
-    *,
-    session: requests.Session,
-    url: str,
-    source_id: str,
-    image_file: tuple[str, str, bytes],
-    timeout: float,
-) -> HttpResult:
-    filename, content_type, image_bytes = image_file
-    try:
-        response = session.post(
-            url,
-            data={"source": source_id},
-            files={"image": (filename, image_bytes, content_type)},
-            timeout=timeout,
-        )
-    except requests.Timeout:
-        return HttpResult(ok=False, status_code=None, error="AI Server frame POST timed out")
-    except requests.RequestException as exc:
-        return HttpResult(
-            ok=False,
-            status_code=None,
-            error=f"AI Server frame POST failed: {exc.__class__.__name__}",
-        )
-    if 200 <= response.status_code < 300:
-        return HttpResult(ok=True, status_code=response.status_code, json_body=_response_json(response))
-    return HttpResult(
-        ok=False,
-        status_code=response.status_code,
-        error=f"AI Server frame POST returned HTTP {response.status_code}",
-        json_body=_response_json(response),
-    )
-
-
-def post_frame_process(
-    *,
-    session: requests.Session,
-    url: str,
-    source_id: str,
-    image_file: tuple[str, str, bytes],
-    timeout: float,
-    force: bool = True,
-    stale: bool = False,
-) -> HttpResult:
-    filename, content_type, image_bytes = image_file
-    try:
-        response = session.post(
-            url,
-            data={
-                "source": source_id,
-                "force": str(bool(force)).lower(),
-                "stale": str(bool(stale)).lower(),
-            },
-            files={"image": (filename, image_bytes, content_type)},
-            timeout=timeout,
-        )
-    except requests.Timeout:
-        return HttpResult(ok=False, status_code=None, error="AI Server frame process timed out")
-    except requests.RequestException as exc:
-        return HttpResult(
-            ok=False,
-            status_code=None,
-            error=f"AI Server frame process failed: {exc.__class__.__name__}",
-        )
-    if 200 <= response.status_code < 300:
-        return HttpResult(ok=True, status_code=response.status_code, json_body=_response_json(response))
-    return HttpResult(
-        ok=False,
-        status_code=response.status_code,
-        error=f"AI Server frame process returned HTTP {response.status_code}",
-        json_body=_response_json(response),
-    )
-
-
-def post_worker_tick(
-    *,
-    session: requests.Session,
-    url: str,
-    source_id: str,
-    timeout: float,
-    force: bool = False,
-    stale: bool = False,
-) -> HttpResult:
-    try:
-        response = session.post(
-            url,
-            json={"source": source_id, "force": force, "stale": stale},
-            timeout=timeout,
-        )
-    except requests.Timeout:
-        return HttpResult(ok=False, status_code=None, error="AI Server worker tick timed out")
-    except requests.RequestException as exc:
-        return HttpResult(
-            ok=False,
-            status_code=None,
-            error=f"AI Server worker tick failed: {exc.__class__.__name__}",
-        )
-    if 200 <= response.status_code < 300:
-        return HttpResult(ok=True, status_code=response.status_code, json_body=_response_json(response))
-    return HttpResult(
-        ok=False,
-        status_code=response.status_code,
-        error=f"AI Server worker tick returned HTTP {response.status_code}",
-        json_body=_response_json(response),
-    )
-
-
-def get_json(
-    *,
-    session: requests.Session,
-    url: str,
-    source_id: str,
-    timeout: float,
-) -> HttpResult:
-    try:
-        response = session.get(url, params={"source": source_id}, timeout=timeout)
-    except requests.Timeout:
-        return HttpResult(ok=False, status_code=None, error="AI Server JSON GET timed out")
-    except requests.RequestException as exc:
-        return HttpResult(
-            ok=False,
-            status_code=None,
-            error=f"AI Server JSON GET failed: {exc.__class__.__name__}",
-        )
-    if 200 <= response.status_code < 300:
-        return HttpResult(ok=True, status_code=response.status_code, json_body=_response_json(response))
-    return HttpResult(
-        ok=False,
-        status_code=response.status_code,
-        error=f"AI Server JSON GET returned HTTP {response.status_code}",
-        json_body=_response_json(response),
-    )
-
-
-def get_bytes(
-    *,
-    session: requests.Session,
-    url: str,
-    source_id: str,
-    timeout: float,
-) -> HttpResult:
-    try:
-        response = session.get(url, params={"source": source_id}, timeout=timeout)
-    except requests.Timeout:
-        return HttpResult(ok=False, status_code=None, error="AI Server bytes GET timed out")
-    except requests.RequestException as exc:
-        return HttpResult(
-            ok=False,
-            status_code=None,
-            error=f"AI Server bytes GET failed: {exc.__class__.__name__}",
-        )
-    if 200 <= response.status_code < 300:
-        return HttpResult(
-            ok=True,
-            status_code=response.status_code,
-            content=bytes(response.content),
-            content_type=response.headers.get("content-type"),
-        )
-    return HttpResult(
-        ok=False,
-        status_code=response.status_code,
-        error=f"AI Server bytes GET returned HTTP {response.status_code}",
-        json_body=_response_json(response),
-    )
-
-
-def _json_path_int(payload: Any, *path: str) -> int | None:
-    current = payload
-    for key in path:
-        if not isinstance(current, dict):
-            return None
-        current = current.get(key)
-    if isinstance(current, bool):
-        return None
-    if isinstance(current, int):
-        return current
-    try:
-        return int(current)
-    except (TypeError, ValueError):
-        return None
-
-
-def frame_seq_from_post_response(payload: Any) -> int | None:
-    return _json_path_int(payload, "frame", "frame_seq") or _json_path_int(payload, "frame_seq")
-
-
-def overlay_seq_from_metadata(payload: Any) -> int | None:
-    return (
-        _json_path_int(payload, "overlay", "frame_seq")
-        or _json_path_int(payload, "sync", "latest_overlay_frame_seq")
-    )
+@dataclass(frozen=True)
+class FramePostOutcome:
+    frame_result: HttpResult
+    worker_result: HttpResult | None
+    posted_frame_seq: int | None
 
 
 class VisionFrameGateway(Node):
@@ -597,80 +367,103 @@ class VisionFrameGateway(Node):
             self.get_logger().warning(f"Failed to encode Lane C frame: {exc}")
             return False
 
-        worker_result: HttpResult | None = None
-        if self.process_frame_inline:
-            self._frame_post_attempts += 1
-            frame_result = post_frame_process(
-                session=self._session,
-                url=self.frame_process_url,
-                source_id=self.source_id,
-                image_file=image_file,
-                timeout=self.request_timeout_sec,
-                force=self.force_worker_tick,
-                stale=self.mark_worker_tick_stale,
-            )
-            if not frame_result.ok:
-                self._frame_post_failures += 1
-                self.get_logger().warning(
-                    f"Lane C frame process failed: status={frame_result.status_code}, "
-                    f"error={frame_result.error}"
-                )
-                return False
-            self._frame_post_successes += 1
-            self._work_processed += 1
-            posted_frame_seq = frame_seq_from_post_response(frame_result.json_body)
-            if self.process_with_worker_tick:
-                self._worker_tick_attempts += 1
-                self._worker_tick_successes += 1
-            worker_result = frame_result
-        else:
-            self._frame_post_attempts += 1
-            frame_result = post_frame(
-                session=self._session,
-                url=self.frame_ingest_url,
-                source_id=self.source_id,
-                image_file=image_file,
-                timeout=self.request_timeout_sec,
-            )
-            if not frame_result.ok:
-                self._frame_post_failures += 1
-                self.get_logger().warning(
-                    f"Lane C frame POST failed: status={frame_result.status_code}, error={frame_result.error}"
-                )
-                return False
-            self._frame_post_successes += 1
-            self._work_processed += 1
-            posted_frame_seq = frame_seq_from_post_response(frame_result.json_body)
-
-        if (not self.process_frame_inline) and self.process_with_worker_tick:
-            self._worker_tick_attempts += 1
-            worker_result = post_worker_tick(
-                session=self._session,
-                url=self.worker_tick_url,
-                source_id=self.source_id,
-                timeout=self.request_timeout_sec,
-                force=self.force_worker_tick,
-                stale=self.mark_worker_tick_stale,
-            )
-            if worker_result.ok:
-                self._worker_tick_successes += 1
-            else:
-                self.get_logger().warning(
-                    f"Lane C worker tick failed: status={worker_result.status_code}, "
-                    f"error={worker_result.error}"
-                )
+        outcome = self._post_frame_work(image_file)
+        if outcome is None:
+            return False
 
         if self.publish_evidence_enabled:
-            self._publish_evidence(worker_result or frame_result)
+            self._publish_evidence(outcome.worker_result or outcome.frame_result)
         if self.publish_overlay_enabled:
             self._stage_overlay_image_for_publish(
                 work.header,
-                expected_frame_seq=posted_frame_seq,
-                overlay_metadata_payload=worker_result.json_body
-                if worker_result is not None and worker_result.ok
+                expected_frame_seq=outcome.posted_frame_seq,
+                overlay_metadata_payload=outcome.worker_result.json_body
+                if outcome.worker_result is not None and outcome.worker_result.ok
                 else None,
             )
         return True
+
+    def _post_frame_work(self, image_file: tuple[str, str, bytes]) -> FramePostOutcome | None:
+        if self.process_frame_inline:
+            return self._post_inline_frame(image_file)
+        frame_result = self._post_ingest_frame(image_file)
+        if frame_result is None:
+            return None
+        worker_result = self._post_worker_tick_if_enabled()
+        return FramePostOutcome(
+            frame_result=frame_result,
+            worker_result=worker_result,
+            posted_frame_seq=frame_seq_from_post_response(frame_result.json_body),
+        )
+
+    def _post_inline_frame(self, image_file: tuple[str, str, bytes]) -> FramePostOutcome | None:
+        self._frame_post_attempts += 1
+        frame_result = post_frame_process(
+            session=self._session,
+            url=self.frame_process_url,
+            source_id=self.source_id,
+            image_file=image_file,
+            timeout=self.request_timeout_sec,
+            force=self.force_worker_tick,
+            stale=self.mark_worker_tick_stale,
+        )
+        if not frame_result.ok:
+            self._frame_post_failures += 1
+            self.get_logger().warning(
+                f"Lane C frame process failed: status={frame_result.status_code}, "
+                f"error={frame_result.error}"
+            )
+            return None
+        self._frame_post_successes += 1
+        self._work_processed += 1
+        if self.process_with_worker_tick:
+            self._worker_tick_attempts += 1
+            self._worker_tick_successes += 1
+        return FramePostOutcome(
+            frame_result=frame_result,
+            worker_result=frame_result,
+            posted_frame_seq=frame_seq_from_post_response(frame_result.json_body),
+        )
+
+    def _post_ingest_frame(self, image_file: tuple[str, str, bytes]) -> HttpResult | None:
+        self._frame_post_attempts += 1
+        frame_result = post_frame(
+            session=self._session,
+            url=self.frame_ingest_url,
+            source_id=self.source_id,
+            image_file=image_file,
+            timeout=self.request_timeout_sec,
+        )
+        if not frame_result.ok:
+            self._frame_post_failures += 1
+            self.get_logger().warning(
+                f"Lane C frame POST failed: status={frame_result.status_code}, error={frame_result.error}"
+            )
+            return None
+        self._frame_post_successes += 1
+        self._work_processed += 1
+        return frame_result
+
+    def _post_worker_tick_if_enabled(self) -> HttpResult | None:
+        if not self.process_with_worker_tick:
+            return None
+        self._worker_tick_attempts += 1
+        worker_result = post_worker_tick(
+            session=self._session,
+            url=self.worker_tick_url,
+            source_id=self.source_id,
+            timeout=self.request_timeout_sec,
+            force=self.force_worker_tick,
+            stale=self.mark_worker_tick_stale,
+        )
+        if worker_result.ok:
+            self._worker_tick_successes += 1
+        else:
+            self.get_logger().warning(
+                f"Lane C worker tick failed: status={worker_result.status_code}, "
+                f"error={worker_result.error}"
+            )
+        return worker_result
 
     def _publish_evidence(self, result: HttpResult) -> None:
         self._evidence_publish_attempts += 1
