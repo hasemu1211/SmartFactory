@@ -37,6 +37,7 @@ def test_overlay_renderer_draws_marker_bbox_and_metadata():
     decoded = cv2.imdecode(np.frombuffer(overlay.jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
     assert decoded is not None
     assert overlay.metadata()["source"] == "tb3_1_picam"
+    assert overlay.metadata()["view"] == "full"
     assert overlay.metadata()["frame_seq"] == 1
     assert overlay.metadata()["event_count"] == 1
     assert overlay.metadata()["evidence_timestamp"] == event["timestamp"]

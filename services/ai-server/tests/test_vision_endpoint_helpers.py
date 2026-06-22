@@ -156,8 +156,14 @@ def test_overlay_helpers_return_metadata_and_image_without_route_wrapper():
     assert metadata == {
         "generated_at": "2026-06-22T00:00:02+00:00",
         "requested_source": "tb3_1_picam",
+        "requested_view": "full",
         "sync": {"source": "tb3_1_picam", "runtime_context_bound": True},
-        "overlay": {"source": "tb3_1_picam", "frame_seq": 1, "event_count": 0},
+        "overlay": {
+            "source": "tb3_1_picam",
+            "view": "full",
+            "frame_seq": 1,
+            "event_count": 0,
+        },
     }
     assert image.status_code == 200
     assert image.media_type == "image/jpeg"

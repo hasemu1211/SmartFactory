@@ -6,7 +6,7 @@ from threading import Lock
 
 from .config import get_settings
 from .event_store import InMemoryEventStore
-from .evidence_cache import LatestEvidenceCache
+from .evidence_cache import LatestEvidenceCache, SourceViewKey
 from .frame_store import LatestFrameStore
 from .observability import InMemoryMetrics
 from .overlay import OverlayRenderResult
@@ -36,7 +36,7 @@ class RuntimeContext:
     overlay_cache: LatestEvidenceCache = field(
         default_factory=lambda: LatestEvidenceCache(maxlen_per_source=20)
     )
-    overlay_images: dict[str, OverlayRenderResult] = field(default_factory=dict)
+    overlay_images: dict[str | SourceViewKey, OverlayRenderResult] = field(default_factory=dict)
     overlay_images_lock: Lock = field(default_factory=Lock)
 
 

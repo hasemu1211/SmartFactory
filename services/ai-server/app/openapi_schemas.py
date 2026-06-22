@@ -130,6 +130,7 @@ def _overlay_metadata_schema() -> dict[str, Any]:
         "additionalProperties": False,
         "required": [
             "source",
+            "view",
             "frame_seq",
             "frame_timestamp",
             "evidence_timestamp",
@@ -143,6 +144,7 @@ def _overlay_metadata_schema() -> dict[str, Any]:
         ],
         "properties": {
             "source": {"type": "string"},
+            "view": {"type": "string", "default": "full"},
             "frame_seq": {"type": "integer", "minimum": 1},
             "frame_timestamp": {"type": "string", "format": "date-time"},
             "evidence_timestamp": {"type": ["string", "null"], "format": "date-time"},

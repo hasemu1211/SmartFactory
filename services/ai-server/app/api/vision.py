@@ -18,6 +18,7 @@ from ..config import get_settings
 from ..contracts import ContractValidationError, validate_vision_event
 from ..detectors import MarkerDetection, decode_image, detect_markers, generate_synthetic_aruco_frame
 from ..docking import CameraIntrinsics, MarkerPose, estimate_marker_pose
+from ..evidence_cache import DEFAULT_VIEW_ID, normalize_view_id, source_view_key
 from ..frame_store import StoredFrame
 from ..model_adapters import ModelAdapterError, UltralyticsSegmenterAdapter, VisionModelConfig
 from ..openapi_schemas import (
@@ -136,18 +137,39 @@ def _ensure_known_source(source: str) -> None:
     if source not in get_settings().source_ids:
         raise HTTPException(status_code=400, detail=f'unknown source: {source}')
 
+def _ensure_known_source_view(source: str, view: str | None = None) -> str:
+    _ensure_known_source(source)
+    view_id = normalize_view_id(view)
+    try:
+        get_settings().source_registry.resolve_view(source, view_id)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown view for source {source}: {view_id}",
+        ) from exc
+    return view_id
+
 def _store_overlay_result(result: OverlayRenderResult) -> None:
-    _runtime_context().overlay_cache.add(result.metadata())
-    with _runtime_context().overlay_images_lock:
-        _runtime_context().overlay_images[result.source] = result
+    context = _runtime_context()
+    metadata = result.metadata()
+    context.overlay_cache.add(metadata, view=result.view)
+    with context.overlay_images_lock:
+        context.overlay_images[source_view_key(result.source, result.view)] = result
+        if result.view == DEFAULT_VIEW_ID:
+            context.overlay_images[result.source] = result
 
 def _latest_overlay_image(
     source: str,
     *,
+    view: str = DEFAULT_VIEW_ID,
     runtime_context: RuntimeContext | None = None,
 ) -> OverlayRenderResult | None:
     context = runtime_context or _runtime_context()
+    view_id = normalize_view_id(view)
     with context.overlay_images_lock:
+        overlay = context.overlay_images.get(source_view_key(source, view_id))
+        if overlay is not None or view_id != DEFAULT_VIEW_ID:
+            return overlay
         return context.overlay_images.get(source)
 
 def _now_dt() -> datetime:
@@ -511,32 +533,42 @@ def latest_frame_image(source: str=Query(..., json_schema_extra=SOURCE_ID_OPENAP
         runtime_context=_runtime_context(),
     )
 
-def latest_overlay(source: str=Query(..., json_schema_extra=SOURCE_ID_OPENAPI_EXTRA)) -> dict[str, Any]:
+def latest_overlay(
+    source: str=Query(..., json_schema_extra=SOURCE_ID_OPENAPI_EXTRA),
+    view: str=Query(default=DEFAULT_VIEW_ID),
+) -> dict[str, Any]:
     """Return latest visual evidence overlay metadata for one source."""
-    _ensure_known_source(source)
+    view_id = _ensure_known_source_view(source, view)
     return build_latest_overlay_response(
         source=source,
+        view=view_id,
         runtime_context=_runtime_context(),
         frame_overlay_sync_status=frame_overlay_sync_status,
         now_iso=_now_iso,
     )
 
-def latest_overlay_image(source: str=Query(..., json_schema_extra=SOURCE_ID_OPENAPI_EXTRA)) -> Response:
+def latest_overlay_image(
+    source: str=Query(..., json_schema_extra=SOURCE_ID_OPENAPI_EXTRA),
+    view: str=Query(default=DEFAULT_VIEW_ID),
+) -> Response:
     """Return latest overlay image for one source as JPEG."""
-    _ensure_known_source(source)
+    view_id = _ensure_known_source_view(source, view)
     return build_latest_overlay_image_response(
         source=source,
+        view=view_id,
         latest_overlay_image=_latest_overlay_image,
     )
 
 async def _mjpeg_latest_overlay_generator(
     source: str,
     *,
+    view: str = DEFAULT_VIEW_ID,
     max_fps: int,
     runtime_context: RuntimeContext | None = None,
 ):
     return_generator = mjpeg_latest_overlay_generator(
         source,
+        view=view,
         max_fps=max_fps,
         runtime_context=runtime_context or _runtime_context(),
         latest_overlay_image=_latest_overlay_image,
@@ -544,7 +576,11 @@ async def _mjpeg_latest_overlay_generator(
     async for chunk in return_generator:
         yield chunk
 
-def debug_overlay_mjpeg_stream(source: str, max_fps: int=Query(default=10, ge=1, le=30)) -> StreamingResponse:
+def debug_overlay_mjpeg_stream(
+    source: str,
+    view: str=Query(default=DEFAULT_VIEW_ID),
+    max_fps: int=Query(default=10, ge=1, le=30),
+) -> StreamingResponse:
     """Debug/fallback MJPEG stream of latest overlays.
 
     This stream is served behind the Main-facing :8090 HTTP/MJPEG gateway when
@@ -552,10 +588,11 @@ def debug_overlay_mjpeg_stream(source: str, max_fps: int=Query(default=10, ge=1,
     internal allowlisted operator/prototype infrastructure unless a future ADR
     promotes it.
     """
-    _ensure_known_source(source)
+    view_id = _ensure_known_source_view(source, view)
     context = _runtime_context()
     return build_debug_overlay_mjpeg_stream_response(
         source=source,
+        view=view_id,
         max_fps=max_fps,
         runtime_context=context,
         latest_overlay_image=_latest_overlay_image,

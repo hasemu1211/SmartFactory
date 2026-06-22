@@ -7,6 +7,7 @@ from typing import Any
 import cv2
 import numpy as np
 
+from .evidence_cache import DEFAULT_VIEW_ID, normalize_view_id
 from .frame_store import StoredFrame
 
 
@@ -23,11 +24,16 @@ class OverlayRenderResult:
     image_width: int
     image_height: int
     jpeg: bytes
+    view: str = DEFAULT_VIEW_ID
     content_type: str = "image/jpeg"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "view", normalize_view_id(self.view))
 
     def metadata(self) -> dict[str, Any]:
         return {
             "source": self.source,
+            "view": self.view,
             "frame_seq": self.frame_seq,
             "frame_timestamp": self.frame_timestamp,
             "evidence_timestamp": self.evidence_timestamp,
@@ -80,6 +86,7 @@ def render_overlay(
     *,
     events: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
     stale: bool = False,
+    view: str | None = None,
 ) -> OverlayRenderResult:
     """Render visual evidence overlay for the latest frame.
 
@@ -150,6 +157,7 @@ def render_overlay(
     numeric_latencies = [float(value) for value in latencies if isinstance(value, int | float)]
     return OverlayRenderResult(
         source=frame.source,
+        view=normalize_view_id(view),
         frame_seq=frame.frame_seq,
         frame_timestamp=frame.timestamp,
         evidence_timestamp=max(evidence_timestamps) if evidence_timestamps else None,
