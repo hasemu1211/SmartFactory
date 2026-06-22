@@ -21,6 +21,35 @@ sources:
       overlay: /sf/vision/sources/global_cam_01/overlay/compressed
     evidence_event_topic: /sf/vision/events
 
+  - source_id: global_depth_01
+    kind: realsense_rgbd
+    robot_id: null
+    frame_id: global_depth_camera_frame
+    enabled: false
+    target_fps: 15.0
+    notes: planned D435 global full/ROI crop views; disabled until mounted and calibrated
+    physical_input:
+      topic: null
+      message_type: sensor_msgs/msg/Image
+      content_type: image/raw
+      preferred_transport: raw
+    browser:
+      legacy_topic: null
+      legacy_message_type: null
+      primary_transport: http_mjpeg_gateway
+    normalized_topics:
+      image: /sf/vision/sources/global_depth_01/image/compressed
+      overlay: /sf/vision/sources/global_depth_01/overlay/compressed
+    evidence_event_topic: /sf/vision/events
+    views:
+      - view_id: full
+        kind: full_frame
+        can_confirm_internal_color_indexing: false
+      - view_id: pallet_zoom
+        kind: tracked_roi_crop
+        parent_view: full
+        can_confirm_internal_color_indexing: true
+
   - source_id: tb3_1_picam
     kind: robot_pi_camera
     robot_id: tb3_1

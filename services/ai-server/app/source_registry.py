@@ -34,6 +34,24 @@ class NormalizedTopics:
 
 
 @dataclass(frozen=True)
+class SourceViewDefinition:
+    view_id: str
+    kind: str
+    can_confirm_internal_color_indexing: bool
+    parent_view: str | None = None
+
+    def as_snapshot(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "view_id": self.view_id,
+            "kind": self.kind,
+            "can_confirm_internal_color_indexing": self.can_confirm_internal_color_indexing,
+        }
+        if self.parent_view is not None:
+            payload["parent_view"] = self.parent_view
+        return payload
+
+
+@dataclass(frozen=True)
 class SourceDefinition:
     source_id: str
     kind: str
@@ -46,6 +64,20 @@ class SourceDefinition:
     browser: BrowserSurface
     normalized_topics: NormalizedTopics
     evidence_event_topic: str
+    views: tuple[SourceViewDefinition, ...] = ()
+
+    @property
+    def view_ids(self) -> tuple[str, ...]:
+        return tuple(view.view_id for view in self.views)
+
+    def get_view(self, view_id: str) -> SourceViewDefinition:
+        for view in self.views:
+            if view.view_id == view_id:
+                return view
+        raise KeyError(view_id)
+
+    def resolve_view(self, view_id: str | None = None) -> SourceViewDefinition:
+        return self.get_view(view_id or "full")
 
     def as_snapshot(self) -> dict[str, Any]:
         return {
@@ -72,6 +104,7 @@ class SourceDefinition:
                 "overlay": self.normalized_topics.overlay,
             },
             "evidence_event_topic": self.evidence_event_topic,
+            "views": [view.as_snapshot() for view in self.views],
         }
 
 
@@ -82,6 +115,10 @@ class SourceRegistry:
 
     @property
     def source_ids(self) -> list[str]:
+        return [source.source_id for source in self.sources if source.enabled]
+
+    @property
+    def all_source_ids(self) -> list[str]:
         return [source.source_id for source in self.sources]
 
     def get(self, source_id: str) -> SourceDefinition:
@@ -90,10 +127,37 @@ class SourceRegistry:
                 return source
         raise KeyError(source_id)
 
+    @property
+    def source_views(self) -> dict[str, tuple[str, ...]]:
+        return {source.source_id: source.view_ids for source in self.sources}
+
+    @property
+    def internal_color_indexing_allowed_views(self) -> dict[str, tuple[str, ...]]:
+        return {
+            source.source_id: tuple(
+                view.view_id for view in source.views if view.can_confirm_internal_color_indexing
+            )
+            for source in self.sources
+        }
+
+    def resolve_view(self, source_id: str, view_id: str | None = None) -> SourceViewDefinition:
+        return self.get(source_id).resolve_view(view_id)
+
+    def can_confirm_internal_color_indexing(self, source_id: str, view_id: str | None = None) -> bool:
+        return self.resolve_view(source_id, view_id).can_confirm_internal_color_indexing
+
     def as_snapshot(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,
+            "all_source_ids": self.all_source_ids,
             "source_ids": self.source_ids,
+            "source_views": {
+                source_id: list(view_ids) for source_id, view_ids in self.source_views.items()
+            },
+            "internal_color_indexing_allowed_views": {
+                source_id: list(view_ids)
+                for source_id, view_ids in self.internal_color_indexing_allowed_views.items()
+            },
             "sources": [source.as_snapshot() for source in self.sources],
         }
 
@@ -130,6 +194,58 @@ def _optional_string(value: Any, *, path: str) -> str | None:
     if value is None:
         return None
     return _require_string(value, path=path)
+
+
+def _parse_views(raw: Any, *, source_id: str, index: int) -> tuple[SourceViewDefinition, ...]:
+    if raw is None:
+        raw = [
+            {
+                "view_id": "full",
+                "kind": "full_frame",
+                "can_confirm_internal_color_indexing": False,
+            }
+        ]
+    if not isinstance(raw, list) or not raw:
+        raise SourceRegistryError(f"sources[{index}].views must be a non-empty list")
+
+    views: list[SourceViewDefinition] = []
+    seen: set[str] = set()
+    for view_index, view_raw in enumerate(raw):
+        view = _require_mapping(view_raw, path=f"sources[{index}].views[{view_index}]")
+        view_id = _require_string(
+            view.get("view_id"), path=f"sources[{index}].views[{view_index}].view_id"
+        )
+        if view_id in seen:
+            raise SourceRegistryError(f"sources[{index}].views duplicate view_id: {view_id}")
+        seen.add(view_id)
+        can_confirm = view.get("can_confirm_internal_color_indexing", False)
+        if not isinstance(can_confirm, bool):
+            raise SourceRegistryError(
+                f"sources[{index}].views[{view_index}].can_confirm_internal_color_indexing must be a boolean"
+            )
+        views.append(
+            SourceViewDefinition(
+                view_id=view_id,
+                kind=_require_string(
+                    view.get("kind"), path=f"sources[{index}].views[{view_index}].kind"
+                ),
+                can_confirm_internal_color_indexing=can_confirm,
+                parent_view=_optional_string(
+                    view.get("parent_view"), path=f"sources[{index}].views[{view_index}].parent_view"
+                ),
+            )
+        )
+
+    if "full" not in seen:
+        raise SourceRegistryError(f"sources[{index}].views must include full")
+    for view in views:
+        if view.parent_view is not None and view.parent_view not in seen:
+            raise SourceRegistryError(
+                f"sources[{index}].views[{view.view_id}].parent_view must reference an existing view"
+            )
+        if view.view_id == "full" and view.can_confirm_internal_color_indexing:
+            raise SourceRegistryError(f"{source_id}/full cannot confirm internal color indexing")
+    return tuple(views)
 
 
 def _parse_source(raw: Any, *, index: int) -> SourceDefinition:
@@ -196,6 +312,7 @@ def _parse_source(raw: Any, *, index: int) -> SourceDefinition:
         evidence_event_topic=_require_string(
             item["evidence_event_topic"], path=f"sources[{index}].evidence_event_topic"
         ),
+        views=_parse_views(item.get("views"), source_id=source_id, index=index),
     )
 
 

@@ -155,8 +155,17 @@ def validate_source_registry_surfaces(failures: list[str], vision_schema: dict[s
         failures.append("source registry snapshot is missing or empty")
         return
     source_ids = SOURCE_REGISTRY.get("source_ids")
-    if source_ids != list(SOURCE_BY_ID):
-        failures.append("source registry source_ids do not match sources order")
+    all_source_ids = SOURCE_REGISTRY.get("all_source_ids")
+    expected_all_source_ids = list(SOURCE_BY_ID)
+    expected_enabled_source_ids = [
+        source_id
+        for source_id, source in SOURCE_BY_ID.items()
+        if source.get("enabled") is True
+    ]
+    if all_source_ids != expected_all_source_ids:
+        failures.append("source registry all_source_ids do not match sources order")
+    if source_ids != expected_enabled_source_ids:
+        failures.append("source registry source_ids do not match enabled sources order")
     if vision_schema.get("properties", {}).get("source", {}).get("enum") != source_ids:
         failures.append("VisionEvent source enum does not match source registry")
     if lift_roi_schema.get("properties", {}).get("source", {}).get("enum") != source_ids:

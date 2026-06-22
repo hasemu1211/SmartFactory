@@ -14,12 +14,36 @@ def test_source_registry_loads_mvp_sources_and_topics():
 
     assert registry.schema_version == "vision-sources.v1"
     assert registry.source_ids == ["global_cam_01", "tb3_1_picam", "tb3_2_picam"]
+    assert registry.all_source_ids == [
+        "global_cam_01",
+        "global_depth_01",
+        "tb3_1_picam",
+        "tb3_2_picam",
+    ]
     tb3_1 = registry.get("tb3_1_picam")
     assert tb3_1.robot_id == "tb3_1"
     assert tb3_1.frame_id == "tb3_1_pi_camera_optical_frame"
     assert tb3_1.physical_input.topic == "/tb3_1/camera/image_raw/compressed"
     assert tb3_1.physical_input.message_type == "sensor_msgs/msg/CompressedImage"
     assert tb3_1.normalized_topics.overlay == "/sf/vision/sources/tb3_1_picam/overlay/compressed"
+
+
+def test_source_registry_view_contract_keeps_realsense_planned_and_view_scoped():
+    registry = get_settings().source_registry
+    source = registry.get("global_depth_01")
+
+    assert not source.enabled
+    assert source.view_ids == ("full", "pallet_zoom")
+    assert source.resolve_view().view_id == "full"
+    assert not registry.can_confirm_internal_color_indexing("global_depth_01")
+    assert registry.can_confirm_internal_color_indexing("global_depth_01", "pallet_zoom")
+    assert not registry.can_confirm_internal_color_indexing("global_cam_01")
+    try:
+        registry.resolve_view("global_depth_01", "bad_view")
+    except KeyError as exc:
+        assert exc.args == ("bad_view",)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("unknown source view must be rejected")
 
 
 def test_contract_schema_source_enums_match_registry():
