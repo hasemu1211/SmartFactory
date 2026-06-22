@@ -1,5 +1,6 @@
 # Local credentials
 .env.confluence.local
+.envrc
 .venv-tools/
 docs/confluence/captures/
 # Python / local env
@@ -29,3 +30,13 @@ venv/
 # Generated packages
 dist/
 docs/confluence/qa/*.png
+
+# Agent/runtime local state
+.omx/
+omx_wiki/
+
+# Local Confluence exports and draft-only artifacts
+docs/confluence/
+
+# Generated archives
+*.zip
