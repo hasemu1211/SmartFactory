@@ -82,6 +82,13 @@ def _lift_roi_openapi_schema() -> dict[str, Any]:
     return json.loads(get_settings().lift_roi_evidence_schema_path.read_text(encoding="utf-8"))
 
 
+@lru_cache(maxsize=1)
+def _evidence_evaluation_openapi_schema() -> dict[str, Any]:
+    return json.loads(
+        get_settings().evidence_evaluation_schema_path.read_text(encoding="utf-8")
+    )
+
+
 def _json_response_openapi(description: str, schema: dict[str, Any]) -> dict[str, Any]:
     return {
         "description": description,

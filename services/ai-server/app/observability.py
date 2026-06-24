@@ -32,6 +32,12 @@ class InMemoryMetrics:
             self._detect_image_events_total = 0
             self._lift_roi_evaluations_total = 0
             self._lift_roi_verification_total: dict[str, int] = defaultdict(int)
+            self._evidence_evaluation_total = 0
+            self._evidence_evaluation_status_total: dict[str, int] = defaultdict(int)
+            self._evidence_evaluation_reason_total: dict[str, int] = defaultdict(int)
+            self._evidence_evaluation_by_source_status: dict[tuple[str, str], int] = (
+                defaultdict(int)
+            )
             self._stream_client_open_total: dict[str, int] = defaultdict(int)
             self._stream_client_active: dict[str, int] = defaultdict(int)
             self._stream_frames_sent_total: dict[str, int] = defaultdict(int)
@@ -64,6 +70,21 @@ class InMemoryMetrics:
         with self._lock:
             self._lift_roi_evaluations_total += 1
             self._lift_roi_verification_total[verification_status] += 1
+
+    def record_evidence_evaluation(
+        self,
+        *,
+        source: str,
+        verification_status: str,
+        reason_code: str,
+    ) -> None:
+        with self._lock:
+            self._evidence_evaluation_total += 1
+            self._evidence_evaluation_status_total[verification_status] += 1
+            self._evidence_evaluation_reason_total[reason_code] += 1
+            self._evidence_evaluation_by_source_status[
+                (source, verification_status)
+            ] += 1
 
     def record_stream_client_opened(self, *, source: str) -> None:
         with self._lock:
@@ -155,10 +176,26 @@ class InMemoryMetrics:
                     sorted(self._lift_roi_verification_total.items())
                 ),
             }
+            evidence_evaluation_by_source: dict[str, dict[str, int]] = {}
+            for (source, status), count in sorted(
+                self._evidence_evaluation_by_source_status.items()
+            ):
+                evidence_evaluation_by_source.setdefault(source, {})[status] = count
+            evidence_evaluation = {
+                "evaluations_total": self._evidence_evaluation_total,
+                "verification_total": dict(
+                    sorted(self._evidence_evaluation_status_total.items())
+                ),
+                "reason_total": dict(
+                    sorted(self._evidence_evaluation_reason_total.items())
+                ),
+                "by_source": evidence_evaluation_by_source,
+            }
         return {
             "http": http,
             "detect_image": detect_image,
             "lift_roi": lift_roi,
+            "evidence_evaluation": evidence_evaluation,
             "stream": self.stream_snapshot(),
             "worker": self.worker_snapshot(),
         }

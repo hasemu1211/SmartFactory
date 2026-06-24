@@ -6,7 +6,7 @@ sources:
     frame_id: global_camera_frame
     enabled: true
     target_fps: 10.0
-    notes: overview/slot/zone evidence
+    notes: GoPro/global RGB overview evidence with crop-first smart ROI views for lift/pallet analysis
     physical_input:
       topic: /global_camera/image_raw
       message_type: sensor_msgs/msg/Image
@@ -20,6 +20,18 @@ sources:
       image: /sf/vision/sources/global_cam_01/image/compressed
       overlay: /sf/vision/sources/global_cam_01/overlay/compressed
     evidence_event_topic: /sf/vision/events
+    views:
+      - view_id: full
+        kind: full_frame
+        can_confirm_internal_color_indexing: false
+      - view_id: lift_roi
+        kind: smart_tracked_roi_crop
+        parent_view: full
+        can_confirm_internal_color_indexing: false
+      - view_id: pallet_zoom
+        kind: tracked_roi_crop
+        parent_view: full
+        can_confirm_internal_color_indexing: true
 
   - source_id: global_depth_01
     kind: realsense_rgbd

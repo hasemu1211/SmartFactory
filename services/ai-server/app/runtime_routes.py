@@ -11,6 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .api.health import register_health_routes
+from .api.evidence import register_evidence_routes
 from .api.vision import (
     _get_lift_roi_segmenter,
     _mjpeg_latest_overlay_generator,
@@ -107,6 +108,7 @@ def register_routes(app, *, runtime_context: RuntimeContext | None=None) -> None
     app.exception_handler(HTTPException)(http_exception_handler)
     app.exception_handler(RequestValidationError)(request_validation_exception_handler)
     register_health_routes(app, context_getter=_runtime_context)
+    register_evidence_routes(app, context_getter=_runtime_context)
     register_vision_routes(
         app,
         context_getter=_runtime_context,

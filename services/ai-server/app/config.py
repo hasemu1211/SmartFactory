@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     lift_roi_evidence_schema_path: Path = Field(
         default=REPO_ROOT / "docs" / "contracts" / "lift-roi-evidence.schema.json"
     )
+    evidence_evaluation_schema_path: Path = Field(
+        default=REPO_ROOT / "docs" / "contracts" / "evidence-evaluation.v1.schema.json"
+    )
+    evidence_image_root: Path = Field(
+        default=REPO_ROOT / "var" / "evidence-images"
+    )
+    evidence_image_base_uri: str = "/api/v1/evidence/images"
     aruco_pose_profiles_path: Path = Field(
         default=REPO_ROOT / "config" / "perception" / "aruco_pose_profiles.example.json"
     )

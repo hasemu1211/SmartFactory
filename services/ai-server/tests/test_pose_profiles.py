@@ -7,9 +7,13 @@ import pytest
 
 from app.pose_profiles import PoseProfileError, get_pose_profile, load_pose_profiles
 
+ROOT = Path(__file__).resolve().parents[3]
+
 
 def test_load_pose_profiles_reads_example_config():
-    profiles = load_pose_profiles(str(Path("../../config/perception/aruco_pose_profiles.example.json").resolve()))
+    profiles = load_pose_profiles(
+        str(ROOT / "config" / "perception" / "aruco_pose_profiles.example.json")
+    )
 
     profile = profiles["tb3_1_lab_marker_7"]
     assert profile.source == "tb3_1_picam"

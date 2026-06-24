@@ -78,6 +78,9 @@ set_defaults() {
   export VISION_SOURCE_2_TOPIC="${VISION_SOURCE_2_TOPIC:-/camera/image_raw/compressed}"
   export VISION_SOURCE_2_INTERNAL_PORT="${VISION_SOURCE_2_INTERNAL_PORT:-18091}"
 
+  export VISION_GLOBAL_SOURCE_ID="${VISION_GLOBAL_SOURCE_ID:-global_cam_01}"
+  export VISION_GLOBAL_UPSTREAM_URL="${VISION_GLOBAL_UPSTREAM_URL:-${AI_SERVER_URL}}"
+
   export VISION_GATEWAY_REQUEST_TIMEOUT_SEC="${VISION_GATEWAY_REQUEST_TIMEOUT_SEC:-1.2}"
   export VISION_GATEWAY_FRAME_PROCESS_PATH="${VISION_GATEWAY_FRAME_PROCESS_PATH:-/api/v1/vision/frame/process}"
   export VISION_GATEWAY_PERIOD_SEC="${VISION_GATEWAY_PERIOD_SEC:-0.033333}"
@@ -101,7 +104,7 @@ set_defaults() {
 
   export VISION_STREAM_GATEWAY_HOST="${VISION_STREAM_GATEWAY_HOST:-0.0.0.0}"
   export VISION_STREAM_GATEWAY_PORT="${VISION_STREAM_GATEWAY_PORT:-8090}"
-  export VISION_STREAM_SOURCE_UPSTREAMS_JSON="${VISION_STREAM_SOURCE_UPSTREAMS_JSON:-{\"${VISION_SOURCE_1_ID}\":\"http://127.0.0.1:${VISION_SOURCE_1_INTERNAL_PORT}\",\"${VISION_SOURCE_2_ID}\":\"http://127.0.0.1:${VISION_SOURCE_2_INTERNAL_PORT}\"}}"
+  export VISION_STREAM_SOURCE_UPSTREAMS_JSON="${VISION_STREAM_SOURCE_UPSTREAMS_JSON:-{\"${VISION_GLOBAL_SOURCE_ID}\":\"${VISION_GLOBAL_UPSTREAM_URL}\",\"${VISION_SOURCE_1_ID}\":\"http://127.0.0.1:${VISION_SOURCE_1_INTERNAL_PORT}\",\"${VISION_SOURCE_2_ID}\":\"http://127.0.0.1:${VISION_SOURCE_2_INTERNAL_PORT}\"}}"
 }
 
 check_prereqs() {
@@ -151,6 +154,7 @@ D1 Main-compatible multi-source gateway bundle
   public_gateway: ${VISION_STREAM_GATEWAY_HOST}:${VISION_STREAM_GATEWAY_PORT}
   source1: ${VISION_SOURCE_1_ID}, domain=${VISION_SOURCE_1_DOMAIN}, topic=${VISION_SOURCE_1_TOPIC}, internal_port=${VISION_SOURCE_1_INTERNAL_PORT}
   source2: ${VISION_SOURCE_2_ID}, domain=${VISION_SOURCE_2_DOMAIN}, topic=${VISION_SOURCE_2_TOPIC}, internal_port=${VISION_SOURCE_2_INTERNAL_PORT}
+  global_source: ${VISION_GLOBAL_SOURCE_ID}, upstream=${VISION_GLOBAL_UPSTREAM_URL}, ingest=HTTP /api/v1/vision/frame/process
   qos: image_sub=${VISION_GATEWAY_IMAGE_QOS_RELIABILITY}, overlay_pub=${VISION_GATEWAY_OVERLAY_PUB_QOS_RELIABILITY}, overlay_sub=${VISION_STREAM_OVERLAY_SUB_QOS_RELIABILITY}
   pipeline: async=${VISION_GATEWAY_ASYNC_PIPELINE}, inline_process=${VISION_GATEWAY_PROCESS_FRAME_INLINE}, frame_process_path=${VISION_GATEWAY_FRAME_PROCESS_PATH}, period=${VISION_GATEWAY_PERIOD_SEC}s, output_period=${VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC}s, retry_failed=${VISION_GATEWAY_RETRY_FAILED_FRAME}
   upstreams: ${VISION_STREAM_SOURCE_UPSTREAMS_JSON}
@@ -166,8 +170,11 @@ Vision -> Main callback settings:
   WMS_EMIT_ENABLED=${WMS_EMIT_ENABLED:-false}
   Overlay ${VISION_SOURCE_1_ID}: http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_SOURCE_1_ID}&max_fps=${VISION_STREAM_MAX_FPS}
   Overlay ${VISION_SOURCE_2_ID}: http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_SOURCE_2_ID}&max_fps=${VISION_STREAM_MAX_FPS}
+  Overlay ${VISION_GLOBAL_SOURCE_ID} full:     http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_GLOBAL_SOURCE_ID}&view=full&max_fps=${VISION_STREAM_MAX_FPS}
+  Overlay ${VISION_GLOBAL_SOURCE_ID} lift_roi: http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_GLOBAL_SOURCE_ID}&view=lift_roi&max_fps=${VISION_STREAM_MAX_FPS}
   Raw ${VISION_SOURCE_1_ID}:     http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=${VISION_SOURCE_1_ID}&max_fps=${VISION_STREAM_MAX_FPS}
   Raw ${VISION_SOURCE_2_ID}:     http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=${VISION_SOURCE_2_ID}&max_fps=${VISION_STREAM_MAX_FPS}
+  Raw ${VISION_GLOBAL_SOURCE_ID}:     http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=${VISION_GLOBAL_SOURCE_ID}&max_fps=${VISION_STREAM_MAX_FPS}
   Status:            http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/bridge/status
 
 Detected LAN fallback evidence (configure explicitly only if hostname resolution fails):

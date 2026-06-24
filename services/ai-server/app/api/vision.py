@@ -10,6 +10,7 @@ from time import perf_counter
 from uuid import uuid4
 from typing import Any
 
+import cv2
 from fastapi import File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
@@ -40,6 +41,14 @@ from ..openapi_schemas import (
 from ..overlay import OverlayRenderResult, render_overlay
 from ..pose_profiles import ArucoPoseProfile, PoseProfileError, get_pose_profile
 from ..runtime_state import RuntimeContext, default_runtime_context
+from ..smart_roi import (
+    ROI_CROP_VIEW_KINDS,
+    SmartRoiSelection,
+    crop_smart_roi,
+    event_for_roi_overlay,
+    select_smart_roi,
+    translate_detector_result_from_roi_to_full,
+)
 from ..vision_interfaces import DetectorResult
 from ..wms_client import emit_vision_events as default_emit_vision_events
 from .dependencies import ContextGetter
@@ -287,6 +296,109 @@ def _estimate_detection_pose(*, source: str, detection: MarkerDetection, pose_re
     except ValueError:
         return None
 
+def _roi_crop_views_for_source(source: str) -> tuple[str, ...]:
+    try:
+        source_definition = get_settings().source_registry.get(source)
+    except KeyError:
+        return ()
+    return tuple(
+        view.view_id
+        for view in source_definition.views
+        if view.view_id != DEFAULT_VIEW_ID and view.kind in ROI_CROP_VIEW_KINDS
+    )
+
+
+def _crop_frame_from_selection(
+    *,
+    source_frame: StoredFrame,
+    crop_image,
+    selection: SmartRoiSelection,
+) -> StoredFrame:
+    ok, buffer = cv2.imencode(".jpg", crop_image)
+    if not ok:
+        raise ValueError("failed to encode smart ROI crop as JPEG")
+    crop_height, crop_width = crop_image.shape[:2]
+    return StoredFrame(
+        source=source_frame.source,
+        frame_seq=source_frame.frame_seq,
+        timestamp=source_frame.timestamp,
+        image_width=int(crop_width),
+        image_height=int(crop_height),
+        encoded=buffer.tobytes(),
+        content_type="image/jpeg",
+        decoded_bgr=crop_image,
+    )
+
+
+def _prepare_roi_view_overlays(
+    *,
+    source: str,
+    frame: StoredFrame,
+    decoded_image,
+    full_frame_events: list[dict[str, Any]],
+    full_image_width: int,
+    full_image_height: int,
+    stale: bool,
+) -> tuple[list[dict[str, Any]], list[OverlayRenderResult]]:
+    """Generate crop-first view overlays and full-frame mapped ROI detections."""
+
+    settings = get_settings()
+    model_input_size_px = (int(settings.vision_model_imgsz), int(settings.vision_model_imgsz))
+    mapped_events: list[dict[str, Any]] = []
+    roi_overlays: list[OverlayRenderResult] = []
+    for view_id in _roi_crop_views_for_source(source):
+        try:
+            selection = select_smart_roi(
+                decoded_image,
+                view_id=view_id,
+                model_input_size_px=model_input_size_px,
+            )
+            crop_image = crop_smart_roi(decoded_image, selection)
+            crop_height, crop_width = crop_image.shape[:2]
+            crop_results, crop_latency_ms = _detect_model_results(crop_image)
+            crop_overlay_events = _events_from_model_results(
+                source=source,
+                detector_results=crop_results,
+                image_width=crop_width,
+                image_height=crop_height,
+                latency_ms=crop_latency_ms,
+                roi_selection=selection,
+                map_roi_to_full_frame=False,
+            )
+            mapped_events.extend(
+                _events_from_model_results(
+                    source=source,
+                    detector_results=crop_results,
+                    image_width=full_image_width,
+                    image_height=full_image_height,
+                    latency_ms=crop_latency_ms,
+                    roi_selection=selection,
+                    map_roi_to_full_frame=True,
+                )
+            )
+            transformed_full_events = [
+                roi_event
+                for event in full_frame_events
+                if (roi_event := event_for_roi_overlay(event, selection)) is not None
+            ]
+            crop_frame = _crop_frame_from_selection(
+                source_frame=frame,
+                crop_image=crop_image,
+                selection=selection,
+            )
+            roi_overlays.append(
+                render_overlay(
+                    crop_frame,
+                    events=[*transformed_full_events, *crop_overlay_events],
+                    stale=stale,
+                    view=view_id,
+                )
+            )
+        except (ValueError, TypeError):
+            continue
+    return mapped_events, roi_overlays
+
+
 def _detect_and_overlay_frame_snapshot(*, frame: StoredFrame, pose_request: PoseRequest | None=None, stale: bool=False) -> dict[str, Any]:
     """Run marker detection on an already-stored latest-frame snapshot."""
     if frame.decoded_bgr is None:
@@ -299,11 +411,23 @@ def _detect_and_overlay_frame_snapshot(*, frame: StoredFrame, pose_request: Pose
     latency_ms = round((perf_counter() - started) * 1000.0, 3)
     events = [build_marker_event(source=frame.source, detection=detection, image_width=image_width, image_height=image_height, latency_ms=latency_ms, pose=_estimate_detection_pose(source=frame.source, detection=detection, pose_request=pose_request)) for detection in detections]
     events.extend(_detect_model_events(source=frame.source, decoded_image=decoded_image, image_width=image_width, image_height=image_height))
+    roi_events, roi_overlays = _prepare_roi_view_overlays(
+        source=frame.source,
+        frame=frame,
+        decoded_image=decoded_image,
+        full_frame_events=list(events),
+        full_image_width=image_width,
+        full_image_height=image_height,
+        stale=stale,
+    )
+    events.extend(roi_events)
     for event in events:
         _runtime_context().store.add(event)
         _runtime_context().source_health.record_event(event)
     overlay = render_overlay(frame, events=events, stale=stale)
     _store_overlay_result(overlay)
+    for roi_overlay in roi_overlays:
+        _store_overlay_result(roi_overlay)
     _runtime_context().metrics.record_detect_image(event_count=len(events))
     return {'frame': frame, 'events': events, 'overlay': overlay}
 
@@ -335,25 +459,57 @@ def _detect_and_overlay_decoded_frame(*, source: str, decoded_image, encoded: by
 def _model_worker_enabled(settings) -> bool:
     return bool(settings.vision_model_worker_enabled and settings.vision_model_path.strip())
 
-def _detect_model_events(*, source: str, decoded_image, image_width: int, image_height: int) -> list[dict[str, Any]]:
+def _detect_model_results(decoded_image) -> tuple[tuple[DetectorResult, ...], float | None]:
     settings = get_settings()
     if not _model_worker_enabled(settings):
-        return []
+        return (), None
     try:
         provider = _lift_roi_segmenter()(model_path=settings.vision_model_path, task=settings.vision_model_task, confidence=settings.vision_model_conf, iou=settings.vision_model_iou, image_size=settings.vision_model_imgsz, device=settings.vision_model_device, class_map_json=settings.vision_model_class_map_json, unmapped_class=settings.vision_model_unmapped_class)
         started = perf_counter()
         detector_results = tuple(provider.detect(decoded_image))
         latency_ms = round((perf_counter() - started) * 1000.0, 3)
     except ModelAdapterError:
-        return []
+        return (), None
+    return detector_results, latency_ms
+
+def _events_from_model_results(
+    *,
+    source: str,
+    detector_results: tuple[DetectorResult, ...],
+    image_width: int,
+    image_height: int,
+    latency_ms: float | None,
+    roi_selection: SmartRoiSelection | None = None,
+    map_roi_to_full_frame: bool = False,
+) -> list[dict[str, Any]]:
+    settings = get_settings()
     max_events = max(0, int(settings.vision_model_max_events))
     model_events: list[dict[str, Any]] = []
     for result in detector_results[:max_events]:
         try:
-            model_events.append(build_model_event(source=source, result=result, image_width=image_width, image_height=image_height, latency_ms=latency_ms))
+            event_result = (
+                translate_detector_result_from_roi_to_full(result, roi_selection)
+                if roi_selection is not None and map_roi_to_full_frame
+                else result
+            )
+            event = build_model_event(source=source, result=event_result, image_width=image_width, image_height=image_height, latency_ms=latency_ms)
+            if roi_selection is not None:
+                event["roi_id"] = roi_selection.view_id
+                validate_vision_event(event)
+            model_events.append(event)
         except (ContractValidationError, ValueError, TypeError):
             continue
     return model_events
+
+def _detect_model_events(*, source: str, decoded_image, image_width: int, image_height: int) -> list[dict[str, Any]]:
+    detector_results, latency_ms = _detect_model_results(decoded_image)
+    return _events_from_model_results(
+        source=source,
+        detector_results=detector_results,
+        image_width=image_width,
+        image_height=image_height,
+        latency_ms=latency_ms,
+    )
 
 def vision_streams(source: str | None=Query(default=None, json_schema_extra=SOURCE_ID_OPENAPI_EXTRA)) -> dict[str, Any]:
     """Describe Vision Gateway stream surfaces.

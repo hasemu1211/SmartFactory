@@ -233,6 +233,643 @@
         }
       }
     },
+    "/api/v1/evidence/evaluate": {
+      "post": {
+        "summary": "Evaluate Route",
+        "operationId": "evaluate_route_api_v1_evidence_evaluate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceEvaluateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Connector-facing advisory EvidenceEvaluation v1",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "$id": "https://smartfactory.local/contracts/evidence-evaluation.v1.schema.json",
+                  "$defs": {
+                    "task_ref": {
+                      "properties": {
+                        "task_id": {
+                          "type": [
+                            "integer",
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "command_id": {
+                          "type": [
+                            "integer",
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "location_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": [
+                        "object",
+                        "null"
+                      ]
+                    },
+                    "data_json": {
+                      "properties": {
+                        "ai_judgement": {
+                          "properties": {
+                            "verification_status": {
+                              "type": "string",
+                              "enum": [
+                                "PASS",
+                                "FAIL",
+                                "UNCERTAIN"
+                              ]
+                            },
+                            "validity": {
+                              "type": "string",
+                              "enum": [
+                                "VALID_CANDIDATE",
+                                "INVALID_CANDIDATE",
+                                "NEEDS_REVIEW"
+                              ]
+                            },
+                            "reason_code": {
+                              "type": "string"
+                            },
+                            "expected_count": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ],
+                              "minimum": 0.0
+                            },
+                            "observed_count": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ],
+                              "minimum": 0.0
+                            },
+                            "stable_frames": {
+                              "type": [
+                                "integer",
+                                "null"
+                              ],
+                              "minimum": 0.0
+                            }
+                          },
+                          "additionalProperties": true,
+                          "type": "object",
+                          "required": [
+                            "verification_status",
+                            "validity",
+                            "reason_code"
+                          ]
+                        },
+                        "original_contract": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "original_payload": {
+                          "additionalProperties": true,
+                          "type": [
+                            "object",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": true,
+                      "type": "object",
+                      "required": [
+                        "ai_judgement",
+                        "original_contract",
+                        "original_payload"
+                      ]
+                    }
+                  },
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "verification_status": {
+                            "const": "PASS"
+                          }
+                        },
+                        "required": [
+                          "verification_status"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "validity": {
+                            "const": "VALID_CANDIDATE"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "verification_status": {
+                            "const": "FAIL"
+                          }
+                        },
+                        "required": [
+                          "verification_status"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "validity": {
+                            "enum": [
+                              "INVALID_CANDIDATE",
+                              "VALID_CANDIDATE"
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "verification_status": {
+                            "const": "UNCERTAIN"
+                          }
+                        },
+                        "required": [
+                          "verification_status"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "validity": {
+                            "const": "NEEDS_REVIEW"
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "properties": {
+                    "schema_version": {
+                      "type": "string",
+                      "const": "evidence-evaluation.v1"
+                    },
+                    "evaluation_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": [
+                        "global_cam_01",
+                        "tb3_1_picam",
+                        "tb3_2_picam"
+                      ]
+                    },
+                    "view": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "operation": {
+                      "type": "string",
+                      "enum": [
+                        "PICKUP",
+                        "DROPOFF",
+                        "MONITOR",
+                        "UNKNOWN"
+                      ]
+                    },
+                    "expected_evidence_type": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "NAV_REACHED",
+                        "ARUCO_DETECTED",
+                        "LOAD_DETECTED",
+                        "ITEM_PICKED",
+                        "ITEM_PLACED",
+                        "SLOT_CONFIRMED",
+                        "HUMAN_DETECTED",
+                        "HUMAN_CLEAR",
+                        "ITEM_DROPPED_CANDIDATE",
+                        "ERROR",
+                        "STATUS",
+                        null
+                      ]
+                    },
+                    "proposed_event_type": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "NAV_REACHED",
+                        "ARUCO_DETECTED",
+                        "LOAD_DETECTED",
+                        "ITEM_PICKED",
+                        "ITEM_PLACED",
+                        "SLOT_CONFIRMED",
+                        "HUMAN_DETECTED",
+                        "HUMAN_CLEAR",
+                        "ITEM_DROPPED_CANDIDATE",
+                        "ERROR",
+                        "STATUS",
+                        null
+                      ]
+                    },
+                    "verification_status": {
+                      "type": "string",
+                      "enum": [
+                        "PASS",
+                        "FAIL",
+                        "UNCERTAIN"
+                      ]
+                    },
+                    "validity": {
+                      "type": "string",
+                      "enum": [
+                        "VALID_CANDIDATE",
+                        "INVALID_CANDIDATE",
+                        "NEEDS_REVIEW"
+                      ]
+                    },
+                    "reason_code": {
+                      "type": "string",
+                      "enum": [
+                        "COUNT_MATCH_AND_STABLE",
+                        "COUNT_MISMATCH",
+                        "DROPPED_ITEM_DETECTED",
+                        "LOW_CONFIDENCE",
+                        "ROI_NOT_STABLE",
+                        "NO_FRAME",
+                        "OBJECT_NOT_FOUND",
+                        "SOURCE_STALE",
+                        "MODEL_UNAVAILABLE",
+                        "POLICY_NOT_APPLICABLE"
+                      ]
+                    },
+                    "confidence": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "maximum": 1.0,
+                      "minimum": 0.0
+                    },
+                    "trusted": {
+                      "type": "boolean",
+                      "const": false
+                    },
+                    "image_uri": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "minLength": 1,
+                      "pattern": "^/api/v1/evidence/images/[^/]+/[^/]+/\\d{4}-\\d{2}-\\d{2}/[^/]+$",
+                      "description": "Server-generated API path for a locally stored proof image. Absolute URLs and caller-supplied paths are not valid in Stage 1."
+                    },
+                    "task_ref": {
+                      "$ref": "#/$defs/task_ref"
+                    },
+                    "data_json": {
+                      "$ref": "#/$defs/data_json"
+                    },
+                    "observed_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "schema_version",
+                    "evaluation_id",
+                    "source",
+                    "view",
+                    "operation",
+                    "expected_evidence_type",
+                    "proposed_event_type",
+                    "verification_status",
+                    "validity",
+                    "reason_code",
+                    "confidence",
+                    "trusted",
+                    "image_uri",
+                    "task_ref",
+                    "data_json",
+                    "observed_at"
+                  ],
+                  "title": "SmartFactory EvidenceEvaluation v1",
+                  "description": "Connector-facing AI Server response that summarizes whether perception evidence is usable. AI evaluation is advisory; Main/connector owns IDs, DB insert, trusted promotion, and task transitions."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/evidence/images/{source}/{view}/{date}/{filename}": {
+      "get": {
+        "summary": "Evidence Image",
+        "description": "Serve saved proof images by the public image_uri returned by evaluate.",
+        "operationId": "evidence_image_api_v1_evidence_images__source___view___date___filename__get",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source"
+            }
+          },
+          {
+            "name": "view",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "View"
+            }
+          },
+          {
+            "name": "date",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Date"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Filename"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ],
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "type": "array",
+                          "items": {}
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/vision/streams": {
       "get": {
         "summary": "Vision Streams",
@@ -5224,6 +5861,134 @@
           "image"
         ],
         "title": "Body_ingest_frame_api_v1_vision_frame_post"
+      },
+      "EvidenceEvaluateRequest": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "global_cam_01",
+              "tb3_1_picam",
+              "tb3_2_picam"
+            ],
+            "title": "Source"
+          },
+          "view": {
+            "type": "string",
+            "title": "View",
+            "default": "full"
+          },
+          "operation": {
+            "type": "string",
+            "title": "Operation",
+            "default": "UNKNOWN"
+          },
+          "expected_evidence_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Evidence Type"
+          },
+          "expected_count": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Count"
+          },
+          "task_ref": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Ref"
+          },
+          "image_policy": {
+            "properties": {
+              "save_proof": {
+                "type": "boolean",
+                "default": false
+              },
+              "proof_label": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "title": "Image Policy",
+            "description": "Proof-image policy. Canonical keys: save_proof and proof_label."
+          },
+          "image_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Uri",
+            "description": "Rejected on request. Evidence image URIs are server-generated response fields.",
+            "deprecated": true
+          },
+          "vision_event": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vision Event"
+          },
+          "lift_roi_evidence": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lift Roi Evidence"
+          },
+          "max_frame_age_s": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Frame Age S"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "title": "EvidenceEvaluateRequest",
+        "description": "Connector-facing advisory evidence-evaluation request."
       },
       "HTTPValidationError": {
         "properties": {

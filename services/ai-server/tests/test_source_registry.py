@@ -31,13 +31,17 @@ def test_source_registry_loads_mvp_sources_and_topics():
 def test_source_registry_view_contract_keeps_realsense_planned_and_view_scoped():
     registry = get_settings().source_registry
     source = registry.get("global_depth_01")
+    global_cam = registry.get("global_cam_01")
 
     assert not source.enabled
     assert source.view_ids == ("full", "pallet_zoom")
+    assert global_cam.view_ids == ("full", "lift_roi", "pallet_zoom")
     assert source.resolve_view().view_id == "full"
     assert not registry.can_confirm_internal_color_indexing("global_depth_01")
     assert registry.can_confirm_internal_color_indexing("global_depth_01", "pallet_zoom")
     assert not registry.can_confirm_internal_color_indexing("global_cam_01")
+    assert not registry.can_confirm_internal_color_indexing("global_cam_01", "lift_roi")
+    assert registry.can_confirm_internal_color_indexing("global_cam_01", "pallet_zoom")
     try:
         registry.resolve_view("global_depth_01", "bad_view")
     except KeyError as exc:

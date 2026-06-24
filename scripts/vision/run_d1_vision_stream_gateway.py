@@ -22,6 +22,7 @@ from typing import Any
 
 BOUNDARY = "frame"
 DEFAULT_SOURCES = {
+    "global_cam_01": "http://127.0.0.1:8100",
     "tb3_1_picam": "http://127.0.0.1:18090",
     "tb3_2_picam": "http://127.0.0.1:18091",
 }
@@ -171,6 +172,15 @@ class VisionStreamGatewayHandler(BaseHTTPRequestHandler):
                         source_entry = candidate
                         break
             if source_entry is None:
+                status_code, data, error = _json_get(
+                    f"{base}/api/v1/vision/streams?" + urllib.parse.urlencode({"source": source})
+                )
+                if data:
+                    for candidate in data.get("sources", []):
+                        if candidate.get("source") == source or candidate.get("source_id") == source:
+                            source_entry = candidate
+                            break
+            if source_entry is None:
                 ok = False
                 sources.append(
                     {
@@ -218,9 +228,13 @@ class VisionStreamGatewayHandler(BaseHTTPRequestHandler):
         if source is None:
             return
         max_fps = html.escape((query.get("max_fps") or ["30"])[0])
-        stream_path = f"/api/v1/vision/{stream_kind}/stream?source={urllib.parse.quote(source)}&max_fps={max_fps}"
+        view = html.escape((query.get("view") or ["full"])[0].strip() or "full")
+        stream_path = (
+            f"/api/v1/vision/{stream_kind}/stream?"
+            f"source={urllib.parse.quote(source)}&view={urllib.parse.quote(view)}&max_fps={max_fps}"
+        )
         source_links = "".join(
-            f'<li><a href="/api/v1/vision/overlay/view?source={html.escape(s)}">{html.escape(s)}</a></li>'
+            f'<li><a href="/api/v1/vision/overlay/view?source={html.escape(s)}&view={view}">{html.escape(s)}</a></li>'
             for s in sorted(self.upstreams)
         )
         body = f"""<!doctype html>
@@ -232,7 +246,7 @@ body {{ font-family: system-ui, sans-serif; margin: 18px; }}
 </style></head>
 <body>
 <h1>SmartFactory Vision Stream Gateway</h1>
-<p>source={html.escape(source)} kind={html.escape(stream_kind)}</p>
+<p>source={html.escape(source)} view={view} kind={html.escape(stream_kind)}</p>
 <img src="{stream_path}" style="max-width: 100%; height: auto; border: 1px solid #ccc" />
 <div class="clock">Local realtime: <span id="live-clock">--:--:--</span></div>
 <div class="hint">Overlay image time updates on each received frame; this page clock keeps ticking even if frames pause.</div>
@@ -258,9 +272,10 @@ setInterval(updateClock, 250);
         if source is None:
             return
         max_fps = _clamp_fps((query.get("max_fps") or ["30"])[0])
+        view = (query.get("view") or ["full"])[0].strip() or "full"
         upstream_url = (
             f"{self.upstreams[source]}/api/v1/vision/overlay/stream?"
-            + urllib.parse.urlencode({"source": source, "max_fps": f"{max_fps:g}"})
+            + urllib.parse.urlencode({"source": source, "view": view, "max_fps": f"{max_fps:g}"})
         )
         self._proxy_mjpeg_response(upstream_url)
 

@@ -13,7 +13,9 @@
   ],
   "source_views": {
     "global_cam_01": [
-      "full"
+      "full",
+      "lift_roi",
+      "pallet_zoom"
     ],
     "global_depth_01": [
       "full",
@@ -27,7 +29,9 @@
     ]
   },
   "internal_color_indexing_allowed_views": {
-    "global_cam_01": [],
+    "global_cam_01": [
+      "pallet_zoom"
+    ],
     "global_depth_01": [
       "pallet_zoom"
     ],
@@ -42,7 +46,7 @@
       "frame_id": "global_camera_frame",
       "enabled": true,
       "target_fps": 10.0,
-      "notes": "overview/slot/zone evidence",
+      "notes": "GoPro/global RGB overview evidence with crop-first smart ROI views for lift/pallet analysis",
       "physical_input": {
         "topic": "/global_camera/image_raw",
         "message_type": "sensor_msgs/msg/Image",
@@ -64,6 +68,18 @@
           "view_id": "full",
           "kind": "full_frame",
           "can_confirm_internal_color_indexing": false
+        },
+        {
+          "view_id": "lift_roi",
+          "kind": "smart_tracked_roi_crop",
+          "can_confirm_internal_color_indexing": false,
+          "parent_view": "full"
+        },
+        {
+          "view_id": "pallet_zoom",
+          "kind": "tracked_roi_crop",
+          "can_confirm_internal_color_indexing": true,
+          "parent_view": "full"
         }
       ]
     },
