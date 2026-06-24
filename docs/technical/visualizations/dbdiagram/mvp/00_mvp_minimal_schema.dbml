@@ -1,0 +1,219 @@
+Project SmartFactory_MVP_Minimal {
+  database_type: 'PostgreSQL'
+  Note: '''
+  Minimal implementable SmartFactory schema.
+  Goal: DB-based Main scheduler, Nav command execution, AI evidence, robot/slot/inventory state, safety stop, audit trail.
+  This intentionally removes advanced tables until they are actually needed.
+  '''
+}
+
+Enum robot_status {
+  IDLE
+  RESERVED
+  MOVING
+  DOCKING
+  LIFTING
+  PAUSED
+  ERROR
+  OFFLINE
+  CHARGING
+}
+
+Enum task_status {
+  PENDING
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+  NEEDS_REVIEW
+}
+
+Enum step_status {
+  PENDING
+  READY
+  COMMAND_SENT
+  EXECUTING
+  WAITING_EVIDENCE
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+Enum command_status {
+  PENDING
+  SENT
+  ACKED
+  SUCCEEDED
+  FAILED
+  TIMEOUT
+  CANCELLED
+}
+
+Enum incident_status {
+  OPEN
+  STOP_SENT
+  STOPPED
+  CLEAR_PENDING
+  RESUME_ALLOWED
+  CLOSED
+}
+
+Table locations {
+  id uuid [pk]
+  code text [unique, not null, note: 'INBOUND_01/STORAGE_A_01/OUTBOUND_01/CHARGE_01']
+  location_type text [not null, note: 'AREA/WAYPOINT/SLOT/CHARGE']
+  parent_location_id uuid [ref: > locations.id, note: 'AREA contains WAYPOINT/SLOT']
+  approach_location_id uuid [ref: > locations.id, note: 'SLOT approach waypoint']
+  status text [not null, note: 'AVAILABLE/RESERVED/OCCUPIED/BLOCKED/UNKNOWN']
+  pose_x float8
+  pose_y float8
+  pose_yaw float8
+  aruco_marker_id integer [note: 'nullable; used for precision docking']
+  metadata_json jsonb
+}
+
+Table robots {
+  id uuid [pk]
+  robot_code text [unique, not null, note: 'tb3_1/tb3_2']
+  namespace text [unique, not null]
+  status robot_status [not null]
+  battery_level float8
+  current_location_id uuid [ref: > locations.id]
+  active_task_id uuid
+  last_seen_at timestamptz
+}
+
+Table evidence_sources {
+  id uuid [pk]
+  source_code text [unique, not null, note: 'global_cam_01/tb3_1_picam/nav_server']
+  source_type text [not null, note: 'GLOBAL_CAMERA/PICAMERA/NAV/ROBOT/OPERATOR']
+  robot_id uuid [ref: > robots.id]
+  status text [not null, note: 'ONLINE/OFFLINE/STALE']
+  trusted_for_safety boolean [not null]
+  trusted_for_inventory boolean [not null]
+  last_seen_at timestamptz
+}
+
+Table inventory_units {
+  id uuid [pk]
+  unit_code text [unique, not null, note: 'pallet or tote code']
+  part_no text [not null]
+  part_name text
+  quantity integer [not null]
+  status text [not null, note: 'INBOUND/STORED/RESERVED/ON_ROBOT/OUTBOUND/UNKNOWN']
+  current_location_id uuid [ref: > locations.id]
+  current_robot_id uuid [ref: > robots.id]
+  updated_at timestamptz
+}
+
+Table tasks {
+  id uuid [pk]
+  task_no bigint [unique]
+  task_type text [not null, note: 'INBOUND_STORE/OUTBOUND_PICK/MOVE/RECOVERY']
+  status task_status [not null]
+  priority integer [not null]
+  robot_id uuid [ref: > robots.id]
+  inventory_unit_id uuid [ref: > inventory_units.id]
+  source_location_id uuid [ref: > locations.id]
+  target_location_id uuid [ref: > locations.id]
+  error_reason text
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table task_steps {
+  id uuid [pk]
+  task_id uuid [not null, ref: > tasks.id]
+  sequence_no integer [not null]
+  step_type text [not null, note: 'MOVE/DOCK/LIFT_UP/LIFT_DOWN/VERIFY/COMMIT/STOP']
+  status step_status [not null]
+  command_id uuid
+  required_evidence text [note: 'e.g. NAV_REACHED, ARUCO_DETECTED, LOAD_DETECTED, SLOT_CONFIRMED']
+  retry_count integer [not null]
+  timeout_at timestamptz
+
+  indexes {
+    (task_id, sequence_no) [unique]
+  }
+}
+
+Table resource_reservations {
+  id uuid [pk]
+  resource_type text [not null, note: 'ROBOT/LOCATION/INVENTORY_UNIT']
+  resource_id uuid [not null, note: 'polymorphic id; enforce in app or with later constraints']
+  task_id uuid [not null, ref: > tasks.id]
+  status text [not null, note: 'ACTIVE/RELEASED/EXPIRED/CANCELLED']
+  expires_at timestamptz
+  created_at timestamptz
+
+  indexes {
+    (resource_type, resource_id, status)
+  }
+}
+
+Table commands {
+  id uuid [pk]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  robot_id uuid [ref: > robots.id]
+  command_type text [not null, note: 'NAV_GOAL/DOCK_ARUCO/LIFT_UP/LIFT_DOWN/STOP/RESUME']
+  target_system text [not null, note: 'NAV_SERVER/AI_SERVER/ROBOT_BRIDGE']
+  status command_status [not null]
+  idempotency_key text [unique, not null]
+  request_json jsonb
+  response_json jsonb
+  deadline_at timestamptz
+  created_at timestamptz
+  updated_at timestamptz
+}
+
+Table evidence_events {
+  id uuid [pk]
+  source_id uuid [ref: > evidence_sources.id]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  robot_id uuid [ref: > robots.id]
+  evidence_type text [not null, note: 'NAV_REACHED/ARUCO_DETECTED/LOAD_DETECTED/SLOT_CONFIRMED/HUMAN_DETECTED/HUMAN_CLEAR']
+  confidence float8
+  severity text [not null, note: 'INFO/WARN/ERROR/SAFETY']
+  trusted_for_policy boolean [not null]
+  artifact_uri text
+  payload_json jsonb
+  observed_at timestamptz
+  created_at timestamptz
+}
+
+Table safety_incidents {
+  id uuid [pk]
+  robot_id uuid [ref: > robots.id]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  status incident_status [not null]
+  triggering_evidence_id uuid [ref: > evidence_events.id]
+  stop_command_id uuid [ref: > commands.id]
+  clear_evidence_id uuid [ref: > evidence_events.id]
+  opened_at timestamptz
+  closed_at timestamptz
+}
+
+Table event_log {
+  id uuid [pk]
+  event_type text [not null, note: 'STATUS_CHANGED/COMMAND_EVENT/API_CALL/OPERATOR_ACTION/INVENTORY_CHANGED/ERROR']
+  entity_type text [not null, note: 'TASK/STEP/ROBOT/COMMAND/EVIDENCE/INVENTORY/LOCATION/INCIDENT']
+  entity_id uuid [not null]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  robot_id uuid [ref: > robots.id]
+  command_id uuid [ref: > commands.id]
+  evidence_id uuid [ref: > evidence_events.id]
+  from_status text
+  to_status text
+  actor text [not null, note: 'MAIN/NAV/AI/ROBOT/OPERATOR/SCHEDULER']
+  message text
+  payload_json jsonb
+  created_at timestamptz
+}
+
+Ref: robots.active_task_id > tasks.id
+Ref: task_steps.command_id > commands.id

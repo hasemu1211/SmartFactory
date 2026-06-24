@@ -1,0 +1,133 @@
+Project SmartFactory_MVP_04_Overview_Simplified {
+  database_type: 'PostgreSQL'
+  Note: '''
+  04_mvp_refined_practical 기준 전체 요약도.
+  목적: 한 화면에서 State -> Work -> Evidence/Safety -> Logs 흐름을 보여준다.
+  id는 코드값처럼 읽기 쉬운 text id를 사용한다.
+  task_logs는 완료/실패 task 결과 스냅샷이다.
+  '''
+}
+
+Table locations {
+  id text [pk, note: 'INBOUND_01/STORAGE_A_01/OUTBOUND_01/CHARGE_01']
+  type text [not null, note: 'AREA/WAYPOINT/SLOT/CHARGE']
+  status text [not null, note: 'AVAILABLE/RESERVED/OCCUPIED/BLOCKED/UNKNOWN']
+  approach_id text [ref: > locations.id]
+  marker_id integer [note: 'ArUco marker id']
+}
+
+Table robots {
+  id text [pk, note: 'tb3_1/tb3_2']
+  domain_id integer [not null, note: 'ROS_DOMAIN_ID']
+  status text [not null, note: 'IDLE/RESERVED/MOVING/DOCKING/LIFTING/PAUSED/ERROR/OFFLINE/CHARGING']
+  battery_level float8
+  location_id text [ref: > locations.id]
+  active_task_id bigint [ref: > tasks.id]
+}
+
+Table items {
+  id text [pk, note: 'BOLT_M3/MOTOR_A/SENSOR_KIT']
+}
+
+Table inventory {
+  item_id text [not null, ref: > items.id]
+  location_id text [not null, ref: > locations.id]
+  quantity integer [not null]
+
+  indexes {
+    (item_id, location_id) [pk]
+  }
+}
+
+Table tasks {
+  id bigint [pk]
+  task_type text [not null, note: 'INBOUND/OUTBOUND/MOVE/RECOVERY/CHARGING']
+  status text [not null, note: 'PENDING/RUNNING/PAUSED/COMPLETED/FAILED/CANCELLED/NEEDS_REVIEW']
+  robot_id text [ref: > robots.id]
+  item_id text [ref: > items.id]
+  from_location_id text [ref: > locations.id]
+  to_location_id text [ref: > locations.id]
+}
+
+Table reservations {
+  id bigint [pk]
+  type text [not null, note: 'ROBOT/LOCATION/ITEM']
+  status text [not null, note: 'ACTIVE/RELEASED/EXPIRED/CANCELLED']
+  task_id bigint [not null, ref: > tasks.id]
+  robot_id text [ref: > robots.id]
+  location_id text [ref: > locations.id]
+  item_id text [ref: > items.id]
+}
+
+Table commands {
+  id bigint [pk]
+  task_id bigint [ref: > tasks.id]
+  robot_id text [ref: > robots.id]
+  sequence_no integer [not null, note: 'task 내부 실행 순서']
+  command_type text [not null, note: 'NAV_GOAL/PICK_UP/DROP_OFF/STOP/RESUME/START_CHARGING/STOP_CHARGING']
+  status text [not null, note: 'PENDING/SENT/ACKED/SUCCEEDED/FAILED/TIMEOUT/CANCELLED']
+  location_id text [ref: > locations.id]
+  required_evidence_type text [note: 'NAV_REACHED/ITEM_PICKED/ITEM_PLACED/HUMAN_CLEAR']
+}
+
+Table evidence_events {
+  id bigint [pk]
+  event_type text [not null, note: 'NAV_REACHED/ITEM_PICKED/ITEM_PLACED/HUMAN_DETECTED/HUMAN_CLEAR/etc']
+  source text [not null, note: 'global_cam_01/tb3_1_picam/nav_server/operator']
+  robot_id text [ref: > robots.id]
+  task_id bigint [ref: > tasks.id]
+  command_id bigint [ref: > commands.id]
+  location_id text [ref: > locations.id]
+  trusted boolean [not null, default: false]
+}
+
+Table safety_stops {
+  id bigint [pk]
+  status text [not null, note: 'OPEN/STOP_SENT/STOPPED/CLEAR_PENDING/RESUME_ALLOWED/CLOSED']
+  robot_id text [ref: > robots.id]
+  task_id bigint [ref: > tasks.id]
+  detected_evidence_id bigint [ref: > evidence_events.id]
+  stop_command_id bigint [ref: > commands.id]
+  clear_evidence_id bigint [ref: > evidence_events.id]
+}
+
+Table task_logs {
+  id bigint [pk]
+  task_id bigint [not null, ref: > tasks.id]
+  robot_id text [ref: > robots.id]
+  result text [not null, note: 'SUCCESS/FAILURE/CANCELLED/NEEDS_REVIEW']
+  snapshot_json jsonb
+  logged_at timestamptz [not null]
+}
+
+Table item_change_logs {
+  id bigint [pk]
+  item_id text [not null, ref: > items.id]
+  location_id text [ref: > locations.id]
+  task_id bigint [ref: > tasks.id]
+  event_type text [not null, note: 'INBOUND/OUTBOUND/MOVE/ADJUST/CORRECTION/RESERVED/RELEASED']
+  quantity_change integer [not null]
+}
+
+TableGroup state {
+  robots
+  locations
+  items
+  inventory
+}
+
+TableGroup work {
+  tasks
+  reservations
+  commands
+}
+
+TableGroup evidence_and_safety {
+  evidence_events
+  safety_stops
+}
+
+TableGroup logs {
+  task_logs
+  item_change_logs
+}

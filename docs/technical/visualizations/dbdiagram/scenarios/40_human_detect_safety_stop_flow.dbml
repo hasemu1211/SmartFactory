@@ -1,0 +1,152 @@
+Project Scenario_40_Human_Detect_Safety_Stop {
+  database_type: 'PostgreSQL'
+  Note: '''
+  Scenario: AI detects a person during driving. Main records evidence/incident, immediately issues STOP or PAUSE to Nav, waits for stop acknowledgement, then requires clear evidence/operator authorization before resume.
+  '''
+}
+
+Table robots {
+  id uuid [pk]
+  robot_code text [unique, not null]
+  status text [not null, note: 'MOVING/SAFETY_PAUSED/EMERGENCY_STOPPED/IDLE']
+  current_task_id uuid [ref: > tasks.id]
+  current_step_id uuid [ref: > task_steps.id]
+  last_heartbeat_at timestamptz
+}
+
+Table tasks {
+  id uuid [pk]
+  task_no bigint [unique]
+  task_type text [not null]
+  status text [not null, note: 'RUNNING/SAFETY_PAUSED/FAILED/MANUAL_REVIEW']
+  assigned_robot_id uuid [ref: > robots.id]
+}
+
+Table task_steps {
+  id uuid [pk]
+  task_id uuid [not null, ref: > tasks.id]
+  sequence_no integer [not null]
+  step_type text [not null, note: 'MOVE/DOCK/LIFT/etc']
+  status text [not null, note: 'EXECUTING/SAFETY_PAUSED/EMERGENCY_STOPPED/READY']
+  nav_command_id uuid
+}
+
+Table evidence_sources {
+  id uuid [pk]
+  source_id text [unique, not null, note: 'global_cam_01/tb3_1_picam']
+  source_system text [not null, note: 'AI_SERVER']
+  source_kind text [not null, note: 'GLOBAL_CAMERA/PICAMERA']
+  robot_id uuid [ref: > robots.id]
+  status text [not null]
+  trusted_for_safety boolean
+  last_seen_at timestamptz
+}
+
+Table evidence_artifacts {
+  id uuid [pk]
+  artifact_type text [not null, note: 'IMAGE/VIDEO/JSON']
+  uri text [not null]
+  content_hash text
+  pii_redacted boolean
+  retention_until timestamptz
+}
+
+Table evidence_events {
+  id uuid [pk]
+  external_event_id text [not null]
+  dedupe_key text [not null]
+  source_system text [not null, note: 'AI_SERVER/NAV_SERVER/ROBOT/OPERATOR']
+  source_id text
+  evidence_source_id uuid [ref: > evidence_sources.id]
+  robot_id uuid [ref: > robots.id]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  evidence_type text [not null, note: 'HUMAN_DETECTED/HUMAN_CLEAR/STOP_ACKED']
+  confidence double
+  severity text [not null, note: 'SAFETY_CRITICAL/INFO']
+  trusted_for_policy boolean
+  artifact_ref_id uuid [ref: > evidence_artifacts.id]
+  observed_at timestamptz
+}
+
+Table safety_incidents {
+  id uuid [pk]
+  incident_type text [not null, note: 'HUMAN_DETECTED']
+  status text [not null, note: 'OPEN/STOP_SENT/STOP_ACKED/CLEAR_PENDING/RESUME_AUTHORIZED/CLOSED']
+  robot_id uuid [ref: > robots.id]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  triggering_evidence_id uuid [ref: > evidence_events.id]
+  clear_evidence_id uuid [ref: > evidence_events.id]
+  stop_command_id uuid [ref: > command_requests.id]
+  acknowledged_by text
+  resume_authorized_by text
+}
+
+Table command_requests {
+  id uuid [pk]
+  command_type text [not null, note: 'STOP/PAUSE/RESUME/CANCEL_COMMAND']
+  target_system text [not null, note: 'NAV_SERVER']
+  robot_id uuid [ref: > robots.id]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  status text [not null]
+  idempotency_key text [unique, not null]
+  fencing_token uuid
+  deadline_at timestamptz
+}
+
+Table command_events {
+  id uuid [pk]
+  command_id uuid [not null, ref: > command_requests.id]
+  source_system text [not null, note: 'NAV_SERVER']
+  external_event_id text [not null]
+  event_type text [not null, note: 'ACCEPTED/STARTED/STOPPED/FAILED/RESUMED']
+  observed_at timestamptz
+}
+
+Table safety_incident_events {
+  id uuid [pk]
+  incident_id uuid [not null, ref: > safety_incidents.id]
+  event_type text [not null, note: 'DETECTED/INTERRUPT_SENT/STOP_ACKED/CLEAR_ACCEPTED/RESUME_AUTHORIZED/CLOSED']
+  evidence_event_id uuid [ref: > evidence_events.id]
+  command_event_id uuid [ref: > command_events.id]
+  operator_id text
+  observed_at timestamptz
+}
+
+Table operator_actions {
+  id uuid [pk]
+  operator_id text [not null]
+  action_type text [not null, note: 'ACK_SAFETY/AUTHORIZE_RESUME/MANUAL_REVIEW']
+  target_entity_type text [not null, note: 'SAFETY_INCIDENT/TASK/ROBOT']
+  target_entity_id uuid [not null]
+  reason text
+  payload_json jsonb
+  created_at timestamptz
+}
+
+Table decision_snapshots {
+  id uuid [pk]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  decision_type text [not null, note: 'SAFETY_INTERRUPT/RESUME_GATE']
+  normalized_input_json jsonb
+  result_json jsonb
+}
+
+Table state_transitions {
+  id uuid [pk]
+  entity_type text [not null, note: 'ROBOT/TASK/TASK_STEP/INCIDENT/COMMAND']
+  entity_id uuid [not null]
+  from_status text
+  to_status text [not null]
+  reason_code text [not null]
+  evidence_event_id uuid [ref: > evidence_events.id]
+  command_id uuid [ref: > command_requests.id]
+  decision_snapshot_id uuid [ref: > decision_snapshots.id]
+  actor_id text
+  created_at timestamptz
+}
+
+Ref: task_steps.nav_command_id > command_requests.id

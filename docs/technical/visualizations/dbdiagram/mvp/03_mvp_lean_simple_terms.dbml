@@ -1,0 +1,230 @@
+Project SmartFactory_MVP_Lean_Simple_Terms {
+  database_type: 'PostgreSQL'
+  Note: '''
+  Lean MVP schema with fewer columns and easier words.
+  Changes from recommended schema:
+  - code is used as primary key for simple master/state tables.
+  - task_logs is removed; tasks keeps start/end/result state.
+  - evidence_events -> proofs.
+  - safety_incidents -> safety_stops.
+  - resource_reservations -> reservations.
+  - inventory -> stock.
+  - item_change_logs -> stock_logs.
+  '''
+}
+
+Table locations {
+  code text [pk, note: 'INBOUND_01/STORAGE_A_01/OUTBOUND_01/CHARGE_01']
+  kind text [not null, note: 'AREA/WAYPOINT/SLOT/CHARGE']
+  status text [not null, note: 'AVAILABLE/RESERVED/OCCUPIED/BLOCKED/UNKNOWN']
+  parent_code text [ref: > locations.code]
+  approach_code text [ref: > locations.code]
+  x float8
+  y float8
+  yaw float8
+  marker_id integer [note: 'ArUco marker id, nullable']
+
+  indexes {
+    kind
+    status
+    parent_code
+    approach_code
+  }
+}
+
+Table robots {
+  code text [pk, note: 'tb3_1/tb3_2']
+  status text [not null, note: 'IDLE/RESERVED/MOVING/DOCKING/LIFTING/PAUSED/ERROR/OFFLINE/CHARGING']
+  battery float8
+  location_code text [ref: > locations.code]
+  current_task_id bigint
+  last_seen_at timestamptz
+
+  indexes {
+    status
+    location_code
+    current_task_id
+    last_seen_at
+  }
+}
+
+Table items {
+  code text [pk, note: 'BOLT_M3/MOTOR_A/SENSOR_KIT']
+  unit text [not null, default: 'ea']
+}
+
+Table stock {
+  item_code text [not null, ref: > items.code]
+  location_code text [not null, ref: > locations.code]
+  quantity integer [not null, default: 0]
+  updated_at timestamptz
+
+  indexes {
+    (item_code, location_code) [pk]
+    location_code
+  }
+}
+
+Table tasks {
+  id bigint [pk]
+  kind text [not null, note: 'INBOUND/OUTBOUND/MOVE/RECOVERY']
+  status text [not null, note: 'PENDING/RUNNING/PAUSED/COMPLETED/FAILED/CANCELLED/NEEDS_REVIEW']
+  priority integer [not null, default: 0]
+  robot_code text [ref: > robots.code]
+  item_code text [ref: > items.code]
+  quantity integer [not null, default: 1]
+  from_location_code text [ref: > locations.code]
+  to_location_code text [ref: > locations.code]
+  error text
+  created_at timestamptz
+  started_at timestamptz
+  finished_at timestamptz
+
+  indexes {
+    status
+    robot_code
+    item_code
+    from_location_code
+    to_location_code
+    created_at
+  }
+}
+
+Table reservations {
+  id bigint [pk]
+  kind text [not null, note: 'ROBOT/LOCATION/ITEM']
+  status text [not null, note: 'ACTIVE/RELEASED/EXPIRED/CANCELLED']
+  task_id bigint [not null, ref: > tasks.id]
+  robot_code text [ref: > robots.code]
+  location_code text [ref: > locations.code]
+  item_code text [ref: > items.code]
+  expires_at timestamptz
+  released_at timestamptz
+
+  indexes {
+    status
+    task_id
+    robot_code
+    location_code
+    item_code
+    expires_at
+  }
+}
+
+Table commands {
+  id bigint [pk]
+  task_id bigint [ref: > tasks.id]
+  robot_code text [ref: > robots.code]
+  order_no integer [not null, default: 1, note: 'command order inside a task']
+  kind text [not null, note: 'NAV_GOAL/DOCK_ARUCO/LIFT_UP/LIFT_DOWN/STOP/RESUME']
+  target text [not null, note: 'NAV_SERVER/AI_SERVER/ROBOT_BRIDGE']
+  status text [not null, note: 'PENDING/SENT/ACKED/SUCCEEDED/FAILED/TIMEOUT/CANCELLED']
+  required_proof text [note: 'NAV_REACHED/ARUCO_DETECTED/LOAD_DETECTED/SLOT_CONFIRMED']
+  request_key text [unique, not null, note: 'idempotency key']
+  request_json jsonb
+  response_json jsonb
+  deadline_at timestamptz
+  created_at timestamptz
+  updated_at timestamptz
+
+  indexes {
+    task_id
+    robot_code
+    status
+    required_proof
+    created_at
+    (task_id, order_no) [unique]
+  }
+}
+
+Table proofs {
+  id bigint [pk]
+  kind text [not null, note: 'NAV_REACHED/ARUCO_DETECTED/LOAD_DETECTED/SLOT_CONFIRMED/HUMAN_DETECTED/HUMAN_CLEAR/ERROR/STATUS']
+  source text [not null, note: 'global_cam_01/tb3_1_picam/nav_server/operator']
+  robot_code text [ref: > robots.code]
+  task_id bigint [ref: > tasks.id]
+  command_id bigint [ref: > commands.id]
+  location_code text [ref: > locations.code]
+  confidence float8
+  level text [not null, default: 'INFO', note: 'INFO/WARN/ERROR/SAFETY']
+  trusted boolean [not null, default: false]
+  image_uri text
+  data_json jsonb
+  seen_at timestamptz
+
+  indexes {
+    kind
+    source
+    robot_code
+    task_id
+    command_id
+    location_code
+    trusted
+    seen_at
+  }
+}
+
+Table safety_stops {
+  id bigint [pk]
+  status text [not null, note: 'OPEN/STOP_SENT/STOPPED/CLEAR_PENDING/RESUME_ALLOWED/CLOSED']
+  robot_code text [ref: > robots.code]
+  task_id bigint [ref: > tasks.id]
+  detected_proof_id bigint [ref: > proofs.id]
+  stop_command_id bigint [ref: > commands.id]
+  clear_proof_id bigint [ref: > proofs.id]
+  opened_at timestamptz
+  closed_at timestamptz
+
+  indexes {
+    status
+    robot_code
+    task_id
+    detected_proof_id
+    opened_at
+  }
+}
+
+Table stock_logs {
+  id bigint [pk]
+  item_code text [not null, ref: > items.code]
+  location_code text [ref: > locations.code]
+  task_id bigint [ref: > tasks.id]
+  kind text [not null, note: 'INBOUND/OUTBOUND/MOVE/ADJUST/CORRECTION/RESERVED/RELEASED']
+  change_qty integer [not null]
+  before_qty integer
+  after_qty integer
+  note text
+  changed_at timestamptz [not null]
+
+  indexes {
+    item_code
+    location_code
+    task_id
+    kind
+    changed_at
+  }
+}
+
+Ref: robots.current_task_id > tasks.id
+
+TableGroup state {
+  robots
+  locations
+  items
+  stock
+}
+
+TableGroup work {
+  tasks
+  reservations
+  commands
+}
+
+TableGroup proof_and_safety {
+  proofs
+  safety_stops
+}
+
+TableGroup logs {
+  stock_logs
+}

@@ -1,0 +1,213 @@
+Project Scenario_10_Inbound_Store_Flow {
+  database_type: 'PostgreSQL'
+  Note: '''
+  Scenario: inbound pallet is received, picked by robot, moved to storage slot, verified, then inventory is committed.
+  Main owns task/step state. Nav executes commands. AI/Nav/Robot submit evidence.
+  '''
+}
+
+Enum task_status {
+  PLANNED
+  READY
+  RUNNING
+  SAFETY_PAUSED
+  SUCCEEDED
+  FAILED
+  MANUAL_REVIEW
+}
+
+Enum step_status {
+  PLANNED
+  READY
+  COMMAND_SENT
+  EXECUTING
+  WAITING_EVIDENCE
+  VERIFYING
+  SUCCEEDED
+  RETRY_WAIT
+  FAILED
+}
+
+Table work_orders {
+  id uuid [pk]
+  order_no bigint [unique]
+  order_type text [not null, note: 'INBOUND_STORE']
+  status text [not null]
+  priority integer
+  requested_payload_json jsonb
+  created_at timestamptz
+}
+
+Table tasks {
+  id uuid [pk]
+  task_no bigint [unique]
+  work_order_id uuid [not null, ref: > work_orders.id]
+  task_type text [not null, note: 'STORE_PALLET']
+  status task_status
+  assigned_robot_id uuid [ref: > robots.id]
+  target_pallet_id uuid [ref: > pallets.id]
+  source_waypoint_id uuid [ref: > waypoints.id]
+  target_slot_id uuid [ref: > storage_slots.id]
+  priority integer
+}
+
+Table task_steps {
+  id uuid [pk]
+  task_id uuid [not null, ref: > tasks.id]
+  sequence_no integer [not null]
+  step_type text [not null, note: 'MOVE_TO_INBOUND/DOCK_PALLET/LIFT_UP/MOVE_TO_SLOT/DOCK_SLOT/LIFT_DOWN/VERIFY_SLOT/COMMIT_INVENTORY']
+  status step_status
+  nav_command_id uuid
+  evidence_policy_id uuid [ref: > evidence_policies.id]
+  retry_count integer
+  max_retries integer
+  timeout_at timestamptz
+}
+
+Table robots {
+  id uuid [pk]
+  robot_code text [unique, not null]
+  status text [not null]
+  current_task_id uuid
+  current_step_id uuid
+  battery_level double
+}
+
+Table waypoints {
+  id uuid [pk]
+  code text [unique, not null]
+  waypoint_type text [not null, note: 'INBOUND_APPROACH/STORAGE_APPROACH/DOCKING_START']
+  pose_x double
+  pose_y double
+  pose_yaw double
+}
+
+Table storage_slots {
+  id uuid [pk]
+  code text [unique, not null]
+  approach_waypoint_id uuid [ref: > waypoints.id]
+  docking_marker_id uuid [ref: > docking_markers.id]
+  status text [not null, note: 'EMPTY/RESERVED/OCCUPIED/BLOCKED']
+}
+
+Table docking_markers {
+  id uuid [pk]
+  waypoint_id uuid [ref: > waypoints.id]
+  marker_family text [not null]
+  marker_id integer [not null]
+  purpose text [not null, note: 'PALLET_PICK/SLOT_PLACE']
+}
+
+Table pallets {
+  id uuid [pk]
+  pallet_code text [unique, not null]
+  part_id uuid [ref: > part_catalog.id]
+  quantity integer
+  status text [not null, note: 'INBOUND/RESERVED_STORE/ON_ROBOT/STORED/QUARANTINED']
+  current_slot_id uuid [ref: > storage_slots.id]
+  current_robot_id uuid [ref: > robots.id]
+}
+
+Table part_catalog {
+  id uuid [pk]
+  part_no text [unique, not null]
+  name text [not null]
+}
+
+Table reservations {
+  id uuid [pk]
+  reservation_type text [not null, note: 'ROBOT/SLOT/PALLET']
+  robot_id uuid [ref: > robots.id]
+  slot_id uuid [ref: > storage_slots.id]
+  pallet_id uuid [ref: > pallets.id]
+  task_id uuid [not null, ref: > tasks.id]
+  status text [not null]
+  expires_at timestamptz
+}
+
+Table command_requests {
+  id uuid [pk]
+  command_type text [not null, note: 'NAV_GOAL/DOCK_ARUCO/LIFT_UP/LIFT_DOWN']
+  target_system text [not null, note: 'NAV_SERVER']
+  robot_id uuid [ref: > robots.id]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  status text [not null]
+  idempotency_key text [unique, not null]
+  fencing_token uuid
+  deadline_at timestamptz
+}
+
+Table command_events {
+  id uuid [pk]
+  command_id uuid [not null, ref: > command_requests.id]
+  event_type text [not null, note: 'ACCEPTED/STARTED/FEEDBACK/SUCCEEDED/FAILED']
+  external_event_id text [not null]
+  observed_at timestamptz
+}
+
+Table evidence_policies {
+  id uuid [pk]
+  policy_name text [not null]
+  step_type text [not null]
+  version integer
+  policy_json jsonb [not null]
+  active boolean
+}
+
+Table evidence_events {
+  id uuid [pk]
+  external_event_id text [not null]
+  dedupe_key text [not null]
+  source_system text [not null, note: 'AI_SERVER/NAV_SERVER/ROBOT']
+  source_id text
+  robot_id uuid [ref: > robots.id]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  evidence_type text [not null, note: 'NAV_GOAL_REACHED/ARUCO_MARKER_DETECTED/LIFT_LOAD_DETECTED/SLOT_OCCUPIED_CONFIRMED']
+  confidence double
+  severity text [not null]
+  trusted_for_policy boolean
+  observed_at timestamptz
+}
+
+Table decision_snapshots {
+  id uuid [pk]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  decision_type text [not null, note: 'STEP_EVIDENCE_EVALUATION/INVENTORY_COMMIT']
+  policy_version text
+  normalized_input_json jsonb
+  result_json jsonb
+}
+
+Table inventory_transactions {
+  id uuid [pk]
+  pallet_id uuid [not null, ref: > pallets.id]
+  transaction_type text [not null, note: 'RECEIVE/STORE/VERIFY']
+  from_robot_id uuid [ref: > robots.id]
+  to_slot_id uuid [ref: > storage_slots.id]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  evidence_event_id uuid [ref: > evidence_events.id]
+  quantity integer
+  created_at timestamptz
+}
+
+Table state_transitions {
+  id uuid [pk]
+  entity_type text [not null, note: 'TASK/TASK_STEP/ROBOT/SLOT/PALLET/COMMAND']
+  entity_id uuid [not null]
+  from_status text
+  to_status text [not null]
+  reason_code text [not null]
+  evidence_event_id uuid [ref: > evidence_events.id]
+  command_id uuid [ref: > command_requests.id]
+  decision_snapshot_id uuid [ref: > decision_snapshots.id]
+  created_by text [not null]
+  created_at timestamptz
+}
+
+Ref: robots.current_task_id > tasks.id
+Ref: robots.current_step_id > task_steps.id
+Ref: task_steps.nav_command_id > command_requests.id

@@ -1,0 +1,161 @@
+Project SmartFactory_Integration_Audit_Ops {
+  database_type: 'PostgreSQL'
+  Note: 'Integration reliability, operator/manual actions, API logs, auth audit.'
+}
+
+Table robots {
+  id uuid [pk]
+  robot_code text [unique]
+}
+
+Table tasks {
+  id uuid [pk]
+  task_no bigint [unique]
+}
+
+Table task_steps {
+  id uuid [pk]
+  task_id uuid [ref: > tasks.id]
+}
+
+Table command_requests {
+  id uuid [pk]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  idempotency_key text [unique]
+}
+
+Table evidence_events {
+  id uuid [pk]
+  external_event_id text [not null]
+  source_system text [not null]
+  evidence_type text [not null]
+}
+
+Table api_call_logs {
+  id uuid [pk]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  command_id uuid [ref: > command_requests.id]
+  target_system text [not null]
+  method text [not null]
+  url text [not null]
+  request_json jsonb
+  request_hash text
+  response_status integer
+  response_json jsonb
+  response_hash text
+  idempotency_key text
+  started_at timestamptz
+  finished_at timestamptz
+  error_code text
+  redaction_policy_version text
+}
+
+Table inbox_events {
+  id uuid [pk]
+  source_system text [not null]
+  external_event_id text [not null]
+  event_type text [not null]
+  payload_json jsonb [not null]
+  processing_status text [not null]
+  retry_count integer
+  max_attempts integer
+  next_attempt_at timestamptz
+  received_at timestamptz
+  processed_at timestamptz
+  dead_lettered_at timestamptz
+}
+
+Table outbox_events {
+  id uuid [pk]
+  event_type text [not null]
+  target_system text [not null]
+  aggregate_type text [not null]
+  aggregate_id uuid [not null]
+  payload_json jsonb [not null]
+  delivery_status text [not null]
+  sent_at timestamptz
+  acked_at timestamptz
+  next_attempt_at timestamptz
+  delivery_deadline_at timestamptz
+  retry_count integer
+  max_attempts integer
+  dead_lettered_at timestamptz
+}
+
+Table dead_letter_events {
+  id uuid [pk]
+  source_table text [not null, note: 'inbox_events/outbox_events']
+  source_event_id uuid [not null]
+  reason_code text [not null]
+  payload_json jsonb
+  error_message text
+  resolved_at timestamptz
+  resolved_by text
+}
+
+Table operator_actions {
+  id uuid [pk]
+  operator_id text [not null]
+  action_type text [not null, note: 'ACK_SAFETY/MANUAL_CONFIRM/RELEASE_LOCK/ADJUST_INVENTORY']
+  target_entity_type text [not null]
+  target_entity_id uuid [not null]
+  reason text
+  payload_json jsonb
+  created_at timestamptz
+}
+
+Table manual_control_sessions {
+  id uuid [pk]
+  robot_id uuid [not null, ref: > robots.id]
+  operator_id text [not null]
+  status text [not null, note: 'ACTIVE/HANDOVER_REQUIRED/RECONCILING/CLOSED']
+  reason text
+  started_at timestamptz
+  handover_required_at timestamptz
+  reconciled_at timestamptz
+  closed_at timestamptz
+  reconcile_snapshot_json jsonb
+}
+
+Table service_identities {
+  id uuid [pk]
+  service_name text [unique, not null]
+  service_type text [not null, note: 'MAIN_SERVER/NAV_SERVER/AI_SERVER/ROBOT_BRIDGE/OPERATOR_UI']
+  auth_scheme text [not null, note: 'MTLS/HMAC/JWT/LOCAL_DEV']
+  key_id text
+  allowed_actions jsonb
+  active boolean
+  rotated_at timestamptz
+}
+
+Table api_auth_audit {
+  id uuid [pk]
+  service_identity_id uuid [ref: > service_identities.id]
+  endpoint text [not null]
+  method text [not null]
+  auth_result text [not null, note: 'ALLOW/DENY/ERROR']
+  request_id text
+  source_ip text
+  reason text
+  created_at timestamptz
+}
+
+Table state_transitions {
+  id uuid [pk]
+  entity_type text [not null]
+  entity_id uuid [not null]
+  reason_code text [not null]
+  actor_id text
+  actor_role text
+  request_id text
+  trace_id text
+  source_ip text
+  evidence_event_id uuid [ref: > evidence_events.id]
+  command_id uuid [ref: > command_requests.id]
+  created_by text [not null]
+  created_at timestamptz
+  prev_hash text
+  transition_hash text
+}

@@ -1,0 +1,98 @@
+Project SmartFactory_MVP_04_Logs_Inventory_Changes {
+  database_type: 'PostgreSQL'
+  Note: '''
+  결과/재고 변경 그림.
+  task_logs는 완료/실패/취소된 작업 결과 스냅샷을 남기고,
+  item_change_logs는 재고 수량 변경 이력을 남긴다.
+  '''
+}
+
+Table tasks {
+  id bigint [pk]
+  task_type text [not null, note: 'INBOUND/OUTBOUND/MOVE/RECOVERY/CHARGING']
+  status text [not null, note: 'COMPLETED/FAILED/CANCELLED/NEEDS_REVIEW']
+  robot_id text [ref: > robots.id]
+  item_id text [ref: > items.id]
+  quantity integer [not null]
+  from_location_id text [ref: > locations.id]
+  to_location_id text [ref: > locations.id]
+  error_reason text
+  started_at timestamptz
+  finished_at timestamptz
+}
+
+Table task_logs {
+  id bigint [pk]
+  task_id bigint [not null, ref: > tasks.id]
+  robot_id text [ref: > robots.id]
+  item_id text [ref: > items.id]
+  task_type text [not null]
+  result text [not null, note: 'SUCCESS/FAILURE/CANCELLED/NEEDS_REVIEW']
+  quantity integer
+  from_location_id text [ref: > locations.id]
+  to_location_id text [ref: > locations.id]
+  started_at timestamptz
+  finished_at timestamptz
+  fail_reason text
+  summary text
+  snapshot_json jsonb
+  logged_at timestamptz [not null]
+}
+
+Table inventory {
+  item_id text [not null, ref: > items.id]
+  location_id text [not null, ref: > locations.id]
+  quantity integer [not null, default: 0]
+  updated_at timestamptz
+
+  indexes {
+    (item_id, location_id) [pk]
+  }
+}
+
+Table item_change_logs {
+  id bigint [pk]
+  item_id text [not null, ref: > items.id]
+  location_id text [ref: > locations.id]
+  task_id bigint [ref: > tasks.id]
+  event_type text [not null, note: 'INBOUND/OUTBOUND/MOVE/ADJUST/CORRECTION/RESERVED/RELEASED']
+  quantity_change integer [not null]
+  quantity_before integer
+  quantity_after integer
+  reason text
+  changed_at timestamptz [not null]
+}
+
+Table evidence_events {
+  id bigint [pk]
+  event_type text [not null, note: 'ITEM_PICKED/ITEM_PLACED/SLOT_CONFIRMED/etc']
+  task_id bigint [ref: > tasks.id]
+  command_id bigint [ref: > commands.id]
+  trusted boolean [not null, default: false]
+  image_uri text
+  observed_at timestamptz
+}
+
+Table commands {
+  id bigint [pk]
+  task_id bigint [ref: > tasks.id]
+  sequence_no integer [not null]
+  command_type text [not null, note: 'PICK_UP/DROP_OFF/NAV_GOAL/etc']
+  status text [not null]
+  required_evidence_type text
+}
+
+Table robots {
+  id text [pk]
+  domain_id integer [not null]
+}
+
+Table items {
+  id text [pk]
+}
+
+Table locations {
+  id text [pk]
+  type text [not null]
+  status text [not null]
+}

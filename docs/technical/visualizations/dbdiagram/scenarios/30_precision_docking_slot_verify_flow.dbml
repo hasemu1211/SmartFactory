@@ -1,0 +1,184 @@
+Project Scenario_30_Precision_Docking_Slot_Verify {
+  database_type: 'PostgreSQL'
+  Note: '''
+  Scenario: robot approaches a slot, Nav performs ArUco precision docking, AI/robot evidence verifies marker/slot/pallet state, Main decides whether docking/verification succeeded.
+  '''
+}
+
+Table maps {
+  id uuid [pk]
+  code text [unique, not null]
+  frame_id text [not null]
+  map_version text
+}
+
+Table map_zones {
+  id uuid [pk]
+  map_id uuid [not null, ref: > maps.id]
+  code text [unique, not null]
+  zone_type text [not null, note: 'STORAGE/INBOUND/OUTBOUND']
+}
+
+Table waypoints {
+  id uuid [pk]
+  map_id uuid [not null, ref: > maps.id]
+  zone_id uuid [ref: > map_zones.id]
+  code text [unique, not null]
+  waypoint_type text [not null, note: 'APPROACH/DOCKING_START/PARKING']
+  pose_x double
+  pose_y double
+  pose_yaw double
+  tolerance_xy_m double
+  tolerance_yaw_rad double
+}
+
+Table storage_slots {
+  id uuid [pk]
+  code text [unique, not null]
+  zone_id uuid [not null, ref: > map_zones.id]
+  approach_waypoint_id uuid [ref: > waypoints.id]
+  docking_marker_id uuid [ref: > docking_markers.id]
+  status text [not null]
+  last_verified_at timestamptz
+}
+
+Table docking_markers {
+  id uuid [pk]
+  waypoint_id uuid [ref: > waypoints.id]
+  marker_family text [not null, note: 'DICT_4X4_50/DICT_5X5_100/etc']
+  marker_id integer [not null]
+  purpose text [not null, note: 'SLOT_DOCK/PALLET_DOCK/OUTBOUND_DOCK']
+  expected_pose_json jsonb
+  docking_profile_json jsonb
+}
+
+Table evidence_sources {
+  id uuid [pk]
+  source_id text [unique, not null, note: 'global_cam_01/tb3_1_picam']
+  source_system text [not null, note: 'AI_SERVER/ROBOT']
+  source_kind text [not null, note: 'GLOBAL_CAMERA/PICAMERA']
+  robot_id uuid [ref: > robots.id]
+  status text [not null]
+  trusted_for_inventory boolean
+}
+
+Table sensor_calibrations {
+  id uuid [pk]
+  calibration_code text [unique, not null]
+  calibration_type text [not null, note: 'CAMERA_INTRINSIC/CAMERA_EXTRINSIC/HAND_EYE/MAP_CAMERA']
+  version text [not null]
+  calibration_json jsonb [not null]
+  active boolean
+}
+
+Table sensor_mounts {
+  id uuid [pk]
+  evidence_source_id uuid [not null, ref: > evidence_sources.id]
+  robot_id uuid [ref: > robots.id]
+  zone_id uuid [ref: > map_zones.id]
+  mount_type text [not null]
+  frame_id text
+  transform_json jsonb
+  calibration_id uuid [ref: > sensor_calibrations.id]
+}
+
+Table robots {
+  id uuid [pk]
+  robot_code text [unique, not null]
+  status text [not null]
+}
+
+Table tasks {
+  id uuid [pk]
+  task_no bigint [unique]
+  task_type text [not null, note: 'STORE_PALLET/PICK_PALLET/VERIFY_SLOT']
+  status text [not null]
+  assigned_robot_id uuid [ref: > robots.id]
+  target_slot_id uuid [ref: > storage_slots.id]
+}
+
+Table task_steps {
+  id uuid [pk]
+  task_id uuid [not null, ref: > tasks.id]
+  sequence_no integer [not null]
+  step_type text [not null, note: 'MOVE_TO_APPROACH/DOCK_ARUCO/VERIFY_SLOT']
+  status text [not null]
+  nav_command_id uuid
+  evidence_policy_id uuid [ref: > evidence_policies.id]
+}
+
+Table evidence_policies {
+  id uuid [pk]
+  policy_name text [not null]
+  step_type text [not null]
+  version integer
+  policy_json jsonb [not null, note: 'required evidence, confidence threshold, freshness window']
+  active boolean
+}
+
+Table command_requests {
+  id uuid [pk]
+  command_type text [not null, note: 'NAV_GOAL/DOCK_ARUCO']
+  target_system text [not null, note: 'NAV_SERVER']
+  robot_id uuid [ref: > robots.id]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  status text [not null]
+  idempotency_key text [unique, not null]
+  map_version text
+  calibration_version text
+  deadline_at timestamptz
+}
+
+Table docking_attempts {
+  id uuid [pk]
+  command_id uuid [ref: > command_requests.id]
+  robot_id uuid [not null, ref: > robots.id]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  docking_marker_id uuid [ref: > docking_markers.id]
+  attempt_no integer
+  error_xy_m double
+  error_yaw_rad double
+  stable_frame_count integer
+  result text [not null, note: 'SUCCEEDED/FAILED/ABORTED']
+  failure_reason text
+}
+
+Table evidence_events {
+  id uuid [pk]
+  source_system text [not null, note: 'AI_SERVER/NAV_SERVER/ROBOT']
+  source_id text
+  robot_id uuid [ref: > robots.id]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  evidence_type text [not null, note: 'ARUCO_MARKER_DETECTED/DOCKING_POSE_STABLE/SLOT_EMPTY_CONFIRMED/SLOT_OCCUPIED_CONFIRMED']
+  confidence double
+  trusted_for_policy boolean
+  observed_at timestamptz
+}
+
+Table decision_snapshots {
+  id uuid [pk]
+  task_id uuid [ref: > tasks.id]
+  step_id uuid [ref: > task_steps.id]
+  decision_type text [not null, note: 'DOCKING_RESULT_EVALUATION/SLOT_VERIFY']
+  policy_version text
+  normalized_input_json jsonb
+  result_json jsonb
+}
+
+Table state_transitions {
+  id uuid [pk]
+  entity_type text [not null, note: 'TASK_STEP/SLOT/COMMAND']
+  entity_id uuid [not null]
+  from_status text
+  to_status text [not null]
+  reason_code text [not null]
+  evidence_event_id uuid [ref: > evidence_events.id]
+  command_id uuid [ref: > command_requests.id]
+  decision_snapshot_id uuid [ref: > decision_snapshots.id]
+  created_at timestamptz
+}
+
+Ref: task_steps.nav_command_id > command_requests.id

@@ -1,0 +1,65 @@
+Project SmartFactory_MVP_04_Safety_Stop {
+  database_type: 'PostgreSQL'
+  Note: '''
+  사람 감지 안전정지 그림.
+  HUMAN_DETECTED evidence가 safety_stops를 열고 STOP command를 만들며,
+  HUMAN_CLEAR evidence 이후 RESUME이 가능해진다.
+  '''
+}
+
+Table robots {
+  id text [pk, note: 'tb3_1/tb3_2']
+  domain_id integer [not null]
+  status text [not null, note: 'MOVING/PAUSED/ERROR/etc']
+  active_task_id bigint [ref: > tasks.id]
+}
+
+Table tasks {
+  id bigint [pk]
+  task_type text [not null, note: 'INBOUND/OUTBOUND/MOVE/RECOVERY/CHARGING']
+  status text [not null, note: 'RUNNING/PAUSED/FAILED/etc']
+  robot_id text [ref: > robots.id]
+}
+
+Table commands {
+  id bigint [pk]
+  task_id bigint [ref: > tasks.id]
+  robot_id text [ref: > robots.id]
+  sequence_no integer [not null]
+  command_type text [not null, note: 'STOP/RESUME/NAV_GOAL/etc']
+  target_system text [not null, note: 'NAV_SERVER/ROBOT_BRIDGE']
+  status text [not null, note: 'PENDING/SENT/ACKED/SUCCEEDED/FAILED/TIMEOUT/CANCELLED']
+  idempotency_key text [unique, not null]
+}
+
+Table evidence_events {
+  id bigint [pk]
+  event_type text [not null, note: 'HUMAN_DETECTED/HUMAN_CLEAR']
+  source text [not null, note: 'global_cam_01/tb3_1_picam/operator']
+  robot_id text [ref: > robots.id]
+  task_id bigint [ref: > tasks.id]
+  command_id bigint [ref: > commands.id]
+  location_id text [ref: > locations.id]
+  confidence float8
+  severity text [not null, default: 'SAFETY']
+  trusted boolean [not null, default: false]
+  image_uri text
+  observed_at timestamptz
+}
+
+Table safety_stops {
+  id bigint [pk]
+  status text [not null, note: 'OPEN/STOP_SENT/STOPPED/CLEAR_PENDING/RESUME_ALLOWED/CLOSED']
+  robot_id text [ref: > robots.id]
+  task_id bigint [ref: > tasks.id]
+  detected_evidence_id bigint [ref: > evidence_events.id, note: 'HUMAN_DETECTED']
+  stop_command_id bigint [ref: > commands.id, note: 'STOP']
+  clear_evidence_id bigint [ref: > evidence_events.id, note: 'HUMAN_CLEAR']
+  opened_at timestamptz
+  closed_at timestamptz
+}
+
+Table locations {
+  id text [pk]
+  type text [not null]
+}

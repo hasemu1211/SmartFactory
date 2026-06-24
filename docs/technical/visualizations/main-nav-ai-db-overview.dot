@@ -1,0 +1,245 @@
+digraph SmartFactoryDB {
+  graph [
+    rankdir=LR,
+    bgcolor="white",
+    pad="0.35",
+    nodesep="0.55",
+    ranksep="0.85",
+    splines=ortho,
+    fontname="Noto Sans CJK KR"
+  ];
+  node [
+    shape=plain,
+    fontname="Noto Sans CJK KR"
+  ];
+  edge [
+    color="#667085",
+    arrowsize=0.7,
+    penwidth=1.2,
+    fontname="Noto Sans CJK KR",
+    fontsize=10
+  ];
+
+  subgraph cluster_map {
+    label="Map / Waypoint / Docking";
+    color="#D0D5DD";
+    style="rounded";
+    maps [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#E0F2FE"><B>maps</B></TD></TR>
+        <TR><TD ALIGN="LEFT">map version / frame</TD></TR>
+      </TABLE>
+    >];
+    map_zones [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#E0F2FE"><B>map_zones</B></TD></TR>
+        <TR><TD ALIGN="LEFT">INBOUND / STORAGE / OUTBOUND</TD></TR>
+      </TABLE>
+    >];
+    waypoints [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#E0F2FE"><B>waypoints</B></TD></TR>
+        <TR><TD ALIGN="LEFT">approach / dock start poses</TD></TR>
+      </TABLE>
+    >];
+    docking_markers [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#E0F2FE"><B>docking_markers</B></TD></TR>
+        <TR><TD ALIGN="LEFT">ArUco marker / profile</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_robot {
+    label="Robot / Source / Sensor";
+    color="#D0D5DD";
+    style="rounded";
+    robots [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#DCFCE7"><B>robots</B></TD></TR>
+        <TR><TD ALIGN="LEFT">Main read model</TD></TR>
+        <TR><TD ALIGN="LEFT">tb3_1 / tb3_2</TD></TR>
+      </TABLE>
+    >];
+    evidence_sources [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#DCFCE7"><B>evidence_sources</B></TD></TR>
+        <TR><TD ALIGN="LEFT">global_cam / PiCam / Nav telemetry</TD></TR>
+      </TABLE>
+    >];
+    sensor_calibrations [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#DCFCE7"><B>sensor_calibrations</B></TD></TR>
+        <TR><TD ALIGN="LEFT">camera / docking / lift calibration</TD></TR>
+      </TABLE>
+    >];
+    robot_state_samples [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#DCFCE7"><B>robot_state_samples</B></TD></TR>
+        <TR><TD ALIGN="LEFT">pose / battery / nav snapshots</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_inventory {
+    label="Inventory / Slot / Pallet";
+    color="#D0D5DD";
+    style="rounded";
+    part_catalog [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#FEF3C7"><B>part_catalog</B></TD></TR>
+        <TR><TD ALIGN="LEFT">part master</TD></TR>
+      </TABLE>
+    >];
+    pallets [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#FEF3C7"><B>pallets</B></TD></TR>
+        <TR><TD ALIGN="LEFT">part + quantity + current location</TD></TR>
+      </TABLE>
+    >];
+    storage_slots [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#FEF3C7"><B>storage_slots</B></TD></TR>
+        <TR><TD ALIGN="LEFT">slot state / marker / waypoint</TD></TR>
+      </TABLE>
+    >];
+    inventory_transactions [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#FEF3C7"><B>inventory_transactions</B></TD></TR>
+        <TR><TD ALIGN="LEFT">append-only inventory movement</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_work {
+    label="Work Orchestration";
+    color="#D0D5DD";
+    style="rounded";
+    work_orders [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#EDE9FE"><B>work_orders</B></TD></TR>
+        <TR><TD ALIGN="LEFT">INBOUND / OUTBOUND / RECOVERY</TD></TR>
+      </TABLE>
+    >];
+    tasks [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#EDE9FE"><B>tasks</B></TD></TR>
+        <TR><TD ALIGN="LEFT">assigned robot / pallet / source-target</TD></TR>
+      </TABLE>
+    >];
+    task_steps [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#EDE9FE"><B>task_steps</B></TD></TR>
+        <TR><TD ALIGN="LEFT">MOVE / DOCK / LIFT / VERIFY / COMMIT</TD></TR>
+      </TABLE>
+    >];
+    reservations [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#EDE9FE"><B>reservations</B></TD></TR>
+        <TR><TD ALIGN="LEFT">business reservation</TD></TR>
+      </TABLE>
+    >];
+    resource_locks [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#EDE9FE"><B>resource_locks</B></TD></TR>
+        <TR><TD ALIGN="LEFT">runtime lock / collision avoidance</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_command {
+    label="Command / Nav Execution";
+    color="#D0D5DD";
+    style="rounded";
+    command_requests [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#FFE4E6"><B>command_requests</B></TD></TR>
+        <TR><TD ALIGN="LEFT">Main → Nav command</TD></TR>
+        <TR><TD ALIGN="LEFT">fencing / timeout / idempotency</TD></TR>
+      </TABLE>
+    >];
+    command_events [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#FFE4E6"><B>command_events</B></TD></TR>
+        <TR><TD ALIGN="LEFT">Nav → Main feedback/result</TD></TR>
+      </TABLE>
+    >];
+    docking_attempts [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#FFE4E6"><B>docking_attempts</B></TD></TR>
+        <TR><TD ALIGN="LEFT">ArUco docking attempt audit</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  subgraph cluster_evidence {
+    label="Evidence / Safety / Audit";
+    color="#D0D5DD";
+    style="rounded";
+    evidence_events [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#FCE7F3"><B>evidence_events</B></TD></TR>
+        <TR><TD ALIGN="LEFT">AI/Nav/Robot/Operator evidence</TD></TR>
+      </TABLE>
+    >];
+    safety_incidents [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#FCE7F3"><B>safety_incidents</B></TD></TR>
+        <TR><TD ALIGN="LEFT">human/obstacle/e-stop lifecycle</TD></TR>
+      </TABLE>
+    >];
+    decision_snapshots [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#FCE7F3"><B>decision_snapshots</B></TD></TR>
+        <TR><TD ALIGN="LEFT">policy input/result snapshot</TD></TR>
+      </TABLE>
+    >];
+    state_transitions [label=<
+      <TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6">
+        <TR><TD BGCOLOR="#FCE7F3"><B>state_transitions</B></TD></TR>
+        <TR><TD ALIGN="LEFT">append-only state audit</TD></TR>
+      </TABLE>
+    >];
+  }
+
+  maps -> map_zones;
+  map_zones -> waypoints;
+  waypoints -> docking_markers;
+  docking_markers -> storage_slots;
+  map_zones -> storage_slots;
+
+  robots -> robot_state_samples;
+  robots -> evidence_sources;
+  evidence_sources -> sensor_calibrations [label="via mounts"];
+
+  part_catalog -> pallets;
+  storage_slots -> pallets [label="current_slot"];
+  robots -> pallets [label="current_robot"];
+  pallets -> inventory_transactions;
+  tasks -> inventory_transactions;
+
+  work_orders -> tasks;
+  tasks -> task_steps;
+  tasks -> reservations;
+  tasks -> resource_locks;
+  robots -> tasks;
+  pallets -> tasks;
+  storage_slots -> tasks;
+
+  task_steps -> command_requests;
+  command_requests -> command_events;
+  command_requests -> docking_attempts;
+  docking_markers -> docking_attempts;
+
+  evidence_sources -> evidence_events;
+  robots -> evidence_events;
+  tasks -> evidence_events;
+  task_steps -> evidence_events;
+  evidence_events -> safety_incidents;
+
+  task_steps -> decision_snapshots;
+  evidence_events -> decision_snapshots;
+  decision_snapshots -> state_transitions;
+  evidence_events -> state_transitions;
+  command_requests -> state_transitions;
+}
