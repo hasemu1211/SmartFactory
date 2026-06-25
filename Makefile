@@ -2,7 +2,7 @@ ROS2_WS ?= $(or $(SMARTFACTORY_ROS2_WS),/home/codelab/turtlebot3_ws)
 ROS_DISTRO ?= jazzy
 ROS_PACKAGES ?= smartfactory_bringup smartfactory_perception_ros
 
-.PHONY: ai-setup ai-test ai-run contracts source-registry-surfaces deploy-validate docker-ai-config vision-profiles vision-up vision-down vision-status vision-logs vision-check vision-run vision-config vision-smoke-local vision-smoke-main ros-test ros-build-bringup ros-launch-smoke status
+.PHONY: ai-setup ai-test ai-run contracts source-registry-surfaces deploy-validate docker-ai-config vision-profiles vision-up vision-up-webrtc vision-down vision-status vision-logs vision-check vision-webrtc-check vision-webrtc-status vision-run vision-config vision-smoke-local vision-smoke-main ros-test ros-build-bringup ros-launch-smoke status
 
 ai-setup:
 	./scripts/ai/setup_ai_server_env.sh
@@ -31,6 +31,9 @@ vision-profiles:
 vision-up:
 	./scripts/vision/sf_vision.sh up $${PROFILE:-lab-gopro-tb3}
 
+vision-up-webrtc:
+	./scripts/vision/sf_vision.sh up lab-gopro-tb3-webrtc
+
 vision-down:
 	./scripts/vision/sf_vision.sh down
 
@@ -42,6 +45,12 @@ vision-logs:
 
 vision-check:
 	./scripts/vision/sf_vision.sh check $${PROFILE:-local-smoke}
+
+vision-webrtc-check:
+	./scripts/vision/run_webrtc_sidecar_mediamtx.sh --check
+
+vision-webrtc-status:
+	./scripts/vision/run_webrtc_sidecar_mediamtx.sh --status
 
 vision-run:
 	./scripts/vision/sf_vision.sh up $${PROFILE:-lab-gopro-tb3}

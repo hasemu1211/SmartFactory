@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     vision_webrtc_enabled: bool = True
     vision_webrtc_sidecar_offer_url_template: str = ""
     vision_webrtc_sidecar_whep_url_template: str = ""
+    vision_webrtc_sidecar_browser_url_template: str = ""
+    vision_webrtc_sidecar_health_url: str = ""
+    vision_webrtc_sidecar_health_timeout_s: float = 0.25
+    vision_webrtc_sidecar_assume_healthy_without_health_url: bool = False
     aruco_pose_profiles_path: Path = Field(
         default=REPO_ROOT / "config" / "perception" / "aruco_pose_profiles.example.json"
     )

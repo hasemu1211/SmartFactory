@@ -42,6 +42,49 @@ make vision-smoke-local
 make vision-down
 ```
 
+### Easiest path with the WebRTC sidecar
+
+The stable default remains `lab-gopro-tb3`. Use `lab-gopro-tb3-webrtc` when
+Main/browser should prefer WebRTC while retaining MJPEG fallback.
+
+```bash
+./scripts/vision/sf_vision.sh check lab-gopro-tb3-webrtc
+# live runs are guarded to tmux Smartfactory:3:Development.
+./scripts/vision/sf_vision.sh up lab-gopro-tb3-webrtc
+./scripts/vision/sf_vision.sh status
+./scripts/vision/sf_vision.sh smoke
+```
+
+The WebRTC sidecar requires `mediamtx` and `ffmpeg`. If `mediamtx` is missing,
+`check` fails with install/path guidance. After installing, put `mediamtx` on
+PATH or set:
+
+```bash
+export MEDIAMTX_BIN=/absolute/path/to/mediamtx
+```
+
+Sidecar-only checks:
+
+```bash
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --check
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --print-config
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --status
+```
+
+Default WebRTC URLs:
+
+```text
+browser: http://smartfactory-vision.local:8889/global_cam_01_full
+WHEP:    http://smartfactory-vision.local:8889/global_cam_01_full/whep
+browser: http://smartfactory-vision.local:8889/global_cam_01_lift_roi
+WHEP:    http://smartfactory-vision.local:8889/global_cam_01_lift_roi/whep
+```
+
+Main should use `sidecar.whep_url` when the AI Server offer response returns
+`selected_transport=webrtc`; otherwise it should use the MJPEG `fallback_path`.
+Discovery exposes URL templates and the sidecar health URL, but the offer response is the runtime selection gate. See
+[`../docs/setup/webrtc-mediamtx-sidecar.md`](../docs/setup/webrtc-mediamtx-sidecar.md).
+
 ### Profiles
 
 | Profile | Purpose | Hardware |
@@ -49,7 +92,8 @@ make vision-down
 | `local-smoke` | AI Server/gateway/API/WebRTC fallback smoke | none |
 | `tb3-live` | one TurtleBot Pi camera overlay | robot camera |
 | `gopro-segment` | GoPro `global_cam_01` segment overlay proof | GoPro |
-| `lab-gopro-tb3` | integrated GoPro + one TurtleBot lab demo | GoPro + robot camera |
+| `lab-gopro-tb3` | integrated GoPro + one TurtleBot lab demo, MJPEG stable path | GoPro + robot camera |
+| `lab-gopro-tb3-webrtc` | same demo plus MediaMTX WebRTC sidecar | GoPro + robot camera + `mediamtx` |
 
 `lab-gopro-tb3` starts:
 
@@ -254,7 +298,7 @@ Placement rule:
 
 ## Notes
 
-- Follow the active runbook/session evidence for where to keep live processes;
-  durable README files should not hard-code transient tmux pane/window IDs.
+- Current lab live processes are guarded to tmux `Smartfactory:3:Development`.
+  On another machine, set `SF_VISION_TMUX_REQUIRED_CONTEXT` before live `up` if the tmux name differs.
 - Keep robot motion, Nav2, teleop, and `/cmd_vel` outside these Vision scripts.
 - Do not commit generated `__pycache__` directories; they are local runtime cache.

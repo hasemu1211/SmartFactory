@@ -68,11 +68,29 @@ def webrtc_sidecar_descriptor(source: str, view: str) -> dict[str, Any]:
         source=source,
         view=view,
     )
-    configured = bool(offer_url or whep_url)
+    browser_url = _render_sidecar_url(
+        settings.vision_webrtc_sidecar_browser_url_template,
+        source=source,
+        view=view,
+    )
+    configured = bool(offer_url or whep_url or browser_url)
+    health_url = settings.vision_webrtc_sidecar_health_url.strip() or None
+    if health_url:
+        runtime_health = "check_required"
+    elif configured and settings.vision_webrtc_sidecar_assume_healthy_without_health_url:
+        runtime_health = "assume_healthy"
+    elif configured:
+        runtime_health = "unknown"
+    else:
+        runtime_health = "not_configured"
     return {
         "status": "configured" if configured else "not_configured",
+        "url_configured": configured,
+        "runtime_health": runtime_health,
+        "runtime_health_url": health_url,
         "offer_url": offer_url,
         "whep_url": whep_url,
+        "browser_url": browser_url,
         "owner": "media_sidecar",
         "proxy_mode": "descriptor_only",
     }

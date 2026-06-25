@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from urllib.error import HTTPError, URLError
+from urllib.request import Request as UrlRequest, urlopen
 from contextvars import ContextVar
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -547,6 +549,27 @@ def vision_streams(source: str | None=Query(default=None, json_schema_extra=SOUR
     )
 
 
+def _webrtc_sidecar_runtime_health(sidecar: dict[str, Any]) -> str:
+    """Return live sidecar health used for offer selection."""
+    settings = get_settings()
+    if sidecar.get("status") != "configured":
+        return "not_configured"
+    health_url = sidecar.get("runtime_health_url")
+    if not health_url:
+        if settings.vision_webrtc_sidecar_assume_healthy_without_health_url:
+            return "assume_healthy"
+        return "unknown"
+    request = UrlRequest(str(health_url), method="GET")
+    try:
+        with urlopen(request, timeout=settings.vision_webrtc_sidecar_health_timeout_s) as response:
+            status = getattr(response, "status", 200)
+            return "healthy" if status < 500 else "unhealthy"
+    except HTTPError as exc:
+        return "healthy" if exc.code < 500 else "unhealthy"
+    except (OSError, TimeoutError, URLError):
+        return "unhealthy"
+
+
 def vision_webrtc_offer(
     source: str,
     payload: WebRtcOfferRequest | None = None,
@@ -563,6 +586,8 @@ def vision_webrtc_offer(
     request_payload = payload or WebRtcOfferRequest()
     forced = bool(force_fallback or request_payload.force_fallback)
     sidecar = webrtc_sidecar_descriptor(source, view_id)
+    runtime_health = _webrtc_sidecar_runtime_health(sidecar)
+    sidecar["runtime_health"] = runtime_health
     settings = get_settings()
     if not settings.vision_webrtc_enabled:
         status = "fallback_required"
@@ -572,10 +597,14 @@ def vision_webrtc_offer(
         status = "fallback_required"
         reason = "forced_fallback"
         selected_transport = "mjpeg"
-    elif sidecar["status"] == "configured":
+    elif sidecar["status"] == "configured" and runtime_health in {"healthy", "assume_healthy"}:
         status = "sidecar_configured"
-        reason = "sidecar_descriptor_available"
+        reason = "sidecar_runtime_healthy" if runtime_health == "healthy" else "sidecar_assume_healthy"
         selected_transport = "webrtc"
+    elif sidecar["status"] == "configured":
+        status = "fallback_required"
+        reason = f"sidecar_health_{runtime_health}"
+        selected_transport = "mjpeg"
     else:
         status = "fallback_required"
         reason = "sidecar_not_configured"
@@ -649,13 +678,16 @@ def vision_webrtc_demo(
   <style>
     body {{ font-family: system-ui, sans-serif; margin: 24px; }}
     code, pre {{ background: #f5f5f5; padding: 2px 4px; }}
-    img {{ max-width: 100%; border: 1px solid #ddd; }}
+    img, iframe {{ max-width: 100%; border: 1px solid #ddd; }}
+    iframe {{ width: min(100%, 1280px); height: 720px; }}
   </style>
 </head>
 <body>
   <h1>Vision transport smoke test</h1>
   <p>source=<code id="source"></code>, view=<code id="view"></code></p>
   <p>selected transport: <strong id="selected">checking</strong></p>
+  <iframe id="sidecarFrame" title="WebRTC sidecar browser player" allow="autoplay; fullscreen" hidden></iframe>
+  <p id="sidecarLinkRow" hidden>Sidecar browser URL: <a id="sidecarLink" target="_blank" rel="noreferrer"></a></p>
   <video id="webrtcVideo" autoplay playsinline muted controls hidden></video>
   <img id="mjpegFallback" alt="MJPEG fallback overlay" hidden>
   <pre id="status"></pre>
@@ -671,12 +703,17 @@ def vision_webrtc_demo(
     const status = document.getElementById('status');
     const img = document.getElementById('mjpegFallback');
     const video = document.getElementById('webrtcVideo');
+    const sidecarFrame = document.getElementById('sidecarFrame');
+    const sidecarLinkRow = document.getElementById('sidecarLinkRow');
+    const sidecarLink = document.getElementById('sidecarLink');
 
     function useMjpeg(reason) {{
       selected.textContent = 'mjpeg';
       img.src = fallbackPath;
       img.hidden = false;
       video.hidden = true;
+      sidecarFrame.hidden = true;
+      sidecarLinkRow.hidden = true;
       status.textContent = 'MJPEG fallback: ' + reason + '\\n' + fallbackPath;
     }}
 
@@ -702,9 +739,19 @@ def vision_webrtc_demo(
         const descriptor = await response.json();
         status.textContent = JSON.stringify(descriptor, null, 2);
         if (response.ok && descriptor.selected_transport === 'webrtc') {{
-          selected.textContent = 'webrtc';
-          video.hidden = false;
-          img.hidden = true;
+          const browserUrl = descriptor.sidecar && descriptor.sidecar.browser_url;
+          if (browserUrl) {{
+            selected.textContent = 'webrtc-sidecar';
+            sidecarFrame.src = browserUrl;
+            sidecarFrame.hidden = false;
+            sidecarLink.href = browserUrl;
+            sidecarLink.textContent = browserUrl;
+            sidecarLinkRow.hidden = false;
+            video.hidden = true;
+            img.hidden = true;
+            return;
+          }}
+          useMjpeg('WebRTC selected but no sidecar.browser_url was provided');
           return;
         }}
         useMjpeg(descriptor.reason || 'offer rejected');

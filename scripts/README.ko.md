@@ -60,6 +60,48 @@ make vision-smoke-local
 make vision-down
 ```
 
+### WebRTC sidecar까지 켜는 가장 쉬운 경로
+
+기본 안정 경로는 여전히 `lab-gopro-tb3`입니다. Main/browser가 WebRTC를 우선
+받아보고 MJPEG fallback도 유지해야 하면 `lab-gopro-tb3-webrtc`를 사용합니다.
+
+```bash
+./scripts/vision/sf_vision.sh check lab-gopro-tb3-webrtc
+# live 실행은 tmux Smartfactory:3:Development 안에서만 허용됩니다.
+./scripts/vision/sf_vision.sh up lab-gopro-tb3-webrtc
+./scripts/vision/sf_vision.sh status
+./scripts/vision/sf_vision.sh smoke
+```
+
+WebRTC sidecar는 `mediamtx`와 `ffmpeg`가 필요합니다. 이 PC에서 `mediamtx`가
+없으면 `check`가 실패하면서 설치/경로 지정 방법을 출력합니다. 설치 후에는
+`mediamtx`를 PATH에 두거나 다음처럼 지정하세요.
+
+```bash
+export MEDIAMTX_BIN=/absolute/path/to/mediamtx
+```
+
+Sidecar 단독 확인:
+
+```bash
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --check
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --print-config
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --status
+```
+
+기본 WebRTC URL은 다음입니다.
+
+```text
+browser: http://smartfactory-vision.local:8889/global_cam_01_full
+WHEP:    http://smartfactory-vision.local:8889/global_cam_01_full/whep
+browser: http://smartfactory-vision.local:8889/global_cam_01_lift_roi
+WHEP:    http://smartfactory-vision.local:8889/global_cam_01_lift_roi/whep
+```
+
+Main은 AI Server offer가 `selected_transport=webrtc`를 반환할 때 `sidecar.whep_url`을 WebRTC 통로로 쓰고,
+그 외에는 `fallback_path`의 MJPEG를 사용하면 됩니다. Discovery에는 URL 템플릿과 health URL이 보이지만, 실제 선택은 sidecar health 확인 후 offer 응답을 기준으로 하세요. 자세한 문서는
+[`../docs/setup/webrtc-mediamtx-sidecar.md`](../docs/setup/webrtc-mediamtx-sidecar.md)를 보세요.
+
 ### 주요 profile
 
 | profile | 용도 | 하드웨어 |
@@ -67,7 +109,8 @@ make vision-down
 | `local-smoke` | AI Server/gateway/API/WebRTC fallback smoke | 없음 |
 | `tb3-live` | TurtleBot 1대 Pi camera overlay | 로봇 카메라 |
 | `gopro-segment` | GoPro `global_cam_01` segment overlay proof | GoPro |
-| `lab-gopro-tb3` | GoPro + TurtleBot 1대 통합 데모 | GoPro + 로봇 카메라 |
+| `lab-gopro-tb3` | GoPro + TurtleBot 1대 통합 데모, MJPEG 안정 경로 | GoPro + 로봇 카메라 |
+| `lab-gopro-tb3-webrtc` | 위 구성 + MediaMTX WebRTC sidecar | GoPro + 로봇 카메라 + `mediamtx` |
 
 `lab-gopro-tb3`는 내부적으로 다음을 한 번에 띄웁니다.
 
@@ -94,7 +137,7 @@ ROS_DOMAIN_ID=2 ros2 launch turtlebot3_bringup camera_low_bandwidth.launch.py
 
 ### 1. 임시 hostname 방송
 
-live 프로세스를 어느 tmux 창/패널에 둘지는 현재 runbook/session evidence를 따르세요. durable README에는 일시적인 pane/window ID를 고정하지 않습니다.
+현재 lab live 프로세스는 tmux `Smartfactory:3:Development`에서만 시작되도록 guard됩니다. 다른 장비에서 다른 tmux 이름을 쓰면 `SF_VISION_TMUX_REQUIRED_CONTEXT`를 맞춘 뒤 실행하세요.
 
 ```bash
 ./scripts/vision/publish_vision_mdns_alias.py

@@ -44,6 +44,9 @@ Typical demo:
   ./scripts/vision/sf_vision.sh smoke
   ./scripts/vision/sf_vision.sh down
 
+WebRTC sidecar demo:
+  ./scripts/vision/sf_vision.sh up lab-gopro-tb3-webrtc
+
 Safety boundary: this script does not start robot motion, Nav2, teleop,
 /cmd_vel, ROS parameter mutation, or a whole-graph rosbridge.
 USAGE
@@ -81,6 +84,13 @@ load_profile() {
   source "${PROFILE_FILE}"
   set +a
 
+  RUN_DIR="${SMARTFACTORY_VISION_RUN_DIR:-${ROOT_DIR}/.run/vision}"
+  LOG_DIR="${RUN_DIR}/logs"
+  PID_FILE="${RUN_DIR}/pids.tsv"
+  SUPERVISOR_PID_FILE="${RUN_DIR}/supervisor.pid"
+  SUMMARY_FILE="${RUN_DIR}/summary.env"
+  export SMARTFACTORY_VISION_RUN_DIR="${RUN_DIR}"
+
   export AI_SERVER_HOST="${AI_SERVER_HOST:-0.0.0.0}"
   export AI_SERVER_PORT="${AI_SERVER_PORT:-8100}"
   export AI_SERVER_URL="${AI_SERVER_URL:-http://127.0.0.1:${AI_SERVER_PORT}}"
@@ -107,6 +117,37 @@ load_profile() {
   export GOPRO_EVALUATE_LIFT_ROI="${GOPRO_EVALUATE_LIFT_ROI:-false}"
   export GOPRO_OPERATION="${GOPRO_OPERATION:-MONITOR}"
   export GOPRO_ROI_KIND="${GOPRO_ROI_KIND:-DROPPED_ITEM}"
+  export SF_VISION_WEBRTC_SIDECAR_ENABLED="${SF_VISION_WEBRTC_SIDECAR_ENABLED:-false}"
+  export MEDIAMTX_RTSP_PORT="${MEDIAMTX_RTSP_PORT:-18554}"
+  export MEDIAMTX_WEBRTC_PORT="${MEDIAMTX_WEBRTC_PORT:-8889}"
+  export MEDIAMTX_WEBRTC_ICE_UDP_PORT="${MEDIAMTX_WEBRTC_ICE_UDP_PORT:-8189}"
+  export MEDIAMTX_API_PORT="${MEDIAMTX_API_PORT:-19997}"
+  export WEBRTC_SIDECAR_PUBLIC_HOST="${WEBRTC_SIDECAR_PUBLIC_HOST:-${VISION_PUBLIC_HOST}}"
+  export WEBRTC_SIDECAR_STREAMS="${WEBRTC_SIDECAR_STREAMS:-${GOPRO_SOURCE}/full,${GOPRO_SOURCE}/${GOPRO_ROI_VIEW}}"
+  export WEBRTC_SIDECAR_INPUT_MAX_FPS="${WEBRTC_SIDECAR_INPUT_MAX_FPS:-15}"
+  export WEBRTC_SIDECAR_TARGET_FPS="${WEBRTC_SIDECAR_TARGET_FPS:-15}"
+  export SF_VISION_TMUX_GUARD_ENABLED="${SF_VISION_TMUX_GUARD_ENABLED:-true}"
+  export SF_VISION_TMUX_REQUIRED_CONTEXT="${SF_VISION_TMUX_REQUIRED_CONTEXT:-Smartfactory:3:Development}"
+  if is_truthy "${SF_VISION_WEBRTC_SIDECAR_ENABLED}"; then
+    if [ -z "${VISION_WEBRTC_SIDECAR_WHEP_URL_TEMPLATE:-}" ]; then
+      VISION_WEBRTC_SIDECAR_WHEP_URL_TEMPLATE="http://${WEBRTC_SIDECAR_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/{source}_{view}/whep"
+    fi
+    if [ -z "${VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE:-}" ]; then
+      VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE="http://${WEBRTC_SIDECAR_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/{source}_{view}"
+    fi
+    if [ -z "${VISION_WEBRTC_SIDECAR_HEALTH_URL:-}" ]; then
+      VISION_WEBRTC_SIDECAR_HEALTH_URL="http://127.0.0.1:${MEDIAMTX_WEBRTC_PORT}/"
+    fi
+    export VISION_WEBRTC_SIDECAR_WHEP_URL_TEMPLATE
+    export VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE
+    export VISION_WEBRTC_SIDECAR_HEALTH_URL
+    export VISION_WEBRTC_SIDECAR_HEALTH_TIMEOUT_S="${VISION_WEBRTC_SIDECAR_HEALTH_TIMEOUT_S:-0.25}"
+  else
+    export VISION_WEBRTC_SIDECAR_WHEP_URL_TEMPLATE="${VISION_WEBRTC_SIDECAR_WHEP_URL_TEMPLATE:-}"
+    export VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE="${VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE:-}"
+    export VISION_WEBRTC_SIDECAR_HEALTH_URL="${VISION_WEBRTC_SIDECAR_HEALTH_URL:-}"
+    export VISION_WEBRTC_SIDECAR_HEALTH_TIMEOUT_S="${VISION_WEBRTC_SIDECAR_HEALTH_TIMEOUT_S:-0.25}"
+  fi
 }
 
 public_base_url() {
@@ -144,8 +185,14 @@ Main-facing URLs:
 
 WebRTC status:
   VISION_WEBRTC_ENABLED=${VISION_WEBRTC_ENABLED}
+  SF_VISION_WEBRTC_SIDECAR_ENABLED=${SF_VISION_WEBRTC_SIDECAR_ENABLED}
   VISION_WEBRTC_SIDECAR_OFFER_URL_TEMPLATE=${VISION_WEBRTC_SIDECAR_OFFER_URL_TEMPLATE:-<empty>}
   VISION_WEBRTC_SIDECAR_WHEP_URL_TEMPLATE=${VISION_WEBRTC_SIDECAR_WHEP_URL_TEMPLATE:-<empty>}
+  VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE=${VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE:-<empty>}
+  VISION_WEBRTC_SIDECAR_HEALTH_URL=${VISION_WEBRTC_SIDECAR_HEALTH_URL:-<empty>}
+  sidecar_streams=${WEBRTC_SIDECAR_STREAMS:-<empty>}
+  sidecar_ports=rtsp:${MEDIAMTX_RTSP_PORT:-18554}/tcp,webrtc:${MEDIAMTX_WEBRTC_PORT:-8889}/tcp,ice:${MEDIAMTX_WEBRTC_ICE_UDP_PORT:-8189}/udp
+  tmux_guard=${SF_VISION_TMUX_GUARD_ENABLED} required=${SF_VISION_TMUX_REQUIRED_CONTEXT}
   note: without sidecar templates, WebRTC offer intentionally selects MJPEG fallback.
 
 GoPro:
@@ -188,6 +235,11 @@ VISION_STREAM_BASE_URL=$(public_base_url)
 LMS_VISION_STREAM_BASE_URL=$(public_base_url)
 AI_SERVER_URL=${AI_SERVER_URL}
 MAIN_SERVER_URL=${MAIN_SERVER_URL}
+SF_VISION_WEBRTC_SIDECAR_ENABLED=${SF_VISION_WEBRTC_SIDECAR_ENABLED}
+VISION_WEBRTC_SIDECAR_WHEP_URL_TEMPLATE=${VISION_WEBRTC_SIDECAR_WHEP_URL_TEMPLATE:-}
+VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE=${VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE:-}
+VISION_WEBRTC_SIDECAR_HEALTH_URL=${VISION_WEBRTC_SIDECAR_HEALTH_URL:-}
+SF_VISION_TMUX_REQUIRED_CONTEXT=${SF_VISION_TMUX_REQUIRED_CONTEXT}
 SUMMARY
 }
 
@@ -232,6 +284,47 @@ wait_for_url() {
     fi
     sleep 1
   done
+}
+
+current_tmux_context() {
+  if [ -z "${TMUX:-}" ] || ! command -v tmux >/dev/null 2>&1; then
+    return 1
+  fi
+  tmux display-message -p '#S:#I:#W' 2>/dev/null
+}
+
+require_live_tmux_context() {
+  if ! is_truthy "${SF_VISION_TMUX_GUARD_ENABLED:-true}"; then
+    return 0
+  fi
+  local current
+  current="$(current_tmux_context || true)"
+  if [ "${current}" = "${SF_VISION_TMUX_REQUIRED_CONTEXT}" ]; then
+    return 0
+  fi
+  cat >&2 <<ERROR
+ERROR: live Vision processes must run in tmux ${SF_VISION_TMUX_REQUIRED_CONTEXT}.
+Current context: ${current:-<not inside tmux>}
+Open/switch to that tmux window before running: ./scripts/vision/sf_vision.sh up ${PROFILE:-${DEFAULT_PROFILE}}
+ERROR
+  return 1
+}
+
+run_enabled_preflights() {
+  bash -n "${BASH_SOURCE[0]}"
+  bash -n "${ROOT_DIR}/scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh"
+  bash -n "${ROOT_DIR}/scripts/vision/run_webrtc_sidecar_mediamtx.sh"
+  if is_truthy "${SF_VISION_BUNDLE_ENABLED}"; then
+    "${ROOT_DIR}/scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh" --check
+  fi
+  if is_truthy "${SF_VISION_GOPRO_ENABLED}"; then
+    local py="${AI_SERVER_VENV_DIR}/bin/python"
+    "${py}" "${ROOT_DIR}/scripts/vision/run_gopro_smart_roi_adapter.py" --check
+    "${py}" "${ROOT_DIR}/scripts/vision/start_gopro_webcam_stream.py" --help >/dev/null
+  fi
+  if is_truthy "${SF_VISION_WEBRTC_SIDECAR_ENABLED}"; then
+    "${ROOT_DIR}/scripts/vision/run_webrtc_sidecar_mediamtx.sh" --check
+  fi
 }
 
 start_mdns() {
@@ -279,6 +372,14 @@ start_gopro() {
   start_logged gopro-adapter "${adapter_cmd[@]}"
 }
 
+start_webrtc_sidecar() {
+  if ! is_truthy "${SF_VISION_WEBRTC_SIDECAR_ENABLED}"; then
+    return 0
+  fi
+  "${ROOT_DIR}/scripts/vision/run_webrtc_sidecar_mediamtx.sh" --check
+  start_logged webrtc-sidecar ./scripts/vision/run_webrtc_sidecar_mediamtx.sh
+}
+
 cleanup() {
   local status=$?
   trap - INT TERM EXIT
@@ -300,16 +401,19 @@ cleanup() {
 
 run_up() {
   load_profile "${1:-${DEFAULT_PROFILE}}"
+  require_live_tmux_context
+  print_config
+  run_enabled_preflights
   ensure_dirs
   ensure_not_running
   echo "$$" > "${SUPERVISOR_PID_FILE}"
   : > "${PID_FILE}"
   record_summary
-  print_config
   trap cleanup INT TERM EXIT
   start_mdns
   start_bundle
   start_gopro
+  start_webrtc_sidecar
   echo "[sf-vision] running. Ctrl-C or ./scripts/vision/sf_vision.sh down stops all child processes."
   set +e
   wait -n "${PIDS[@]}"
@@ -322,16 +426,7 @@ run_up() {
 run_check() {
   load_profile "${1:-${DEFAULT_PROFILE}}"
   print_config
-  bash -n "${BASH_SOURCE[0]}"
-  bash -n "${ROOT_DIR}/scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh"
-  if is_truthy "${SF_VISION_BUNDLE_ENABLED}"; then
-    "${ROOT_DIR}/scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh" --check
-  fi
-  if is_truthy "${SF_VISION_GOPRO_ENABLED}"; then
-    local py="${AI_SERVER_VENV_DIR}/bin/python"
-    "${py}" "${ROOT_DIR}/scripts/vision/run_gopro_smart_roi_adapter.py" --check
-    "${py}" "${ROOT_DIR}/scripts/vision/start_gopro_webcam_stream.py" --help >/dev/null
-  fi
+  run_enabled_preflights
   echo "[sf-vision] check ok: ${PROFILE}"
 }
 
@@ -378,6 +473,10 @@ smoke() {
   curl -fsS --max-time 2 "${api}/api/v1/vision/streams?source=global_cam_01" >/dev/null
   echo "[sf-vision] smoke WebRTC candidate/fallback offer"
   curl -fsS --max-time 2 -X POST "${api}/api/v1/vision/streams/global_cam_01/webrtc/offer?view=full" -H 'Content-Type: application/json' -d '{}' >/dev/null
+  if [ -f "${SUMMARY_FILE}" ] && grep -q '^SF_VISION_WEBRTC_SIDECAR_ENABLED=true$' "${SUMMARY_FILE}"; then
+    echo "[sf-vision] smoke WebRTC sidecar status"
+    "${ROOT_DIR}/scripts/vision/run_webrtc_sidecar_mediamtx.sh" --status >/dev/null
+  fi
   echo "[sf-vision] smoke ok"
 }
 

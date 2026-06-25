@@ -55,8 +55,8 @@ tb3_2_picam/full
 Expected behavior:
 
 1. Read `sources[0].stream_transports`.
-2. Prefer a `kind == "webrtc"` transport only when its offer/sidecar path is configured/healthy.
-3. If WebRTC offer/sidecar is unavailable, use the `kind == "mjpeg"` transport.
+2. Prefer WebRTC only after the offer endpoint returns `selected_transport == "webrtc"`; discovery URL templates alone are not enough.
+3. If WebRTC offer/sidecar health is unavailable, unknown, or unhealthy, use the `kind == "mjpeg"` transport.
 4. Keep the existing MJPEG stream path working:
 
 ```http
@@ -68,6 +68,23 @@ Candidate WebRTC path from AI Server:
 ```http
 POST {VISION_API_BASE_URL}/api/v1/vision/streams/{source_id}/webrtc/offer?view={view}
 ```
+
+When Vision is started with `lab-gopro-tb3-webrtc`, the descriptor includes sidecar URLs like:
+
+```json
+{
+  "sidecar": {
+    "status": "configured",
+    "url_configured": true,
+    "runtime_health_url": "http://127.0.0.1:8889/",
+    "whep_url": "http://smartfactory-vision.local:8889/global_cam_01_full/whep",
+    "browser_url": "http://smartfactory-vision.local:8889/global_cam_01_full"
+  },
+  "fallback_path": "/api/v1/vision/overlay/stream?source=global_cam_01&view=full&max_fps=30"
+}
+```
+
+Use `whep_url` for WHEP-capable player integration only when the offer response selects WebRTC. `browser_url` is suitable for operator/browser demo embedding. Keep `fallback_path` as MJPEG fallback.
 
 Debug/demo page exposed by Vision:
 
@@ -150,5 +167,5 @@ Expected:
 
 - GoPro `global_cam_01` MJPEG/overlay was proven.
 - `tb3_1_picam` camera health and metrics were proven with a read-only subscriber.
-- Real WebRTC media sidecar is still candidate/additive; MJPEG remains primary until WebRTC parity is proven.
+- Vision now has an optional `lab-gopro-tb3-webrtc` MediaMTX sidecar profile. If `mediamtx` is not installed or the profile is not used, MJPEG fallback remains the stable path.
 - `dist/SmartFactory_MVP` was intentionally not modified by Vision-side work.

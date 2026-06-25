@@ -186,8 +186,12 @@ def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
             "sidecar_required": True,
             "sidecar": {
                 "status": "not_configured",
+                    "url_configured": False,
+                    "runtime_health": "not_configured",
+                    "runtime_health_url": None,
                 "offer_url": None,
                 "whep_url": None,
+                "browser_url": None,
                 "owner": "media_sidecar",
                 "proxy_mode": "descriptor_only",
             },
@@ -300,6 +304,16 @@ def test_webrtc_offer_endpoint_selects_webrtc_when_sidecar_descriptor_is_configu
         "vision_webrtc_sidecar_whep_url_template",
         "http://media-sidecar.local/{source}/{view}/whep",
     )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_browser_url_template",
+        "http://media-sidecar.local/{source}_{view}",
+    )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_assume_healthy_without_health_url",
+        True,
+    )
 
     response = client.post(
         "/api/v1/vision/streams/global_cam_01/webrtc/offer",
@@ -310,11 +324,15 @@ def test_webrtc_offer_endpoint_selects_webrtc_when_sidecar_descriptor_is_configu
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "sidecar_configured"
-    assert body["reason"] == "sidecar_descriptor_available"
+    assert body["reason"] == "sidecar_assume_healthy"
     assert body["selected_transport"] == "webrtc"
     assert body["sidecar"]["status"] == "configured"
+    assert body["sidecar"]["runtime_health"] == "assume_healthy"
     assert body["sidecar"]["whep_url"] == (
         "http://media-sidecar.local/global_cam_01/full/whep"
+    )
+    assert body["sidecar"]["browser_url"] == (
+        "http://media-sidecar.local/global_cam_01_full"
     )
     assert body["media_only"] is True
     assert body["side_effects"]["db_writes"] is False
@@ -329,6 +347,60 @@ def test_webrtc_offer_endpoint_selects_webrtc_when_sidecar_descriptor_is_configu
     assert metrics["offer_status_total"] == {"sidecar_configured": 1}
     assert metrics["selected_transport_total"] == {"webrtc": 1}
     assert metrics["fallback_total"] == 0
+
+
+def test_webrtc_offer_endpoint_falls_back_when_sidecar_health_is_unknown(monkeypatch):
+    main_module.metrics.reset()
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_whep_url_template",
+        "http://media-sidecar.local/{source}_{view}/whep",
+    )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_browser_url_template",
+        "http://media-sidecar.local/{source}_{view}",
+    )
+
+    response = client.post(
+        "/api/v1/vision/streams/global_cam_01/webrtc/offer",
+        params={"view": "full"},
+        json={"type": "offer", "sdp": "v=0"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "fallback_required"
+    assert body["reason"] == "sidecar_health_unknown"
+    assert body["selected_transport"] == "mjpeg"
+    assert body["sidecar"]["url_configured"] is True
+    assert body["sidecar"]["runtime_health"] == "unknown"
+
+
+def test_stream_discovery_exposes_sidecar_browser_url_when_configured(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_whep_url_template",
+        "http://media-sidecar.local/{source}_{view}/whep",
+    )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_browser_url_template",
+        "http://media-sidecar.local/{source}_{view}",
+    )
+
+    response = client.get("/api/v1/vision/streams", params={"source": "global_cam_01"})
+
+    assert response.status_code == 200
+    webrtc = _transport(response.json()["sources"][0], kind="webrtc", view="full")
+    assert webrtc["sidecar"]["status"] == "configured"
+    assert webrtc["sidecar"]["whep_url"] == "http://media-sidecar.local/global_cam_01_full/whep"
+    assert webrtc["sidecar"]["browser_url"] == "http://media-sidecar.local/global_cam_01_full"
+    assert webrtc["media_only"] is True
+    assert webrtc["motion_command_allowed"] is False
+    assert webrtc["control_topics_published"] == []
 
 
 def test_webrtc_demo_page_prefers_webrtc_and_contains_mjpeg_fallback_path():
