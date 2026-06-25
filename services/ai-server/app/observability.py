@@ -44,6 +44,21 @@ class InMemoryMetrics:
             self._stream_stale_polls_total: dict[str, int] = defaultdict(int)
             self._stream_first_frame_sent_at: dict[str, float] = {}
             self._stream_last_frame_sent_at: dict[str, float] = {}
+            self._webrtc_offer_total = 0
+            self._webrtc_offer_status_total: dict[str, int] = defaultdict(int)
+            self._webrtc_offer_reason_total: dict[str, int] = defaultdict(int)
+            self._webrtc_offer_by_source_status: dict[tuple[str, str], int] = defaultdict(int)
+            self._webrtc_selected_transport_total: dict[str, int] = defaultdict(int)
+            self._webrtc_selected_transport_by_source: dict[tuple[str, str], int] = (
+                defaultdict(int)
+            )
+            self._webrtc_fallback_total = 0
+            self._webrtc_fallback_reason_total: dict[str, int] = defaultdict(int)
+            self._webrtc_fallback_by_source_reason: dict[tuple[str, str], int] = (
+                defaultdict(int)
+            )
+            self._webrtc_connection_drop_total = 0
+            self._webrtc_connection_drop_by_source: dict[str, int] = defaultdict(int)
             self._worker_tick_total: dict[str, int] = defaultdict(int)
             self._worker_tick_by_source_status: dict[tuple[str, str], int] = defaultdict(int)
 
@@ -106,6 +121,29 @@ class InMemoryMetrics:
         with self._lock:
             self._stream_stale_polls_total[source] += 1
 
+    def record_webrtc_offer(self, *, source: str, status: str, reason: str) -> None:
+        with self._lock:
+            self._webrtc_offer_total += 1
+            self._webrtc_offer_status_total[status] += 1
+            self._webrtc_offer_reason_total[reason] += 1
+            self._webrtc_offer_by_source_status[(source, status)] += 1
+
+    def record_webrtc_selected_transport(self, *, source: str, transport: str) -> None:
+        with self._lock:
+            self._webrtc_selected_transport_total[transport] += 1
+            self._webrtc_selected_transport_by_source[(source, transport)] += 1
+
+    def record_webrtc_fallback(self, *, source: str, reason: str) -> None:
+        with self._lock:
+            self._webrtc_fallback_total += 1
+            self._webrtc_fallback_reason_total[reason] += 1
+            self._webrtc_fallback_by_source_reason[(source, reason)] += 1
+
+    def record_webrtc_connection_drop(self, *, source: str) -> None:
+        with self._lock:
+            self._webrtc_connection_drop_total += 1
+            self._webrtc_connection_drop_by_source[source] += 1
+
     def record_worker_tick(self, *, source: str, status: str) -> None:
         with self._lock:
             self._worker_tick_total[status] += 1
@@ -139,6 +177,45 @@ class InMemoryMetrics:
                 "active_clients_total": sum(self._stream_client_active.values()),
                 "frames_sent_total": sum(self._stream_frames_sent_total.values()),
                 "stale_polls_total": sum(self._stream_stale_polls_total.values()),
+            }
+
+    def webrtc_snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            offer_by_source: dict[str, dict[str, int]] = {}
+            for (source, status), count in sorted(self._webrtc_offer_by_source_status.items()):
+                offer_by_source.setdefault(source, {})[status] = count
+            selected_by_source: dict[str, dict[str, int]] = {}
+            for (source, transport), count in sorted(
+                self._webrtc_selected_transport_by_source.items()
+            ):
+                selected_by_source.setdefault(source, {})[transport] = count
+            fallback_by_source: dict[str, dict[str, int]] = {}
+            for (source, reason), count in sorted(
+                self._webrtc_fallback_by_source_reason.items()
+            ):
+                fallback_by_source.setdefault(source, {})[reason] = count
+            return {
+                "offers_total": self._webrtc_offer_total,
+                "offer_status_total": dict(
+                    sorted(self._webrtc_offer_status_total.items())
+                ),
+                "offer_reason_total": dict(
+                    sorted(self._webrtc_offer_reason_total.items())
+                ),
+                "offer_by_source": offer_by_source,
+                "selected_transport_total": dict(
+                    sorted(self._webrtc_selected_transport_total.items())
+                ),
+                "selected_transport_by_source": selected_by_source,
+                "fallback_total": self._webrtc_fallback_total,
+                "fallback_reason_total": dict(
+                    sorted(self._webrtc_fallback_reason_total.items())
+                ),
+                "fallback_by_source": fallback_by_source,
+                "connection_drop_total": self._webrtc_connection_drop_total,
+                "connection_drop_by_source": dict(
+                    sorted(self._webrtc_connection_drop_by_source.items())
+                ),
             }
 
     def worker_snapshot(self) -> dict[str, Any]:
@@ -197,5 +274,6 @@ class InMemoryMetrics:
             "lift_roi": lift_roi,
             "evidence_evaluation": evidence_evaluation,
             "stream": self.stream_snapshot(),
+            "webrtc": self.webrtc_snapshot(),
             "worker": self.worker_snapshot(),
         }

@@ -12,7 +12,7 @@ from typing import Any
 
 import cv2
 from fastapi import File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..config import get_settings
@@ -22,6 +22,7 @@ from ..docking import CameraIntrinsics, MarkerPose, estimate_marker_pose
 from ..evidence_cache import DEFAULT_VIEW_ID, normalize_view_id, source_view_key
 from ..frame_store import StoredFrame
 from ..model_adapters import ModelAdapterError, UltralyticsSegmenterAdapter, VisionModelConfig
+from ..observability import structured_log
 from ..openapi_schemas import (
     ERROR_RESPONSE_OPENAPI,
     METRICS_RESPONSE_OPENAPI,
@@ -76,7 +77,11 @@ from .vision_read_models import (
     build_vision_streams_payload,
     build_vision_worker_status_payload,
     frame_overlay_sync_status,
+    overlay_stream_path,
     overlay_publish_payload_preview_for_source,
+    vision_gateway_url,
+    webrtc_offer_path,
+    webrtc_sidecar_descriptor,
     _frame_id_for_source,
     _robot_id_for_source,
     _ros_ingest_readiness,
@@ -125,6 +130,19 @@ class VisionWorkerTickRequest(BaseModel):
     force: bool = False
     stale: bool = False
     max_frame_age_s: float | None = Field(default=None, ge=0)
+
+
+class WebRtcOfferRequest(BaseModel):
+    """Media-only WebRTC offer probe request.
+
+    The current AI Server route is an additive broker/descriptor surface. It
+    never publishes ROS control, mutates evidence truth, or writes Main DB
+    state. A configured sidecar owns actual RTP/WebRTC media negotiation.
+    """
+
+    sdp: str | None = None
+    type: str = Field(default="offer")
+    force_fallback: bool = False
 
 @lru_cache(maxsize=1)
 def _parse_vision_model_class_map(class_map_json: str) -> dict[str, str]:
@@ -528,6 +546,181 @@ def vision_streams(source: str | None=Query(default=None, json_schema_extra=SOUR
         now_iso=_now_iso,
     )
 
+
+def vision_webrtc_offer(
+    source: str,
+    payload: WebRtcOfferRequest | None = None,
+    view: str=Query(default=DEFAULT_VIEW_ID),
+    force_fallback: bool=Query(default=False),
+) -> dict[str, Any]:
+    """Return a media-only WebRTC candidate or MJPEG fallback descriptor.
+
+    This is intentionally not a robot-control bridge. A future sidecar may own
+    actual SDP/WHEP negotiation, while this endpoint keeps the Main-facing
+    source/view contract and records transport health/fallback metrics.
+    """
+    view_id = _ensure_known_source_view(source, view)
+    request_payload = payload or WebRtcOfferRequest()
+    forced = bool(force_fallback or request_payload.force_fallback)
+    sidecar = webrtc_sidecar_descriptor(source, view_id)
+    settings = get_settings()
+    if not settings.vision_webrtc_enabled:
+        status = "fallback_required"
+        reason = "webrtc_disabled"
+        selected_transport = "mjpeg"
+    elif forced:
+        status = "fallback_required"
+        reason = "forced_fallback"
+        selected_transport = "mjpeg"
+    elif sidecar["status"] == "configured":
+        status = "sidecar_configured"
+        reason = "sidecar_descriptor_available"
+        selected_transport = "webrtc"
+    else:
+        status = "fallback_required"
+        reason = "sidecar_not_configured"
+        selected_transport = "mjpeg"
+
+    context = _runtime_context()
+    context.metrics.record_webrtc_offer(source=source, status=status, reason=reason)
+    context.metrics.record_webrtc_selected_transport(
+        source=source,
+        transport=selected_transport,
+    )
+    if selected_transport == "mjpeg":
+        context.metrics.record_webrtc_fallback(source=source, reason=reason)
+
+    fallback_path = overlay_stream_path(source, view_id)
+    response = {
+        "source": source,
+        "view": view_id,
+        "transport": "webrtc",
+        "status": status,
+        "reason": reason,
+        "selected_transport": selected_transport,
+        "media_only": True,
+        "signaling_scope": "ephemeral_media_session_only",
+        "offer": {
+            "type": request_payload.type,
+            "sdp_received": bool(request_payload.sdp),
+        },
+        "sidecar": sidecar,
+        "fallback": {
+            "kind": "mjpeg",
+            "path": fallback_path,
+            "url": vision_gateway_url(fallback_path),
+        },
+        "stream_discovery_path": f"/api/v1/vision/streams?source={source}",
+        "motion_command_allowed": False,
+        "control_topics_published": [],
+        "side_effects": {
+            "db_writes": False,
+            "evidence_truth_mutated": False,
+            "ros_control_published": False,
+            "ros_topics_started_by_http_request": False,
+        },
+    }
+    structured_log(
+        context.logger,
+        "vision_webrtc_offer",
+        source=source,
+        view=view_id,
+        status=status,
+        reason=reason,
+        selected_transport=selected_transport,
+    )
+    return response
+
+
+def vision_webrtc_demo(
+    source: str=Query(default="global_cam_01", json_schema_extra=SOURCE_ID_OPENAPI_EXTRA),
+    view: str=Query(default=DEFAULT_VIEW_ID),
+    force_fallback: bool=Query(default=False),
+) -> HTMLResponse:
+    """Standalone browser smoke page: prefer WebRTC, fall back to MJPEG."""
+    view_id = _ensure_known_source_view(source, view)
+    offer_path = webrtc_offer_path(source, view_id)
+    fallback_path = overlay_stream_path(source, view_id)
+    html = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SmartFactory Vision WebRTC candidate</title>
+  <style>
+    body {{ font-family: system-ui, sans-serif; margin: 24px; }}
+    code, pre {{ background: #f5f5f5; padding: 2px 4px; }}
+    img {{ max-width: 100%; border: 1px solid #ddd; }}
+  </style>
+</head>
+<body>
+  <h1>Vision transport smoke test</h1>
+  <p>source=<code id="source"></code>, view=<code id="view"></code></p>
+  <p>selected transport: <strong id="selected">checking</strong></p>
+  <video id="webrtcVideo" autoplay playsinline muted controls hidden></video>
+  <img id="mjpegFallback" alt="MJPEG fallback overlay" hidden>
+  <pre id="status"></pre>
+  <script>
+    const source = {json.dumps(source)};
+    const view = {json.dumps(view_id)};
+    const forceFallback = {json.dumps(force_fallback)};
+    const offerPath = {json.dumps(offer_path)};
+    const fallbackPath = {json.dumps(fallback_path)};
+    document.getElementById('source').textContent = source;
+    document.getElementById('view').textContent = view;
+    const selected = document.getElementById('selected');
+    const status = document.getElementById('status');
+    const img = document.getElementById('mjpegFallback');
+    const video = document.getElementById('webrtcVideo');
+
+    function useMjpeg(reason) {{
+      selected.textContent = 'mjpeg';
+      img.src = fallbackPath;
+      img.hidden = false;
+      video.hidden = true;
+      status.textContent = 'MJPEG fallback: ' + reason + '\\n' + fallbackPath;
+    }}
+
+    async function chooseTransport() {{
+      if (!('RTCPeerConnection' in window)) {{
+        useMjpeg('RTCPeerConnection unavailable');
+        return;
+      }}
+      try {{
+        const pc = new RTCPeerConnection();
+        pc.addTransceiver('video', {{ direction: 'recvonly' }});
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        const response = await fetch(offerPath, {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify({{
+            type: offer.type,
+            sdp: offer.sdp,
+            force_fallback: forceFallback
+          }})
+        }});
+        const descriptor = await response.json();
+        status.textContent = JSON.stringify(descriptor, null, 2);
+        if (response.ok && descriptor.selected_transport === 'webrtc') {{
+          selected.textContent = 'webrtc';
+          video.hidden = false;
+          img.hidden = true;
+          return;
+        }}
+        useMjpeg(descriptor.reason || 'offer rejected');
+      }} catch (error) {{
+        useMjpeg(error.message);
+      }}
+    }}
+
+    chooseTransport();
+  </script>
+</body>
+</html>
+"""
+    return HTMLResponse(content=html)
+
+
 def vision_ros_topics(source: str | None=Query(default=None, json_schema_extra=SOURCE_ID_OPENAPI_EXTRA)) -> dict[str, Any]:
     """Return the read-only ROS2 topic handoff matrix for Lane B/C planning.
 
@@ -893,6 +1086,8 @@ def register_vision_routes(
         )
 
     app.get('/api/v1/vision/streams', responses={200: _json_response_openapi('Main-facing HTTP/MJPEG Vision Stream Gateway discovery', _vision_streams_response_schema()), 400: ERROR_RESPONSE_OPENAPI})(route(vision_streams))
+    app.post('/api/v1/vision/streams/{source}/webrtc/offer', responses={200: _json_response_openapi('Media-only WebRTC candidate offer/fallback descriptor', {"type": "object", "additionalProperties": True}), 400: ERROR_RESPONSE_OPENAPI, 422: ERROR_RESPONSE_OPENAPI})(route(vision_webrtc_offer))
+    app.get('/api/v1/vision/webrtc/demo', responses={400: ERROR_RESPONSE_OPENAPI})(route(vision_webrtc_demo))
     app.get('/api/v1/vision/ros/topics', responses={200: _json_response_openapi('Lane B ROS2/domain-bridge handoff topic matrix', _ros_handoff_response_schema())})(route(vision_ros_topics))
     app.get('/api/v1/vision/worker/status', responses={200: _json_response_openapi('Lane B read-only worker readiness snapshot', _worker_status_response_schema()), 400: ERROR_RESPONSE_OPENAPI, 422: ERROR_RESPONSE_OPENAPI})(route(vision_worker_status))
     app.post('/api/v1/vision/worker/tick', responses={400: ERROR_RESPONSE_OPENAPI, 422: ERROR_RESPONSE_OPENAPI, 500: ERROR_RESPONSE_OPENAPI})(route(vision_worker_tick))

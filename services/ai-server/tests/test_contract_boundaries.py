@@ -23,6 +23,7 @@ def test_factory_creates_runtime_app_without_generator_bridge():
     assert factory_app.version == SERVICE_VERSION
     assert "/api/v1/health" in route_paths
     assert "/api/v1/vision/streams" in route_paths
+    assert "/api/v1/vision/streams/{source}/webrtc/offer" in route_paths
 
 
 def test_source_registry_generator_uses_factory_seam_not_main_app_import():
@@ -187,6 +188,30 @@ def test_vision_bundle_scripts_share_common_shell_helpers():
         assert "$(sf_lan_ip" in script_source
 
 
+def test_vision_bundle_scripts_preserve_operator_model_class_map_json():
+    for script_name in (
+        "run_d1_vision_multi_source_gateway_bundle.sh",
+        "run_d1_vision_bundle.sh",
+    ):
+        script_source = (ROOT / "scripts" / "vision" / script_name).read_text(encoding="utf-8")
+        assert 'VISION_MODEL_CLASS_MAP_JSON="${VISION_MODEL_CLASS_MAP_JSON:-' not in script_source
+        assert "export VISION_MODEL_CLASS_MAP_JSON='{\"bottle\":\"box\",\"person\":\"person\"}'" in script_source
+        assert "export VISION_MODEL_CLASS_MAP_JSON\n" in script_source
+
+
+def test_health_model_status_reports_invalid_class_map_as_error():
+    from app.api.health import _vision_model_status
+    from app.config import Settings
+
+    settings = Settings(
+        vision_model_path="/tmp/model.pt",
+        vision_model_task="segment",
+        vision_model_class_map_json='{"bottle":"box"}}',
+    )
+
+    assert _vision_model_status(settings) == "error"
+
+
 
 def test_health_matches_api_contract_fields():
     response = client.get("/api/v1/health")
@@ -202,6 +227,7 @@ def test_health_matches_api_contract_fields():
     assert body["models"]["marker"]["name"] == "opencv-marker-detector"
     assert body["models"]["lift_roi"]["status"] in {"loaded", "disabled", "error"}
     assert body["models"]["lift_roi"]["task"] in {"segment", "detect"}
+    assert isinstance(body["models"]["lift_roi"]["class_map_valid"], bool)
     assert body["source_summary"]["configured"] == 3
 
 
@@ -273,6 +299,8 @@ def test_openapi_exposes_lane_b_overlay_debug_surfaces():
     assert "/api/v1/vision/debug/sources" in schema["paths"]
     assert "/api/v1/vision/ros/topics" in schema["paths"]
     assert "/api/v1/vision/streams" in schema["paths"]
+    assert "/api/v1/vision/streams/{source}/webrtc/offer" in schema["paths"]
+    assert "/api/v1/vision/webrtc/demo" in schema["paths"]
     stream_schema = schema["paths"]["/api/v1/vision/streams"]["get"]["responses"]["200"][
         "content"
     ]["application/json"]["schema"]

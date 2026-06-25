@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import quote, urlencode
 
 from ..config import get_settings
 from ..evidence_cache import DEFAULT_VIEW_ID
@@ -22,6 +23,126 @@ from .vision_read_model_ros import (
     ros_evidence_event_publish_readiness,
     ros_publish_readiness,
 )
+
+
+def overlay_stream_path(source: str, view: str, *, max_fps: int = 30) -> str:
+    """Main-facing public overlay gateway path for one source/view."""
+
+    return "/api/v1/vision/overlay/stream?" + urlencode(
+        {"source": source, "view": view, "max_fps": max_fps}
+    )
+
+
+def vision_gateway_url(path: str) -> str:
+    return f"http://<vision-host>:8090{path}"
+
+
+def webrtc_offer_path(source: str, view: str) -> str:
+    return (
+        f"/api/v1/vision/streams/{quote(source, safe='')}/webrtc/offer?"
+        + urlencode({"view": view})
+    )
+
+
+def _render_sidecar_url(template: str, *, source: str, view: str) -> str | None:
+    template = template.strip()
+    if not template:
+        return None
+    return template.format(
+        source=quote(source, safe=""),
+        source_id=quote(source, safe=""),
+        view=quote(view, safe=""),
+        view_id=quote(view, safe=""),
+    )
+
+
+def webrtc_sidecar_descriptor(source: str, view: str) -> dict[str, Any]:
+    settings = get_settings()
+    offer_url = _render_sidecar_url(
+        settings.vision_webrtc_sidecar_offer_url_template,
+        source=source,
+        view=view,
+    )
+    whep_url = _render_sidecar_url(
+        settings.vision_webrtc_sidecar_whep_url_template,
+        source=source,
+        view=view,
+    )
+    configured = bool(offer_url or whep_url)
+    return {
+        "status": "configured" if configured else "not_configured",
+        "offer_url": offer_url,
+        "whep_url": whep_url,
+        "owner": "media_sidecar",
+        "proxy_mode": "descriptor_only",
+    }
+
+
+def stream_transports_for_source(source: str) -> list[dict[str, Any]]:
+    settings = get_settings()
+    source_definition = settings.source_registry.get(source)
+    transports: list[dict[str, Any]] = []
+    for view in source_definition.view_ids:
+        fallback_path = overlay_stream_path(source, view)
+        transports.append(
+            {
+                "kind": "mjpeg",
+                "status": "current_stable",
+                "source": source,
+                "view": view,
+                "url": vision_gateway_url(fallback_path),
+                "path": fallback_path,
+                "fallback_path": fallback_path,
+                "media_only": True,
+                "db_writes": False,
+                "evidence_truth_mutation": False,
+                "motion_command_allowed": False,
+                "control_topics_published": [],
+            }
+        )
+        transports.append(
+            {
+                "kind": "webrtc",
+                "status": "candidate" if settings.vision_webrtc_enabled else "disabled",
+                "source": source,
+                "view": view,
+                "signaling": "http-post-offer-or-sidecar-whep",
+                "offer_path": webrtc_offer_path(source, view),
+                "fallback_path": fallback_path,
+                "fallback_kind": "mjpeg",
+                "media_only": True,
+                "sidecar_required": True,
+                "sidecar": webrtc_sidecar_descriptor(source, view),
+                "db_writes": False,
+                "evidence_truth_mutation": False,
+                "motion_command_allowed": False,
+                "control_topics_published": [],
+            }
+        )
+    return transports
+
+
+def webrtc_transport_policy() -> dict[str, Any]:
+    return {
+        "status": "candidate_additive",
+        "primary_until_parity": "mjpeg",
+        "browser_preference_order": ["webrtc", "mjpeg"],
+        "fallback_kind": "mjpeg",
+        "signaling_scope": "ephemeral_media_session_only",
+        "media_only": True,
+        "db_writes": False,
+        "evidence_truth_mutation": False,
+        "motion_command_allowed": False,
+        "control_topics_published": [],
+        "forbidden_capabilities": [
+            "motion_command_publish",
+            "nav2_action_call",
+            "parameter_mutation",
+            "full_rosbridge_graph_exposure",
+            "db_write",
+            "evidence_truth_mutation",
+        ],
+    }
 
 
 def vision_stream_source_entry(
@@ -70,6 +191,7 @@ def vision_stream_source_entry(
         "ros_handoff_path": "/api/v1/vision/ros/topics",
         "ros_handoff_source_path": f"/api/v1/vision/ros/topics?source={source}",
         "stream_metrics": stream_metrics["by_source"].get(source, _zero_stream_metrics()),
+        "stream_transports": stream_transports_for_source(source),
     }
 
 def vision_streams_summary(source_entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -150,6 +272,7 @@ def build_vision_streams_payload(
         "generated_at": now_iso(),
         "requested_source": source,
         "primary_stream_plane": "http_mjpeg_gateway",
+        "candidate_stream_plane": "webrtc",
         "stream_base_url": "http://<vision-host>:8090",
         "debug_only": False,
         "motion_command_allowed": False,
@@ -159,6 +282,7 @@ def build_vision_streams_payload(
             "exposes_all_topics": False,
         },
         "control_topics_published": [],
+        "webrtc_policy": webrtc_transport_policy(),
         "summary": vision_streams_summary(source_entries),
         "topic_exposure_policy": _ros_topic_exposure_policy(),
         "topic_exposure_summary": _topic_exposure_summary(source_entries),

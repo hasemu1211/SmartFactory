@@ -12,9 +12,18 @@ from api_test_helpers import (
     expected_rosbridge_subscription_hints,
     expected_source_topic_exposure,
     expected_topic_exposure_summary,
+    get_settings,
     main_module,
     source_definition,
 )
+
+
+def _transport(source: dict, *, kind: str, view: str) -> dict:
+    for item in source["stream_transports"]:
+        if item["kind"] == kind and item["view"] == view:
+            return item
+    raise AssertionError(f"missing {kind} transport for view={view}")
+
 
 def test_vision_streams_declares_http_gateway_primary_and_internal_rosbridge_policy():
     main_module.store.reset()
@@ -39,6 +48,7 @@ def test_vision_streams_declares_http_gateway_primary_and_internal_rosbridge_pol
     assert body["summary"]["ros_publish_status_counts"] == {"no_frame": 3}
     assert body["summary"]["evidence_event_publish_ready_count"] == 0
     assert body["primary_stream_plane"] == "http_mjpeg_gateway"
+    assert body["candidate_stream_plane"] == "webrtc"
     assert body["stream_base_url"] == "http://<vision-host>:8090"
     assert body["debug_only"] is False
     assert body["internal_rosbridge"] == {
@@ -48,6 +58,11 @@ def test_vision_streams_declares_http_gateway_primary_and_internal_rosbridge_pol
     }
     assert body["motion_command_allowed"] is False
     assert body["control_topics_published"] == []
+    assert body["webrtc_policy"]["status"] == "candidate_additive"
+    assert body["webrtc_policy"]["primary_until_parity"] == "mjpeg"
+    assert body["webrtc_policy"]["media_only"] is True
+    assert body["webrtc_policy"]["motion_command_allowed"] is False
+    assert body["webrtc_policy"]["control_topics_published"] == []
     assert body["topic_exposure_policy"] == expected_ros_topic_exposure_policy()
     assert body["topic_exposure_summary"] == expected_topic_exposure_summary(
         ["global_cam_01", "tb3_1_picam", "tb3_2_picam"]
@@ -70,6 +85,32 @@ def test_vision_streams_declares_http_gateway_primary_and_internal_rosbridge_pol
         "tb3_1_picam",
         "tb3_2_picam",
     }
+    sources = {item["source"]: item for item in body["sources"]}
+    global_source = sources["global_cam_01"]
+    assert global_source["available_views"] == list(source_definition("global_cam_01").view_ids)
+    assert len(global_source["stream_transports"]) == 2 * len(
+        source_definition("global_cam_01").view_ids
+    )
+    mjpeg = _transport(global_source, kind="mjpeg", view="full")
+    assert mjpeg["status"] == "current_stable"
+    assert mjpeg["path"] == (
+        "/api/v1/vision/overlay/stream?source=global_cam_01&view=full&max_fps=30"
+    )
+    assert mjpeg["url"] == (
+        "http://<vision-host>:8090/api/v1/vision/overlay/stream?"
+        "source=global_cam_01&view=full&max_fps=30"
+    )
+    webrtc = _transport(global_source, kind="webrtc", view="full")
+    assert webrtc["status"] == "candidate"
+    assert webrtc["offer_path"] == (
+        "/api/v1/vision/streams/global_cam_01/webrtc/offer?view=full"
+    )
+    assert webrtc["fallback_path"] == mjpeg["path"]
+    assert webrtc["media_only"] is True
+    assert webrtc["sidecar_required"] is True
+    assert webrtc["sidecar"]["status"] == "not_configured"
+    assert webrtc["motion_command_allowed"] is False
+    assert webrtc["control_topics_published"] == []
 
 def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
     main_module.store.reset()
@@ -110,6 +151,52 @@ def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
     assert source["metrics_path"] == "/api/v1/metrics?source=tb3_1_picam"
     assert source["ros_handoff_path"] == "/api/v1/vision/ros/topics"
     assert source["ros_handoff_source_path"] == "/api/v1/vision/ros/topics?source=tb3_1_picam"
+    assert source["stream_transports"] == [
+        {
+            "kind": "mjpeg",
+            "status": "current_stable",
+            "source": "tb3_1_picam",
+            "view": "full",
+            "url": (
+                "http://<vision-host>:8090/api/v1/vision/overlay/stream?"
+                "source=tb3_1_picam&view=full&max_fps=30"
+            ),
+            "path": "/api/v1/vision/overlay/stream?source=tb3_1_picam&view=full&max_fps=30",
+            "fallback_path": (
+                "/api/v1/vision/overlay/stream?source=tb3_1_picam&view=full&max_fps=30"
+            ),
+            "media_only": True,
+            "db_writes": False,
+            "evidence_truth_mutation": False,
+            "motion_command_allowed": False,
+            "control_topics_published": [],
+        },
+        {
+            "kind": "webrtc",
+            "status": "candidate",
+            "source": "tb3_1_picam",
+            "view": "full",
+            "signaling": "http-post-offer-or-sidecar-whep",
+            "offer_path": "/api/v1/vision/streams/tb3_1_picam/webrtc/offer?view=full",
+            "fallback_path": (
+                "/api/v1/vision/overlay/stream?source=tb3_1_picam&view=full&max_fps=30"
+            ),
+            "fallback_kind": "mjpeg",
+            "media_only": True,
+            "sidecar_required": True,
+            "sidecar": {
+                "status": "not_configured",
+                "offer_url": None,
+                "whep_url": None,
+                "owner": "media_sidecar",
+                "proxy_mode": "descriptor_only",
+            },
+            "db_writes": False,
+            "evidence_truth_mutation": False,
+            "motion_command_allowed": False,
+            "control_topics_published": [],
+        },
+    ]
     assert body["topic_exposure_summary"] == expected_topic_exposure_summary(["tb3_1_picam"])
     assert body["runtime_policy"]["ros2_started_by_http_request"] is False
     assert body["runtime_policy"]["http_handlers_must_spin_ros2_executor"] is False
@@ -150,6 +237,118 @@ def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
     bad = client.get("/api/v1/vision/streams", params={"source": "bad_cam"})
     assert bad.status_code == 400
     assert bad.json()["error"]["code"] == "BAD_REQUEST"
+
+
+def test_webrtc_offer_endpoint_is_media_only_and_forced_fallback_records_metrics():
+    main_module.metrics.reset()
+    main_module.store.reset()
+    main_module.overlay_cache.reset()
+    with main_module._overlay_images_lock:
+        main_module._overlay_images.clear()
+
+    before_store_size = len(main_module.store)
+    response = client.post(
+        "/api/v1/vision/streams/global_cam_01/webrtc/offer",
+        params={"view": "full"},
+        json={"type": "offer", "sdp": "v=0", "force_fallback": True},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "global_cam_01"
+    assert body["view"] == "full"
+    assert body["status"] == "fallback_required"
+    assert body["reason"] == "forced_fallback"
+    assert body["selected_transport"] == "mjpeg"
+    assert body["media_only"] is True
+    assert body["motion_command_allowed"] is False
+    assert body["control_topics_published"] == []
+    assert body["fallback"] == {
+        "kind": "mjpeg",
+        "path": "/api/v1/vision/overlay/stream?source=global_cam_01&view=full&max_fps=30",
+        "url": (
+            "http://<vision-host>:8090/api/v1/vision/overlay/stream?"
+            "source=global_cam_01&view=full&max_fps=30"
+        ),
+    }
+    assert body["side_effects"] == {
+        "db_writes": False,
+        "evidence_truth_mutated": False,
+        "ros_control_published": False,
+        "ros_topics_started_by_http_request": False,
+    }
+    assert len(main_module.store) == before_store_size
+    assert main_module.overlay_cache.latest("global_cam_01") is None
+
+    metrics = client.get(
+        "/api/v1/metrics",
+        params={"source": "global_cam_01"},
+    ).json()["metrics"]["webrtc"]
+    assert metrics["offers_total"] == 1
+    assert metrics["offer_status_total"] == {"fallback_required": 1}
+    assert metrics["selected_transport_total"] == {"mjpeg": 1}
+    assert metrics["fallback_total"] == 1
+    assert metrics["fallback_reason_total"] == {"forced_fallback": 1}
+    assert metrics["connection_drop_total"] == 0
+
+
+def test_webrtc_offer_endpoint_selects_webrtc_when_sidecar_descriptor_is_configured(monkeypatch):
+    main_module.metrics.reset()
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_whep_url_template",
+        "http://media-sidecar.local/{source}/{view}/whep",
+    )
+
+    response = client.post(
+        "/api/v1/vision/streams/global_cam_01/webrtc/offer",
+        params={"view": "full"},
+        json={"type": "offer", "sdp": "v=0"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "sidecar_configured"
+    assert body["reason"] == "sidecar_descriptor_available"
+    assert body["selected_transport"] == "webrtc"
+    assert body["sidecar"]["status"] == "configured"
+    assert body["sidecar"]["whep_url"] == (
+        "http://media-sidecar.local/global_cam_01/full/whep"
+    )
+    assert body["media_only"] is True
+    assert body["side_effects"]["db_writes"] is False
+    assert body["side_effects"]["evidence_truth_mutated"] is False
+    assert body["side_effects"]["ros_control_published"] is False
+
+    metrics = client.get(
+        "/api/v1/metrics",
+        params={"source": "global_cam_01"},
+    ).json()["metrics"]["webrtc"]
+    assert metrics["offers_total"] == 1
+    assert metrics["offer_status_total"] == {"sidecar_configured": 1}
+    assert metrics["selected_transport_total"] == {"webrtc": 1}
+    assert metrics["fallback_total"] == 0
+
+
+def test_webrtc_demo_page_prefers_webrtc_and_contains_mjpeg_fallback_path():
+    response = client.get(
+        "/api/v1/vision/webrtc/demo",
+        params={"source": "global_cam_01", "view": "full", "force_fallback": True},
+    )
+
+    assert response.status_code == 200
+    assert "RTCPeerConnection" in response.text
+    assert "/api/v1/vision/streams/global_cam_01/webrtc/offer?view=full" in response.text
+    assert (
+        "/api/v1/vision/overlay/stream?source=global_cam_01&amp;view=full&amp;max_fps=30"
+        not in response.text
+    )
+    assert (
+        "/api/v1/vision/overlay/stream?source=global_cam_01&view=full&max_fps=30"
+        in response.text
+    )
+
 
 def test_vision_streams_reports_frame_overlay_lag_status():
     main_module.store.reset()

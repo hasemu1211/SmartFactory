@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Any
 
@@ -57,11 +58,24 @@ def _vision_model_status(settings) -> str:
         return "error"
     if not settings.vision_model_path.strip():
         return "disabled"
+    if not _vision_model_class_map_valid(settings):
+        return "error"
     return "loaded"
 
 
 def _model_worker_enabled(settings) -> bool:
     return bool(settings.vision_model_worker_enabled and settings.vision_model_path.strip())
+
+
+def _vision_model_class_map_valid(settings) -> bool:
+    class_map_json = settings.vision_model_class_map_json.strip()
+    if not class_map_json:
+        return True
+    try:
+        parsed = json.loads(class_map_json)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(parsed, dict)
 
 
 def _health(context: RuntimeContext) -> dict[str, Any]:
@@ -89,6 +103,7 @@ def _health(context: RuntimeContext) -> dict[str, Any]:
                 "worker_enabled": settings.vision_model_worker_enabled,
                 "worker_active": _model_worker_enabled(settings),
                 "class_map_configured": bool(settings.vision_model_class_map_json.strip()),
+                "class_map_valid": _vision_model_class_map_valid(settings),
                 "unmapped_class": settings.vision_model_unmapped_class,
                 "max_events": settings.vision_model_max_events,
             },

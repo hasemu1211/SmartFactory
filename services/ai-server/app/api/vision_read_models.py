@@ -10,7 +10,13 @@ from .vision_read_model_ros import (
     frame_overlay_sync_status,
     overlay_publish_payload_preview_for_source,
 )
-from .vision_read_model_streams import build_vision_streams_payload
+from .vision_read_model_streams import (
+    build_vision_streams_payload,
+    overlay_stream_path,
+    vision_gateway_url,
+    webrtc_offer_path,
+    webrtc_sidecar_descriptor,
+)
 from .vision_read_model_worker import build_vision_worker_status_payload
 
 __all__ = [
@@ -23,5 +29,9 @@ __all__ = [
     "build_vision_streams_payload",
     "build_vision_worker_status_payload",
     "frame_overlay_sync_status",
+    "overlay_stream_path",
     "overlay_publish_payload_preview_for_source",
+    "vision_gateway_url",
+    "webrtc_offer_path",
+    "webrtc_sidecar_descriptor",
 ]

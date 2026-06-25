@@ -60,6 +60,9 @@ class Settings(BaseSettings):
         default=REPO_ROOT / "var" / "evidence-images"
     )
     evidence_image_base_uri: str = "/api/v1/evidence/images"
+    vision_webrtc_enabled: bool = True
+    vision_webrtc_sidecar_offer_url_template: str = ""
+    vision_webrtc_sidecar_whep_url_template: str = ""
     aruco_pose_profiles_path: Path = Field(
         default=REPO_ROOT / "config" / "perception" / "aruco_pose_profiles.example.json"
     )

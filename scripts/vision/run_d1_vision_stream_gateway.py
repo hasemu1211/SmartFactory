@@ -274,8 +274,8 @@ setInterval(updateClock, 250);
         max_fps = _clamp_fps((query.get("max_fps") or ["30"])[0])
         view = (query.get("view") or ["full"])[0].strip() or "full"
         upstream_url = (
-            f"{self.upstreams[source]}/api/v1/vision/overlay/stream?"
-            + urllib.parse.urlencode({"source": source, "view": view, "max_fps": f"{max_fps:g}"})
+            f"{self.upstreams[source]}/api/v1/vision/stream/{urllib.parse.quote(source)}.mjpeg?"
+            + urllib.parse.urlencode({"view": view, "max_fps": f"{max_fps:g}"})
         )
         self._proxy_mjpeg_response(upstream_url)
 

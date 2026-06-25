@@ -65,7 +65,11 @@ set_defaults() {
   export VISION_MODEL_DEVICE="${VISION_MODEL_DEVICE:-0}"
   export VISION_MODEL_IMGSZ="${VISION_MODEL_IMGSZ:-224}"
   export VISION_MODEL_CONF="${VISION_MODEL_CONF:-0.35}"
-  export VISION_MODEL_CLASS_MAP_JSON="${VISION_MODEL_CLASS_MAP_JSON:-{\"bottle\":\"box\",\"person\":\"person\"}}"
+  if [ -z "${VISION_MODEL_CLASS_MAP_JSON:-}" ]; then
+    export VISION_MODEL_CLASS_MAP_JSON='{"bottle":"box","person":"person"}'
+  else
+    export VISION_MODEL_CLASS_MAP_JSON
+  fi
   export VISION_MODEL_UNMAPPED_CLASS="${VISION_MODEL_UNMAPPED_CLASS:-unknown}"
 
   export VISION_SOURCE_1_ID="${VISION_SOURCE_1_ID:-tb3_1_picam}"

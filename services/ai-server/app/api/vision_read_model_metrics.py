@@ -28,6 +28,26 @@ def metrics_snapshot_for_source(
     worker["by_source"] = {source: selected_worker}
     worker["tick_total"] = dict(sorted(selected_worker.items()))
     filtered["worker"] = worker
+    webrtc = dict(snapshot.get("webrtc", {}))
+    offer_by_source = dict(webrtc.get("offer_by_source", {}))
+    selected_transport_by_source = dict(webrtc.get("selected_transport_by_source", {}))
+    fallback_by_source = dict(webrtc.get("fallback_by_source", {}))
+    connection_drop_by_source = dict(webrtc.get("connection_drop_by_source", {}))
+    selected_offer = dict(offer_by_source.get(source, {}))
+    selected_transport = dict(selected_transport_by_source.get(source, {}))
+    selected_fallback = dict(fallback_by_source.get(source, {}))
+    selected_drops = int(connection_drop_by_source.get(source, 0))
+    webrtc["offer_by_source"] = {source: selected_offer}
+    webrtc["offer_status_total"] = dict(sorted(selected_offer.items()))
+    webrtc["offers_total"] = sum(selected_offer.values())
+    webrtc["selected_transport_by_source"] = {source: selected_transport}
+    webrtc["selected_transport_total"] = dict(sorted(selected_transport.items()))
+    webrtc["fallback_by_source"] = {source: selected_fallback}
+    webrtc["fallback_reason_total"] = dict(sorted(selected_fallback.items()))
+    webrtc["fallback_total"] = sum(selected_fallback.values())
+    webrtc["connection_drop_by_source"] = {source: selected_drops}
+    webrtc["connection_drop_total"] = selected_drops
+    filtered["webrtc"] = webrtc
     return filtered
 
 def frame_store_stats_for_source(
