@@ -84,15 +84,11 @@ browser: http://smartfactory-vision.local:8889/tb3_2_picam_full
 WHEP:    http://smartfactory-vision.local:8889/tb3_2_picam_full/whep
 ```
 
-Main should use `sidecar.whep_url` when the AI Server offer response returns
-`selected_transport=webrtc`; otherwise it should use the MJPEG `fallback_path`.
-Discovery exposes URL templates and the sidecar health URL, but the offer response is the runtime selection gate. See
-[`../docs/setup/webrtc-mediamtx-sidecar.md`](../docs/setup/webrtc-mediamtx-sidecar.md).
-
-If Main calls Vision discovery through its own proxy, Main's camera/source
-allowlist must include `global_cam_01`, `tb3_1_picam`, and `tb3_2_picam`.
-Otherwise Main can reject an otherwise healthy Vision source with
-`unknown camera source`.
+For operator checks, open the browser URLs directly or use `--status`/`smoke`
+to verify path readiness. Main-team WebRTC/MJPEG integration requirements live
+in the separate handoff document
+[`../docs/requests/main-webrtc-vision-integration-handoff-2026-06-25.ko.md`](../docs/requests/main-webrtc-vision-integration-handoff-2026-06-25.ko.md).
+Sidecar details are in [`../docs/setup/webrtc-mediamtx-sidecar.md`](../docs/setup/webrtc-mediamtx-sidecar.md).
 
 ### Profiles
 

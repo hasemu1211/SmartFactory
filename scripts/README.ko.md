@@ -102,13 +102,10 @@ browser: http://smartfactory-vision.local:8889/tb3_2_picam_full
 WHEP:    http://smartfactory-vision.local:8889/tb3_2_picam_full/whep
 ```
 
-Main은 AI Server offer가 `selected_transport=webrtc`를 반환할 때 `sidecar.whep_url`을 WebRTC 통로로 쓰고,
-그 외에는 `fallback_path`의 MJPEG를 사용하면 됩니다. Discovery에는 URL 템플릿과 health URL이 보이지만, 실제 선택은 sidecar health 확인 후 offer 응답을 기준으로 하세요. 자세한 문서는
-[`../docs/setup/webrtc-mediamtx-sidecar.md`](../docs/setup/webrtc-mediamtx-sidecar.md)를 보세요.
-
-Main proxy를 경유해 Vision discovery를 호출한다면 Main 쪽 camera/source allowlist에도
-`global_cam_01`, `tb3_1_picam`, `tb3_2_picam`을 모두 등록해야 합니다. Vision 직접
-API/MediaMTX가 정상이더라도 Main이 모르는 source는 `unknown camera source`로 거절될 수 있습니다.
+운영자가 확인할 때는 browser URL을 직접 열거나 `--status`/`smoke`로 path readiness를
+확인하면 됩니다. Main 팀에 전달할 WebRTC/MJPEG 연동 요구사항은 README가 아니라
+별도 전달본 [`../docs/requests/main-webrtc-vision-integration-handoff-2026-06-25.ko.md`](../docs/requests/main-webrtc-vision-integration-handoff-2026-06-25.ko.md)를 사용하세요.
+sidecar 상세 문서는 [`../docs/setup/webrtc-mediamtx-sidecar.md`](../docs/setup/webrtc-mediamtx-sidecar.md)를 보세요.
 
 ### 주요 profile
 
