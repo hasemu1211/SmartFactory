@@ -68,6 +68,8 @@ Default profile streams:
 |---|---|---|---|
 | `global_cam_01/full` | `global_cam_01_full` | `http://smartfactory-vision.local:8889/global_cam_01_full` | `http://smartfactory-vision.local:8889/global_cam_01_full/whep` |
 | `global_cam_01/lift_roi` | `global_cam_01_lift_roi` | `http://smartfactory-vision.local:8889/global_cam_01_lift_roi` | `http://smartfactory-vision.local:8889/global_cam_01_lift_roi/whep` |
+| `tb3_1_picam/full` | `tb3_1_picam_full` | `http://smartfactory-vision.local:8889/tb3_1_picam_full` | `http://smartfactory-vision.local:8889/tb3_1_picam_full/whep` |
+| `tb3_2_picam/full` | `tb3_2_picam_full` | `http://smartfactory-vision.local:8889/tb3_2_picam_full` | `http://smartfactory-vision.local:8889/tb3_2_picam_full/whep` |
 
 The runner reads the already-proven MJPEG overlay stream and republishes it to
 MediaMTX as low-latency H.264 RTSP via ffmpeg. Main/browser reads WebRTC from
@@ -92,13 +94,15 @@ For `lab-gopro-tb3-webrtc`, the WebRTC transport descriptor includes URL and hea
     "status": "configured",
     "url_configured": true,
     "runtime_health_url": "http://127.0.0.1:8889/",
+    "path_runtime_health": "online",
+    "path_id": "global_cam_01_full",
     "whep_url": "http://smartfactory-vision.local:8889/global_cam_01_full/whep",
     "browser_url": "http://smartfactory-vision.local:8889/global_cam_01_full"
   }
 }
 ```
 
-Main should call the offer endpoint and use `sidecar.whep_url` only when the offer response returns `selected_transport=webrtc`. If the sidecar health check is unknown/unhealthy, the offer response selects MJPEG fallback. `sidecar.browser_url` is for iframe/operator demo playback.
+Main should call the offer endpoint and use `sidecar.whep_url` only when the offer response returns `selected_transport=webrtc`. Selection requires both the MediaMTX WebRTC listener to be healthy and the requested MediaMTX path to be online. If the listener is unhealthy or the requested path is missing/offline, the offer response selects MJPEG fallback. `sidecar.browser_url` is for iframe/operator demo playback.
 
 ## Diagnostics
 

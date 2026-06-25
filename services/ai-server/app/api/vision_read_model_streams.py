@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import re
 from typing import Any
 from urllib.parse import quote, urlencode
 
@@ -33,8 +34,13 @@ def overlay_stream_path(source: str, view: str, *, max_fps: int = 30) -> str:
     )
 
 
+def vision_stream_base_url() -> str:
+    settings = get_settings()
+    return f"http://{settings.vision_public_host}:{settings.vision_stream_gateway_port}"
+
+
 def vision_gateway_url(path: str) -> str:
-    return f"http://<vision-host>:8090{path}"
+    return f"{vision_stream_base_url()}{path}"
 
 
 def webrtc_offer_path(source: str, view: str) -> str:
@@ -42,6 +48,15 @@ def webrtc_offer_path(source: str, view: str) -> str:
         f"/api/v1/vision/streams/{quote(source, safe='')}/webrtc/offer?"
         + urlencode({"view": view})
     )
+
+
+def _slug_path_part(value: str) -> str:
+    slugged = re.sub(r"[^A-Za-z0-9_-]", "_", value.strip())
+    return slugged.strip("_")
+
+
+def webrtc_sidecar_path_id(source: str, view: str) -> str:
+    return f"{_slug_path_part(source)}_{_slug_path_part(view)}"
 
 
 def _render_sidecar_url(template: str, *, source: str, view: str) -> str | None:
@@ -56,8 +71,35 @@ def _render_sidecar_url(template: str, *, source: str, view: str) -> str | None:
     )
 
 
+def _configured_sidecar_streams() -> set[tuple[str, str]]:
+    raw = get_settings().vision_webrtc_sidecar_streams.strip()
+    if not raw:
+        return set()
+    streams: set[tuple[str, str]] = set()
+    for item in raw.split(","):
+        spec = item.strip()
+        if not spec:
+            continue
+        if "/" in spec:
+            source, view = spec.split("/", 1)
+        else:
+            source, view = spec, DEFAULT_VIEW_ID
+        source = source.strip()
+        view = view.strip() or DEFAULT_VIEW_ID
+        if source:
+            streams.add((source, view))
+    return streams
+
+
+def _sidecar_stream_is_allowed(source: str, view: str) -> bool:
+    configured_streams = _configured_sidecar_streams()
+    return not configured_streams or (source, view) in configured_streams
+
+
 def webrtc_sidecar_descriptor(source: str, view: str) -> dict[str, Any]:
     settings = get_settings()
+    configured_streams = _configured_sidecar_streams()
+    stream_allowed = _sidecar_stream_is_allowed(source, view)
     offer_url = _render_sidecar_url(
         settings.vision_webrtc_sidecar_offer_url_template,
         source=source,
@@ -73,7 +115,7 @@ def webrtc_sidecar_descriptor(source: str, view: str) -> dict[str, Any]:
         source=source,
         view=view,
     )
-    configured = bool(offer_url or whep_url or browser_url)
+    configured = stream_allowed and bool(offer_url or whep_url or browser_url)
     health_url = settings.vision_webrtc_sidecar_health_url.strip() or None
     if health_url:
         runtime_health = "check_required"
@@ -85,12 +127,15 @@ def webrtc_sidecar_descriptor(source: str, view: str) -> dict[str, Any]:
         runtime_health = "not_configured"
     return {
         "status": "configured" if configured else "not_configured",
-        "url_configured": configured,
+        "path_id": webrtc_sidecar_path_id(source, view),
+        "url_configured": bool(offer_url or whep_url or browser_url),
+        "stream_configured": stream_allowed,
+        "configured_streams": [f"{item[0]}/{item[1]}" for item in sorted(configured_streams)],
         "runtime_health": runtime_health,
         "runtime_health_url": health_url,
-        "offer_url": offer_url,
-        "whep_url": whep_url,
-        "browser_url": browser_url,
+        "offer_url": offer_url if configured else None,
+        "whep_url": whep_url if configured else None,
+        "browser_url": browser_url if configured else None,
         "owner": "media_sidecar",
         "proxy_mode": "descriptor_only",
     }
@@ -291,7 +336,7 @@ def build_vision_streams_payload(
         "requested_source": source,
         "primary_stream_plane": "http_mjpeg_gateway",
         "candidate_stream_plane": "webrtc",
-        "stream_base_url": "http://<vision-host>:8090",
+        "stream_base_url": vision_stream_base_url(),
         "debug_only": False,
         "motion_command_allowed": False,
         "internal_rosbridge": {

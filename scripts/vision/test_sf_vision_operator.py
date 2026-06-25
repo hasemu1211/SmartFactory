@@ -63,7 +63,8 @@ def test_lab_gopro_tb3_webrtc_profile_prints_sidecar_urls_without_starting_proce
     assert "SF_VISION_WEBRTC_SIDECAR_ENABLED=true" in result.stdout
     assert "VISION_WEBRTC_SIDECAR_WHEP_URL_TEMPLATE=http://smartfactory-vision.local:8889/{source}_{view}/whep" in result.stdout
     assert "VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE=http://smartfactory-vision.local:8889/{source}_{view}" in result.stdout
-    assert "sidecar_streams=global_cam_01/full,global_cam_01/lift_roi" in result.stdout
+    assert "sidecar_streams=global_cam_01/full,global_cam_01/lift_roi,tb3_1_picam/full,tb3_2_picam/full" in result.stdout
+    assert "ai_server_sidecar_streams=global_cam_01/full,global_cam_01/lift_roi,tb3_1_picam/full,tb3_2_picam/full" in result.stdout
 
 
 def test_webrtc_sidecar_print_config_exposes_media_only_urls() -> None:

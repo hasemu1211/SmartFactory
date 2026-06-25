@@ -1,5 +1,7 @@
 """Vision stream and ROS handoff read-model API tests."""
 
+import json
+
 from api_test_helpers import (
     aruco_png_bytes,
     client,
@@ -186,9 +188,12 @@ def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
             "sidecar_required": True,
             "sidecar": {
                 "status": "not_configured",
-                    "url_configured": False,
-                    "runtime_health": "not_configured",
-                    "runtime_health_url": None,
+                "path_id": "tb3_1_picam_full",
+                "url_configured": False,
+                "stream_configured": True,
+                "configured_streams": [],
+                "runtime_health": "not_configured",
+                "runtime_health_url": None,
                 "offer_url": None,
                 "whep_url": None,
                 "browser_url": None,
@@ -297,6 +302,8 @@ def test_webrtc_offer_endpoint_is_media_only_and_forced_fallback_records_metrics
 
 
 def test_webrtc_offer_endpoint_selects_webrtc_when_sidecar_descriptor_is_configured(monkeypatch):
+    from app.api import vision as vision_api
+
     main_module.metrics.reset()
     settings = get_settings()
     monkeypatch.setattr(
@@ -314,6 +321,27 @@ def test_webrtc_offer_endpoint_selects_webrtc_when_sidecar_descriptor_is_configu
         "vision_webrtc_sidecar_assume_healthy_without_health_url",
         True,
     )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_paths_api_url",
+        "http://media-sidecar.local/v3/paths/list",
+    )
+
+    path_payload = {
+        "items": [
+            {
+                "name": "global_cam_01_full",
+                "ready": True,
+                "available": True,
+                "online": True,
+            }
+        ]
+    }
+
+    def fake_urlopen(request, timeout):
+        return _FakeUrlResponse(json.dumps(path_payload).encode("utf-8"))
+
+    monkeypatch.setattr(vision_api, "urlopen", fake_urlopen)
 
     response = client.post(
         "/api/v1/vision/streams/global_cam_01/webrtc/offer",
@@ -324,10 +352,11 @@ def test_webrtc_offer_endpoint_selects_webrtc_when_sidecar_descriptor_is_configu
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "sidecar_configured"
-    assert body["reason"] == "sidecar_assume_healthy"
+    assert body["reason"] == "sidecar_path_online"
     assert body["selected_transport"] == "webrtc"
     assert body["sidecar"]["status"] == "configured"
     assert body["sidecar"]["runtime_health"] == "assume_healthy"
+    assert body["sidecar"]["path_runtime_health"] == "online"
     assert body["sidecar"]["whep_url"] == (
         "http://media-sidecar.local/global_cam_01/full/whep"
     )
@@ -347,6 +376,88 @@ def test_webrtc_offer_endpoint_selects_webrtc_when_sidecar_descriptor_is_configu
     assert metrics["offer_status_total"] == {"sidecar_configured": 1}
     assert metrics["selected_transport_total"] == {"webrtc": 1}
     assert metrics["fallback_total"] == 0
+
+
+
+class _FakeUrlResponse:
+    def __init__(self, payload: bytes = b"ok", status: int = 200):
+        self._payload = payload
+        self.status = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self) -> bytes:
+        return self._payload
+
+
+def test_webrtc_offer_checks_mediamtx_path_before_selecting_webrtc(monkeypatch):
+    from app.api import vision as vision_api
+
+    main_module.metrics.reset()
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_whep_url_template",
+        "http://media-sidecar.local/{source}_{view}/whep",
+    )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_browser_url_template",
+        "http://media-sidecar.local/{source}_{view}",
+    )
+    monkeypatch.setattr(settings, "vision_webrtc_sidecar_health_url", "http://media-sidecar.local/")
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_paths_api_url",
+        "http://media-sidecar.local/v3/paths/list",
+    )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_streams",
+        "tb3_1_picam/full,tb3_2_picam/full",
+    )
+
+    path_payload = {
+        "items": [
+            {
+                "name": "tb3_1_picam_full",
+                "ready": True,
+                "available": True,
+                "online": True,
+            }
+        ]
+    }
+
+    def fake_urlopen(request, timeout):
+        url = getattr(request, "full_url", str(request))
+        if url.endswith("/v3/paths/list"):
+            return _FakeUrlResponse(json.dumps(path_payload).encode("utf-8"))
+        return _FakeUrlResponse()
+
+    monkeypatch.setattr(vision_api, "urlopen", fake_urlopen)
+
+    online = client.post(
+        "/api/v1/vision/streams/tb3_1_picam/webrtc/offer",
+        params={"view": "full"},
+        json={"type": "offer"},
+    ).json()
+    missing = client.post(
+        "/api/v1/vision/streams/tb3_2_picam/webrtc/offer",
+        params={"view": "full"},
+        json={"type": "offer"},
+    ).json()
+
+    assert online["selected_transport"] == "webrtc"
+    assert online["reason"] == "sidecar_path_online"
+    assert online["sidecar"]["path_runtime_health"] == "online"
+    assert online["sidecar"]["path_id"] == "tb3_1_picam_full"
+    assert missing["selected_transport"] == "mjpeg"
+    assert missing["reason"] == "sidecar_path_missing"
+    assert missing["sidecar"]["path_runtime_health"] == "missing"
 
 
 def test_webrtc_offer_endpoint_falls_back_when_sidecar_health_is_unknown(monkeypatch):

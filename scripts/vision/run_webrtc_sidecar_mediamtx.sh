@@ -21,6 +21,7 @@ MEDIAMTX_RTSP_PORT="${MEDIAMTX_RTSP_PORT:-18554}"
 MEDIAMTX_WEBRTC_PORT="${MEDIAMTX_WEBRTC_PORT:-8889}"
 MEDIAMTX_WEBRTC_ICE_UDP_PORT="${MEDIAMTX_WEBRTC_ICE_UDP_PORT:-8189}"
 MEDIAMTX_API_PORT="${MEDIAMTX_API_PORT:-19997}"
+MEDIAMTX_WEBRTC_ALLOW_ORIGINS="${MEDIAMTX_WEBRTC_ALLOW_ORIGINS:-http://smartfactory-main.local:8088,http://localhost:8088,http://127.0.0.1:8088}"
 WEBRTC_SIDECAR_PUBLIC_HOST="${WEBRTC_SIDECAR_PUBLIC_HOST:-${VISION_PUBLIC_HOST:-smartfactory-vision.local}}"
 WEBRTC_SIDECAR_STREAMS="${WEBRTC_SIDECAR_STREAMS:-global_cam_01/full,global_cam_01/lift_roi}"
 WEBRTC_SIDECAR_INPUT_MAX_FPS="${WEBRTC_SIDECAR_INPUT_MAX_FPS:-15}"
@@ -28,6 +29,7 @@ WEBRTC_SIDECAR_TARGET_FPS="${WEBRTC_SIDECAR_TARGET_FPS:-15}"
 WEBRTC_SIDECAR_BITRATE="${WEBRTC_SIDECAR_BITRATE:-2500k}"
 WEBRTC_SIDECAR_BUFSIZE="${WEBRTC_SIDECAR_BUFSIZE:-5000k}"
 WEBRTC_SIDECAR_RESTART_SEC="${WEBRTC_SIDECAR_RESTART_SEC:-2}"
+WEBRTC_SIDECAR_VIDEO_FILTER="${WEBRTC_SIDECAR_VIDEO_FILTER:-scale=trunc(iw/2)*2:trunc(ih/2)*2}"
 WEBRTC_SIDECAR_INPUT_URL_TEMPLATE="${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE:-}"
 if [ -z "${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE}" ]; then
   WEBRTC_SIDECAR_INPUT_URL_TEMPLATE="http://127.0.0.1:${VISION_STREAM_GATEWAY_PORT:-8090}/api/v1/vision/overlay/stream?source={source}&view={view}&max_fps={max_fps}"
@@ -108,6 +110,30 @@ slug() {
   printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '_' | sed -e 's/^_*//' -e 's/_*$//'
 }
 
+csv_to_json_array() {
+  local raw="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$raw" <<'PY'
+import json
+import sys
+print(json.dumps([item.strip() for item in sys.argv[1].split(",") if item.strip()]))
+PY
+    return
+  fi
+  local IFS=',' item first=1
+  printf '['
+  for item in ${raw}; do
+    item="${item#${item%%[![:space:]]*}}"
+    item="${item%${item##*[![:space:]]}}"
+    [ -n "${item}" ] || continue
+    if [ "${first}" -eq 0 ]; then printf ','; fi
+    first=0
+    item="${item//\"/}"
+    printf '"%s"' "${item}"
+  done
+  printf ']'
+}
+
 stream_source() {
   local spec="$1"
   spec="${spec//[[:space:]]/}"
@@ -181,7 +207,9 @@ SmartFactory Vision WebRTC sidecar config
   browser_url_template: http://${WEBRTC_SIDECAR_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/{source}_{view}
   whep_url_template: http://${WEBRTC_SIDECAR_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/{source}_{view}/whep
   mediamtx_ports: rtsp=${MEDIAMTX_RTSP_PORT}/tcp, webrtc=${MEDIAMTX_WEBRTC_PORT}/tcp, ice=${MEDIAMTX_WEBRTC_ICE_UDP_PORT}/udp, api=127.0.0.1:${MEDIAMTX_API_PORT}/tcp
+  webrtc_allow_origins: ${MEDIAMTX_WEBRTC_ALLOW_ORIGINS}
   input_url_template: ${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE}
+  video_filter: ${WEBRTC_SIDECAR_VIDEO_FILTER}
   streams:
 CONFIG
   for spec in "${specs[@]}"; do
@@ -300,6 +328,8 @@ write_config() {
   local specs=() spec path
   read_stream_specs specs
   local additional_hosts="[]"
+  local allow_origins
+  allow_origins="$(csv_to_json_array "${MEDIAMTX_WEBRTC_ALLOW_ORIGINS}")"
   if [ -n "${WEBRTC_SIDECAR_PUBLIC_HOST}" ]; then
     additional_hosts="[\"${WEBRTC_SIDECAR_PUBLIC_HOST}\"]"
   fi
@@ -319,11 +349,12 @@ rtspAddress: 127.0.0.1:${MEDIAMTX_RTSP_PORT}
 rtmp: false
 hls: false
 srt: false
+moq: false
 
 webrtc: true
 webrtcAddress: :${MEDIAMTX_WEBRTC_PORT}
 webrtcEncryption: false
-webrtcAllowOrigins: ["*"]
+webrtcAllowOrigins: ${allow_origins}
 webrtcLocalUDPAddress: :${MEDIAMTX_WEBRTC_ICE_UDP_PORT}
 webrtcLocalTCPAddress: ""
 webrtcIPsFromInterfaces: true
@@ -383,6 +414,7 @@ publisher_loop() {
       -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2 \
       -fflags nobuffer -flags low_delay \
       -f mpjpeg -i "${input_url}" \
+      -vf "${WEBRTC_SIDECAR_VIDEO_FILTER}" \
       -an -c:v "${WEBRTC_SIDECAR_ENCODER}" -preset "${WEBRTC_SIDECAR_X264_PRESET}" \
       -tune zerolatency -pix_fmt yuv420p -r "${WEBRTC_SIDECAR_TARGET_FPS}" \
       -g "$((WEBRTC_SIDECAR_TARGET_FPS * 2))" -bf 0 \

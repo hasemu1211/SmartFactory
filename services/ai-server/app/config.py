@@ -22,7 +22,14 @@ class Settings(BaseSettings):
 
     ai_server_host: str = "127.0.0.1"
     ai_server_port: int = 8100
+    ai_server_cors_allow_origins: str = (
+        "http://smartfactory-main.local:8088,"
+        "http://localhost:8088,"
+        "http://127.0.0.1:8088"
+    )
     main_server_url: str = "http://smartfactory-main.local:8088"
+    vision_public_host: str = "<vision-host>"
+    vision_stream_gateway_port: int = 8090
     camera_sources: str = "global_cam_01,tb3_1_picam,tb3_2_picam"
     ros_image_topics: str = "/global_camera/image_raw,/tb3_1/camera/image_raw/compressed,/tb3_2/camera/image_raw/compressed"
     vision_sources_registry_path: Path = REPO_ROOT / "config" / "vision" / "sources.yaml"
@@ -65,7 +72,9 @@ class Settings(BaseSettings):
     vision_webrtc_sidecar_whep_url_template: str = ""
     vision_webrtc_sidecar_browser_url_template: str = ""
     vision_webrtc_sidecar_health_url: str = ""
+    vision_webrtc_sidecar_paths_api_url: str = ""
     vision_webrtc_sidecar_health_timeout_s: float = 0.25
+    vision_webrtc_sidecar_streams: str = ""
     vision_webrtc_sidecar_assume_healthy_without_health_url: bool = False
     aruco_pose_profiles_path: Path = Field(
         default=REPO_ROOT / "config" / "perception" / "aruco_pose_profiles.example.json"

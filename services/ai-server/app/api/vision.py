@@ -570,6 +570,46 @@ def _webrtc_sidecar_runtime_health(sidecar: dict[str, Any]) -> str:
         return "unhealthy"
 
 
+
+
+def _webrtc_sidecar_path_runtime_health(sidecar: dict[str, Any]) -> str:
+    """Return whether the requested MediaMTX path is actually online.
+
+    The root WebRTC HTTP listener can be healthy while a specific camera path is
+    missing/offline. Main should only prefer WebRTC for paths that MediaMTX
+    reports as ready/available/online; otherwise MJPEG remains the safe fallback.
+    """
+
+    if sidecar.get("status") != "configured":
+        return "not_configured"
+    settings = get_settings()
+    paths_api_url = settings.vision_webrtc_sidecar_paths_api_url.strip()
+    if not paths_api_url:
+        return "not_checked"
+    path_id = str(sidecar.get("path_id") or "")
+    if not path_id:
+        return "missing_path_id"
+    request = UrlRequest(paths_api_url, method="GET")
+    try:
+        with urlopen(request, timeout=settings.vision_webrtc_sidecar_health_timeout_s) as response:
+            status = getattr(response, "status", 200)
+            if status >= 500:
+                return "api_unhealthy"
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        return "api_unhealthy" if exc.code >= 500 else "api_unavailable"
+    except (OSError, TimeoutError, URLError, ValueError, json.JSONDecodeError):
+        return "api_unavailable"
+
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    for item in items:
+        if not isinstance(item, dict) or item.get("name") != path_id:
+            continue
+        if bool(item.get("ready")) and bool(item.get("available")) and bool(item.get("online")):
+            return "online"
+        return "offline"
+    return "missing"
+
 def vision_webrtc_offer(
     source: str,
     payload: WebRtcOfferRequest | None = None,
@@ -588,7 +628,11 @@ def vision_webrtc_offer(
     sidecar = webrtc_sidecar_descriptor(source, view_id)
     runtime_health = _webrtc_sidecar_runtime_health(sidecar)
     sidecar["runtime_health"] = runtime_health
+    path_runtime_health = _webrtc_sidecar_path_runtime_health(sidecar)
+    sidecar["path_runtime_health"] = path_runtime_health
     settings = get_settings()
+    runtime_ok = runtime_health in {"healthy", "assume_healthy"}
+    path_ok = path_runtime_health == "online"
     if not settings.vision_webrtc_enabled:
         status = "fallback_required"
         reason = "webrtc_disabled"
@@ -597,13 +641,20 @@ def vision_webrtc_offer(
         status = "fallback_required"
         reason = "forced_fallback"
         selected_transport = "mjpeg"
-    elif sidecar["status"] == "configured" and runtime_health in {"healthy", "assume_healthy"}:
+    elif sidecar["status"] == "configured" and runtime_ok and path_ok:
         status = "sidecar_configured"
-        reason = "sidecar_runtime_healthy" if runtime_health == "healthy" else "sidecar_assume_healthy"
+        if path_runtime_health == "online":
+            reason = "sidecar_path_online"
+        else:
+            reason = "sidecar_runtime_healthy" if runtime_health == "healthy" else "sidecar_assume_healthy"
         selected_transport = "webrtc"
-    elif sidecar["status"] == "configured":
+    elif sidecar["status"] == "configured" and not runtime_ok:
         status = "fallback_required"
         reason = f"sidecar_health_{runtime_health}"
+        selected_transport = "mjpeg"
+    elif sidecar["status"] == "configured":
+        status = "fallback_required"
+        reason = f"sidecar_path_{path_runtime_health}"
         selected_transport = "mjpeg"
     else:
         status = "fallback_required"

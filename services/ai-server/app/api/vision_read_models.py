@@ -16,6 +16,7 @@ from .vision_read_model_streams import (
     vision_gateway_url,
     webrtc_offer_path,
     webrtc_sidecar_descriptor,
+    webrtc_sidecar_path_id,
 )
 from .vision_read_model_worker import build_vision_worker_status_payload
 
@@ -34,4 +35,5 @@ __all__ = [
     "vision_gateway_url",
     "webrtc_offer_path",
     "webrtc_sidecar_descriptor",
+    "webrtc_sidecar_path_id",
 ]

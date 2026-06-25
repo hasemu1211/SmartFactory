@@ -13,6 +13,21 @@ SERVICE_DIR = ROOT / "services" / "ai-server"
 client = TestClient(app)
 
 
+def test_main_dashboard_origin_is_allowed_by_cors():
+    response = client.options(
+        "/api/v1/vision/streams",
+        headers={
+            "Origin": "http://smartfactory-main.local:8088",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == (
+        "http://smartfactory-main.local:8088"
+    )
+
+
 def test_factory_creates_runtime_app_without_generator_bridge():
     from app.service_metadata import SERVICE_VERSION
 
