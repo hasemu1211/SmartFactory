@@ -63,7 +63,7 @@ set_defaults() {
   # Lightweight default for Main/MJPEG smoke and TurtleBot comparator runs.
   # GoPro segment-overlay proof is an explicit override profile:
   #   VISION_MODEL_TASK=segment
-  #   VISION_MODEL_PATH=/home/codelab/yolo_test/runs/segment/bottle_detection_yolov8s_seg/weights/best.pt
+  #   VISION_MODEL_PATH=/home/codelab/yolo_test/yolov8s-seg.pt
   #   VISION_MODEL_IMGSZ=640
   export VISION_MODEL_PATH="${VISION_MODEL_PATH:-${ROOT_DIR}/yolov8n.pt}"
   export VISION_MODEL_TASK="${VISION_MODEL_TASK:-detect}"
@@ -132,6 +132,9 @@ check_prereqs() {
     echo "ERROR: VISION_MODEL_PATH does not exist: ${VISION_MODEL_PATH}" >&2
     return 1
   fi
+  if [ "${VISION_MODEL_WORKER_ENABLED}" = "true" ] && [ -n "${VISION_MODEL_SOURCE_CONFIG_JSON:-}" ]; then
+    sf_validate_vision_model_source_config_json "${VISION_MODEL_SOURCE_CONFIG_JSON}"
+  fi
   python3 -m py_compile "${ROOT_DIR}/scripts/vision/run_d1_vision_stream_gateway.py"
   (
     # shellcheck disable=SC1090
@@ -170,6 +173,7 @@ D1 Main-compatible multi-source gateway bundle
   ai_mjpeg_sources: ${VISION_STREAM_AI_MJPEG_SOURCES}
   qos: image_sub=${VISION_GATEWAY_IMAGE_QOS_RELIABILITY}, overlay_pub=${VISION_GATEWAY_OVERLAY_PUB_QOS_RELIABILITY}, overlay_sub=${VISION_STREAM_OVERLAY_SUB_QOS_RELIABILITY}
   pipeline: async=${VISION_GATEWAY_ASYNC_PIPELINE}, inline_process=${VISION_GATEWAY_PROCESS_FRAME_INLINE}, frame_process_path=${VISION_GATEWAY_FRAME_PROCESS_PATH}, period=${VISION_GATEWAY_PERIOD_SEC}s, output_period=${VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC}s, retry_failed=${VISION_GATEWAY_RETRY_FAILED_FRAME}
+  model_source_config: ${VISION_MODEL_SOURCE_CONFIG_JSON:-<none>}
   upstreams: ${VISION_STREAM_SOURCE_UPSTREAMS_JSON}
 
 Main/GUI recommended stable base URLs (hostname-first):

@@ -101,6 +101,7 @@ setup_python_env() {
   run "${ROOT_DIR}/scripts/ai/setup_ai_server_env.sh"
   if [ "${WITH_MODEL}" = "true" ]; then
     run "${SERVICE_DIR}/.venv/bin/python" -m pip install -r "${SERVICE_DIR}/requirements-model.txt"
+    ensure_default_model_weights
   fi
   if [ "${WITH_GOPRO}" = "true" ]; then
     run "${SERVICE_DIR}/.venv/bin/python" -m pip install -r "${SERVICE_DIR}/requirements-gopro.txt"
@@ -109,6 +110,33 @@ setup_python_env() {
   if [ "${DRY_RUN}" = "false" ]; then
     "${SERVICE_DIR}/.venv/bin/python" -m pip freeze --exclude-editable > "${SERVICE_DIR}/requirements.local.lock"
   fi
+}
+
+ensure_default_model_weights() {
+  local model_dir
+  model_dir="${SMARTFACTORY_YOLO_MODEL_DIR:-${HOME}/yolo_test}"
+  run mkdir -p "${model_dir}"
+  if [ "${DRY_RUN}" = "true" ]; then
+    echo "[dry-run] would ensure ${model_dir}/yolov8n.pt and ${model_dir}/yolov8s-seg.pt"
+    return 0
+  fi
+  (
+    cd "${model_dir}"
+    "${SERVICE_DIR}/.venv/bin/python" - <<'PY'
+from pathlib import Path
+from ultralytics import YOLO
+
+for name in ("yolov8n.pt", "yolov8s-seg.pt"):
+    path = Path(name)
+    if path.exists():
+        print(f"model weight present: {path.resolve()}")
+        continue
+    YOLO(name)
+    if not path.exists():
+        raise SystemExit(f"ERROR: failed to download model weight: {name}")
+    print(f"model weight downloaded: {path.resolve()}")
+PY
+  )
 }
 
 pack_venv() {

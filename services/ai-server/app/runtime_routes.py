@@ -18,6 +18,7 @@ from .api.vision import (
     _now_dt,
     _overlay_publish_payload_preview_for_source,
     _parse_vision_model_class_map,
+    _parse_vision_model_source_config,
     _ros_ingest_readiness,
     _store_latest_frame_from_bytes,
     register_vision_routes,

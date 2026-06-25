@@ -60,6 +60,8 @@ def _vision_model_status(settings) -> str:
         return "disabled"
     if not _vision_model_class_map_valid(settings):
         return "error"
+    if not _vision_model_source_config_valid(settings):
+        return "error"
     return "loaded"
 
 
@@ -76,6 +78,99 @@ def _vision_model_class_map_valid(settings) -> bool:
     except json.JSONDecodeError:
         return False
     return isinstance(parsed, dict)
+
+
+def _vision_model_source_config_valid(settings) -> bool:
+    source_config_json = settings.vision_model_source_config_json.strip()
+    if not source_config_json:
+        return True
+    try:
+        parsed = json.loads(source_config_json)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(parsed, dict):
+        return False
+    return all(_vision_model_source_override_valid(source, value) for source, value in parsed.items())
+
+
+def _falsey_json_setting(value: Any) -> bool:
+    if value is False:
+        return True
+    if isinstance(value, str):
+        return value.strip().lower() in {"0", "false", "no", "off", "disabled"}
+    return False
+
+
+def _valid_float_setting(value: Any, *, min_value: float | None = None, max_value: float | None = None) -> bool:
+    if isinstance(value, bool):
+        return False
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return False
+    if min_value is not None and parsed < min_value:
+        return False
+    if max_value is not None and parsed > max_value:
+        return False
+    return True
+
+
+def _valid_positive_int_setting(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return False
+    return parsed > 0
+
+
+def _vision_model_source_override_valid(source: Any, value: Any) -> bool:
+    if not isinstance(source, str) or not source.strip():
+        return False
+    if not isinstance(value, dict):
+        return False
+    if _falsey_json_setting(value.get("enabled")):
+        return True
+    if "model_path" in value and not isinstance(value["model_path"], str):
+        return False
+    if "path" in value and not isinstance(value["path"], str):
+        return False
+    task = value.get("task")
+    if task is not None and str(task) not in {"segment", "detect"}:
+        return False
+    for key in ("image_size", "imgsz"):
+        if key in value and not _valid_positive_int_setting(value[key]):
+            return False
+    for key in ("confidence", "conf", "iou"):
+        if key in value and not _valid_float_setting(value[key], min_value=0.0, max_value=1.0):
+            return False
+    if "class_map" in value and not isinstance(value["class_map"], dict):
+        return False
+    if "class_map_json" in value:
+        class_map_json = value["class_map_json"]
+        if not isinstance(class_map_json, str):
+            return False
+        try:
+            parsed_class_map = json.loads(class_map_json)
+        except json.JSONDecodeError:
+            return False
+        if not isinstance(parsed_class_map, dict):
+            return False
+    return True
+
+
+def _vision_model_source_overrides(settings) -> list[str]:
+    source_config_json = settings.vision_model_source_config_json.strip()
+    if not source_config_json:
+        return []
+    try:
+        parsed = json.loads(source_config_json)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, dict):
+        return []
+    return sorted(str(source) for source, value in parsed.items() if isinstance(value, dict))
 
 
 def _health(context: RuntimeContext) -> dict[str, Any]:
@@ -104,6 +199,9 @@ def _health(context: RuntimeContext) -> dict[str, Any]:
                 "worker_active": _model_worker_enabled(settings),
                 "class_map_configured": bool(settings.vision_model_class_map_json.strip()),
                 "class_map_valid": _vision_model_class_map_valid(settings),
+                "source_config_configured": bool(settings.vision_model_source_config_json.strip()),
+                "source_config_valid": _vision_model_source_config_valid(settings),
+                "source_overrides": _vision_model_source_overrides(settings),
                 "unmapped_class": settings.vision_model_unmapped_class,
                 "max_events": settings.vision_model_max_events,
             },

@@ -227,6 +227,41 @@ def test_health_model_status_reports_invalid_class_map_as_error():
     assert _vision_model_status(settings) == "error"
 
 
+def test_health_model_status_reports_invalid_source_config_as_error():
+    from app.api.health import _vision_model_status
+    from app.config import Settings
+
+    settings = Settings(
+        vision_model_path="/tmp/model.pt",
+        vision_model_task="detect",
+        vision_model_class_map_json='{"bottle":"box"}',
+        vision_model_source_config_json='{"tb3_1_picam": false}',
+    )
+
+    assert _vision_model_status(settings) == "error"
+
+
+def test_health_model_status_rejects_invalid_source_override_fields():
+    from app.api.health import _vision_model_status
+    from app.config import Settings
+
+    invalid_task = Settings(
+        vision_model_path="/tmp/model.pt",
+        vision_model_task="detect",
+        vision_model_class_map_json='{"bottle":"box"}',
+        vision_model_source_config_json='{"global_cam_01": {"task": "seg", "imgsz": 640}}',
+    )
+    invalid_class_map = Settings(
+        vision_model_path="/tmp/model.pt",
+        vision_model_task="detect",
+        vision_model_class_map_json='{"bottle":"box"}',
+        vision_model_source_config_json='{"global_cam_01": {"task": "segment", "class_map": false}}',
+    )
+
+    assert _vision_model_status(invalid_task) == "error"
+    assert _vision_model_status(invalid_class_map) == "error"
+
+
 
 def test_health_matches_api_contract_fields():
     response = client.get("/api/v1/health")
@@ -243,6 +278,8 @@ def test_health_matches_api_contract_fields():
     assert body["models"]["lift_roi"]["status"] in {"loaded", "disabled", "error"}
     assert body["models"]["lift_roi"]["task"] in {"segment", "detect"}
     assert isinstance(body["models"]["lift_roi"]["class_map_valid"], bool)
+    assert isinstance(body["models"]["lift_roi"]["source_config_valid"], bool)
+    assert isinstance(body["models"]["lift_roi"]["source_overrides"], list)
     assert body["source_summary"]["configured"] == 3
 
 

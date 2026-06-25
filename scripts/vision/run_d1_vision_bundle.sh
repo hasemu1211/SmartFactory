@@ -123,6 +123,9 @@ check_prereqs() {
     echo "ERROR: VISION_MODEL_PATH does not exist: ${VISION_MODEL_PATH}" >&2
     return 1
   fi
+  if [ "${VISION_MODEL_WORKER_ENABLED}" = "true" ] && [ -n "${VISION_MODEL_SOURCE_CONFIG_JSON:-}" ]; then
+    sf_validate_vision_model_source_config_json "${VISION_MODEL_SOURCE_CONFIG_JSON}"
+  fi
   (
     # shellcheck disable=SC1090
     unset PYTHONPATH

@@ -1,5 +1,7 @@
 """Vision worker status/tick and debug source API tests."""
 
+import json
+
 from api_test_helpers import (
     DetectionBox,
     aruco_png_bytes,
@@ -78,6 +80,89 @@ def test_worker_tick_includes_pretrained_model_candidates_for_ros_overlay(monkey
         "/sf/vision/sources/tb3_1_picam/overlay/compressed"
     )
     assert source["evidence_event_publish_readiness"]["publish_ready"] is True
+
+
+def test_worker_tick_routes_source_specific_model_config(monkeypatch):
+    main_module.store.reset()
+    main_module.source_health.reset()
+    main_module.metrics.reset()
+    main_module.frame_store.reset()
+    main_module.overlay_cache.reset()
+    with main_module._overlay_images_lock:
+        main_module._overlay_images.clear()
+    main_module._parse_vision_model_class_map.cache_clear()
+    main_module._parse_vision_model_source_config.cache_clear()
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "vision_model_worker_enabled", True)
+    monkeypatch.setattr(settings, "vision_model_path", "default-det.pt")
+    monkeypatch.setattr(settings, "vision_model_task", "detect")
+    monkeypatch.setattr(settings, "vision_model_imgsz", 224)
+    monkeypatch.setattr(settings, "vision_model_class_map_json", '{"bottle":"box","person":"person"}')
+    monkeypatch.setattr(
+        settings,
+        "vision_model_source_config_json",
+        json.dumps(
+            {
+                "global_cam_01": {
+                    "model_path": "global-seg.pt",
+                    "task": "segment",
+                    "imgsz": 640,
+                    "class_map": {"bottle": "box", "person": "person"},
+                },
+                "tb3_1_picam": {
+                    "model_path": "picam-det.pt",
+                    "task": "detect",
+                    "imgsz": 320,
+                    "class_map": {"person": "person"},
+                },
+            }
+        ),
+    )
+
+    calls = []
+
+    class FakePersonDetector:
+        detector_name = "fake-source-detector"
+
+        def detect(self, image):
+            return (
+                DetectionBox(
+                    class_name="person",
+                    bbox_xyxy=(10.0, 20.0, 70.0, 120.0),
+                    confidence=0.77,
+                    detector=self.detector_name,
+                ),
+            )
+
+    def fake_model_factory(**kwargs):
+        calls.append(kwargs)
+        return FakePersonDetector()
+
+    monkeypatch.setattr(main_module, "_get_lift_roi_segmenter", fake_model_factory)
+
+    ingest = client.post(
+        "/api/v1/vision/frame",
+        data={"source": "tb3_1_picam"},
+        files={"image": ("frame.png", blank_png_bytes(width=200, height=160), "image/png")},
+    )
+    assert ingest.status_code == 200
+
+    tick = client.post("/api/v1/vision/worker/tick", json={"source": "tb3_1_picam"})
+
+    assert tick.status_code == 200
+    assert calls
+    assert calls[0]["model_path"] == "picam-det.pt"
+    assert calls[0]["task"] == "detect"
+    assert calls[0]["image_size"] == 320
+    assert calls[0]["class_map_json"] == '{"person": "person"}'
+    event = client.get(
+        "/api/v1/detections/latest",
+        params={"source": "tb3_1_picam", "limit": 1},
+    ).json()["events"][0]
+    assert event["class_name"] == "person"
+    assert event["wms_hint"] == "PERSON_CANDIDATE"
+
 
 def test_vision_worker_tick_skips_current_overlay_by_default_and_force_reprocesses():
     main_module.source_health.reset()

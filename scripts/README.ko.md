@@ -185,29 +185,27 @@ WMS_EMIT_ENABLED=false
 `WMS_EMIT_ENABLED=false`는 안전 기본값입니다. 실제로 VisionEvent를 Main에 POST하려는 경우에만 명시적으로 `true`로 바꾸세요.
 
 TurtleBot Pi camera comparator 검증처럼 실제 카메라/AI overlay까지 볼 때는
-같은 bundle을 쓰되 가벼운 smoke profile로 모델 처리를 켭니다.
+같은 bundle을 쓰되 가벼운 detect 모델 처리를 켭니다.
 
 ```bash
 VISION_MODEL_WORKER_ENABLED=true \
-VISION_MODEL_PATH="$PWD/yolov8n.pt" \
+VISION_MODEL_PATH=/home/codelab/yolo_test/yolov8n.pt \
 VISION_MODEL_TASK=detect \
-VISION_MODEL_IMGSZ=224 \
+VISION_MODEL_IMGSZ=320 \
 VISION_GATEWAY_PUBLISH_EVIDENCE=false \
 WMS_EMIT_ENABLED=false \
 ./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
 ```
 
-GoPro segment-overlay proof는 위의 가벼운 기본값에 의존하지 말고, 명시적으로
-segment proof profile을 사용하세요.
+GoPro + PiCam 통합 실험은 source별 모델 분기를 쓰는 profile을 사용하세요.
+현재 기본 의도는 `global_cam_01=비튜닝 yolov8s-seg segment`,
+`tb3_*_picam=비튜닝 yolov8n detect`입니다. GoPro 전역 스트리밍은 리프트로
+들어올린 파레트/ROI를 segment overlay로 잡고, crop 이후 부품 인식 결과를
+증거 생성/전달에 쓰는 구조입니다. 단, 현재 GoPro segment는 파이프라인 증명용이며,
+실제 파레트/부품 안정 인식은 이후 튜닝 모델로 교체해야 합니다.
 
 ```bash
-VISION_MODEL_WORKER_ENABLED=true \
-VISION_MODEL_PATH=/home/codelab/yolo_test/runs/segment/bottle_detection_yolov8s_seg/weights/best.pt \
-VISION_MODEL_TASK=segment \
-VISION_MODEL_IMGSZ=640 \
-VISION_GATEWAY_PUBLISH_EVIDENCE=false \
-WMS_EMIT_ENABLED=false \
-./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
+./scripts/vision/sf_vision.sh up lab-gopro-tb3-webrtc
 ```
 
 이 multi-source bundle은 Main 호환성을 위해 여전히 MJPEG 우선입니다. 동시에 AI Server discovery에서 WebRTC 후보 descriptor를 제공합니다.

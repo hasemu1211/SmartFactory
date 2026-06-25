@@ -5,6 +5,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request as UrlRequest, urlopen
 from contextvars import ContextVar
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache, wraps
 from inspect import isawaitable
@@ -146,7 +147,19 @@ class WebRtcOfferRequest(BaseModel):
     type: str = Field(default="offer")
     force_fallback: bool = False
 
-@lru_cache(maxsize=1)
+@dataclass(frozen=True)
+class ResolvedVisionModelConfig:
+    model_path: str
+    task: str
+    confidence: float
+    iou: float
+    image_size: int
+    device: str
+    class_map_json: str
+    unmapped_class: str
+
+
+@lru_cache(maxsize=16)
 def _parse_vision_model_class_map(class_map_json: str) -> dict[str, str]:
     if not class_map_json.strip():
         return {}
@@ -158,7 +171,85 @@ def _parse_vision_model_class_map(class_map_json: str) -> dict[str, str]:
         raise ModelAdapterError('vision model class map must be a JSON object')
     return {str(key): str(value) for key, value in parsed.items()}
 
+
 @lru_cache(maxsize=1)
+def _parse_vision_model_source_config(source_config_json: str) -> dict[str, dict[str, Any]]:
+    if not source_config_json.strip():
+        return {}
+    try:
+        parsed = json.loads(source_config_json)
+    except json.JSONDecodeError as exc:
+        raise ModelAdapterError("vision model source config must be valid JSON") from exc
+    if not isinstance(parsed, dict):
+        raise ModelAdapterError("vision model source config must be a JSON object")
+    configs: dict[str, dict[str, Any]] = {}
+    for source, raw_config in parsed.items():
+        if not isinstance(raw_config, dict):
+            raise ModelAdapterError("each vision model source config must be a JSON object")
+        configs[str(source)] = dict(raw_config)
+    return configs
+
+
+def _truthy_json_value(value: Any, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off", "disabled"}
+    return default
+
+
+def _source_class_map_json(raw_config: dict[str, Any], fallback: str) -> str:
+    if "class_map_json" in raw_config:
+        return str(raw_config["class_map_json"])
+    if "class_map" in raw_config:
+        class_map = raw_config["class_map"]
+        if not isinstance(class_map, dict):
+            raise ModelAdapterError("source class_map must be a JSON object")
+        return json.dumps({str(key): str(value) for key, value in class_map.items()}, sort_keys=True)
+    return fallback
+
+
+def _resolved_model_config_for_source(source: str) -> ResolvedVisionModelConfig | None:
+    settings = get_settings()
+    if not settings.vision_model_worker_enabled:
+        return None
+    config = ResolvedVisionModelConfig(
+        model_path=settings.vision_model_path,
+        task=settings.vision_model_task,
+        confidence=float(settings.vision_model_conf),
+        iou=float(settings.vision_model_iou),
+        image_size=int(settings.vision_model_imgsz),
+        device=settings.vision_model_device,
+        class_map_json=settings.vision_model_class_map_json,
+        unmapped_class=settings.vision_model_unmapped_class,
+    )
+    source_configs = _parse_vision_model_source_config(settings.vision_model_source_config_json)
+    raw_config = source_configs.get(source)
+    if raw_config is not None:
+        if not _truthy_json_value(raw_config.get("enabled"), default=True):
+            return None
+        config = ResolvedVisionModelConfig(
+            model_path=str(raw_config.get("model_path", raw_config.get("path", config.model_path))),
+            task=str(raw_config.get("task", config.task)),
+            confidence=float(raw_config.get("confidence", raw_config.get("conf", config.confidence))),
+            iou=float(raw_config.get("iou", config.iou)),
+            image_size=int(raw_config.get("image_size", raw_config.get("imgsz", config.image_size))),
+            device=str(raw_config.get("device", config.device)),
+            class_map_json=_source_class_map_json(raw_config, config.class_map_json),
+            unmapped_class=str(raw_config.get("unmapped_class", config.unmapped_class)),
+        )
+    if config.task not in {"segment", "detect"}:
+        raise ModelAdapterError("vision model task must be 'segment' or 'detect'")
+    if not config.model_path.strip():
+        return None
+    return config
+
+
+@lru_cache(maxsize=8)
 def _get_lift_roi_segmenter(*, model_path: str, task: str, confidence: float, iou: float, image_size: int, device: str, class_map_json: str, unmapped_class: str) -> UltralyticsSegmenterAdapter:
     return UltralyticsSegmenterAdapter(VisionModelConfig(model_path=model_path, task=task, confidence=confidence, iou=iou, image_size=image_size, device=device, class_map=_parse_vision_model_class_map(class_map_json), unmapped_class=unmapped_class))
 
@@ -363,7 +454,14 @@ def _prepare_roi_view_overlays(
     """Generate crop-first view overlays and full-frame mapped ROI detections."""
 
     settings = get_settings()
-    model_input_size_px = (int(settings.vision_model_imgsz), int(settings.vision_model_imgsz))
+    try:
+        source_model_config = _resolved_model_config_for_source(source)
+    except ModelAdapterError:
+        source_model_config = None
+    model_input_size = (
+        source_model_config.image_size if source_model_config is not None else int(settings.vision_model_imgsz)
+    )
+    model_input_size_px = (int(model_input_size), int(model_input_size))
     mapped_events: list[dict[str, Any]] = []
     roi_overlays: list[OverlayRenderResult] = []
     for view_id in _roi_crop_views_for_source(source):
@@ -375,7 +473,7 @@ def _prepare_roi_view_overlays(
             )
             crop_image = crop_smart_roi(decoded_image, selection)
             crop_height, crop_width = crop_image.shape[:2]
-            crop_results, crop_latency_ms = _detect_model_results(crop_image)
+            crop_results, crop_latency_ms = _detect_model_results(source=source, decoded_image=crop_image)
             crop_overlay_events = _events_from_model_results(
                 source=source,
                 detector_results=crop_results,
@@ -479,12 +577,24 @@ def _detect_and_overlay_decoded_frame(*, source: str, decoded_image, encoded: by
 def _model_worker_enabled(settings) -> bool:
     return bool(settings.vision_model_worker_enabled and settings.vision_model_path.strip())
 
-def _detect_model_results(decoded_image) -> tuple[tuple[DetectorResult, ...], float | None]:
-    settings = get_settings()
-    if not _model_worker_enabled(settings):
+def _detect_model_results(*, source: str, decoded_image) -> tuple[tuple[DetectorResult, ...], float | None]:
+    try:
+        config = _resolved_model_config_for_source(source)
+    except ModelAdapterError:
+        return (), None
+    if config is None:
         return (), None
     try:
-        provider = _lift_roi_segmenter()(model_path=settings.vision_model_path, task=settings.vision_model_task, confidence=settings.vision_model_conf, iou=settings.vision_model_iou, image_size=settings.vision_model_imgsz, device=settings.vision_model_device, class_map_json=settings.vision_model_class_map_json, unmapped_class=settings.vision_model_unmapped_class)
+        provider = _lift_roi_segmenter()(
+            model_path=config.model_path,
+            task=config.task,
+            confidence=config.confidence,
+            iou=config.iou,
+            image_size=config.image_size,
+            device=config.device,
+            class_map_json=config.class_map_json,
+            unmapped_class=config.unmapped_class,
+        )
         started = perf_counter()
         detector_results = tuple(provider.detect(decoded_image))
         latency_ms = round((perf_counter() - started) * 1000.0, 3)
@@ -522,7 +632,7 @@ def _events_from_model_results(
     return model_events
 
 def _detect_model_events(*, source: str, decoded_image, image_width: int, image_height: int) -> list[dict[str, Any]]:
-    detector_results, latency_ms = _detect_model_results(decoded_image)
+    detector_results, latency_ms = _detect_model_results(source=source, decoded_image=decoded_image)
     return _events_from_model_results(
         source=source,
         detector_results=detector_results,
@@ -1110,6 +1220,7 @@ async def evaluate_lift_roi_image(source: str=Form(..., json_schema_extra=SOURCE
         runtime_context=_runtime_context(),
         decode_image=decode_image,
         lift_roi_segmenter=_lift_roi_segmenter,
+        model_config_for_source=_resolved_model_config_for_source,
         robot_id_for_source=_robot_id_for_source,
         frame_id_for_source=_frame_id_for_source,
         now_iso=_now_iso,

@@ -182,29 +182,27 @@ WMS_EMIT_ENABLED=false
 `true` only when you explicitly want Vision to POST evidence events into Main.
 
 For TurtleBot Pi camera comparator validation, use the same bundle with model
-processing enabled but keep the lightweight smoke profile:
+processing enabled but keep the lightweight detect profile:
 
 ```bash
 VISION_MODEL_WORKER_ENABLED=true \
-VISION_MODEL_PATH="$PWD/yolov8n.pt" \
+VISION_MODEL_PATH=/home/codelab/yolo_test/yolov8n.pt \
 VISION_MODEL_TASK=detect \
-VISION_MODEL_IMGSZ=224 \
+VISION_MODEL_IMGSZ=320 \
 VISION_GATEWAY_PUBLISH_EVIDENCE=false \
 WMS_EMIT_ENABLED=false \
 ./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
 ```
 
-For the GoPro segment-overlay proof, do not rely on the lightweight defaults.
-Use the explicit segment proof profile:
+For the integrated GoPro + PiCam lab path, use the source-specific model
+profile. The current default intent is `global_cam_01=untuned yolov8s-seg
+segment` and `tb3_*_picam=untuned yolov8n detect`. The GoPro global stream is
+intended to segment the lifted pallet/ROI, then crop-first part recognition can
+produce and deliver evidence. The current GoPro segment path is a pipeline
+proof; reliable pallet/part recognition still requires a tuned model later.
 
 ```bash
-VISION_MODEL_WORKER_ENABLED=true \
-VISION_MODEL_PATH=/home/codelab/yolo_test/runs/segment/bottle_detection_yolov8s_seg/weights/best.pt \
-VISION_MODEL_TASK=segment \
-VISION_MODEL_IMGSZ=640 \
-VISION_GATEWAY_PUBLISH_EVIDENCE=false \
-WMS_EMIT_ENABLED=false \
-./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
+./scripts/vision/sf_vision.sh up lab-gopro-tb3-webrtc
 ```
 
 The multi-source bundle is still MJPEG-first for Main compatibility. It also
