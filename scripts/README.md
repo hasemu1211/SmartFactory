@@ -60,6 +60,96 @@ WMS_EMIT_ENABLED=false
 `WMS_EMIT_ENABLED=false` is intentional for safe default operation. Set it to
 `true` only when you explicitly want Vision to POST evidence events into Main.
 
+For TurtleBot Pi camera comparator validation, use the same bundle with model
+processing enabled but keep the lightweight smoke profile:
+
+```bash
+VISION_MODEL_WORKER_ENABLED=true \
+VISION_MODEL_PATH="$PWD/yolov8n.pt" \
+VISION_MODEL_TASK=detect \
+VISION_MODEL_IMGSZ=224 \
+VISION_GATEWAY_PUBLISH_EVIDENCE=false \
+WMS_EMIT_ENABLED=false \
+./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
+```
+
+For the GoPro segment-overlay proof, do not rely on the lightweight defaults.
+Use the explicit segment proof profile:
+
+```bash
+VISION_MODEL_WORKER_ENABLED=true \
+VISION_MODEL_PATH=/home/codelab/yolo_test/runs/segment/bottle_detection_yolov8s_seg/weights/best.pt \
+VISION_MODEL_TASK=segment \
+VISION_MODEL_IMGSZ=640 \
+VISION_GATEWAY_PUBLISH_EVIDENCE=false \
+WMS_EMIT_ENABLED=false \
+./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
+```
+
+The multi-source bundle is still MJPEG-first for Main compatibility. It also
+exposes WebRTC candidate descriptors from AI Server discovery:
+
+```bash
+curl 'http://smartfactory-vision.local:8100/api/v1/vision/streams?source=global_cam_01'
+curl 'http://smartfactory-vision.local:8100/api/v1/vision/streams?source=tb3_1_picam'
+curl 'http://smartfactory-vision.local:8100/api/v1/vision/webrtc/demo?source=global_cam_01&view=full'
+```
+
+Main-side WebRTC adoption request:
+[`docs/requests/main-webrtc-vision-integration-request-2026-06-25.md`](../docs/requests/main-webrtc-vision-integration-request-2026-06-25.md).
+
+### Robot camera bringup and namespace/domain rule
+
+On each TurtleBot/Raspberry Pi, start the low-bandwidth camera driver:
+
+```bash
+ros2 launch turtlebot3_bringup camera_low_bandwidth.launch.py
+```
+
+Namespace is **not required** when each robot is isolated by ROS domain and the
+Vision bundle maps each domain to a source id:
+
+```text
+tb3_1_picam: ROS_DOMAIN_ID=2, topic=/camera/image_raw/compressed, internal port 18090
+tb3_2_picam: ROS_DOMAIN_ID=5, topic=/camera/image_raw/compressed, internal port 18091
+```
+
+This is the current recommended lab setup. The source id (`tb3_1_picam`) is
+assigned by the Vision sidecar even though the robot camera topic inside that
+domain is the unnamespaced `/camera/image_raw/compressed`.
+
+Only use namespaced topics such as `/tb3_1/camera/image_raw/compressed` when
+multiple robots intentionally share one ROS domain. In that case override the
+bundle topic(s):
+
+```bash
+VISION_SOURCE_1_TOPIC=/tb3_1/camera/image_raw/compressed \
+VISION_SOURCE_2_TOPIC=/tb3_2/camera/image_raw/compressed \
+./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
+```
+
+### GoPro global camera notes
+
+GoPro is the global camera source `global_cam_01`, not a generic webcam source.
+The multi-source bundle exposes `global_cam_01` through the AI Server upstream,
+but it does not by itself start the GoPro USB/OpenGoPro capture process. For a
+GoPro proof run, keep the AI Server/bundle running and start the GoPro stream +
+adapter in separate terminals:
+
+```bash
+services/ai-server/.venv/bin/python scripts/vision/start_gopro_webcam_stream.py \
+  --protocol TS --resolution 1080 --fov WIDE --port 8554 --test-read
+
+services/ai-server/.venv/bin/python scripts/vision/run_gopro_smart_roi_adapter.py \
+  --input 'udp://0.0.0.0:8554?overrun_nonfatal=1&fifo_size=50000000' \
+  --source global_cam_01 \
+  --ai-server-url http://127.0.0.1:8100 \
+  --bufferless
+```
+
+WebRTC remains additive/candidate. MJPEG remains the required fallback until a
+real media sidecar such as MediaMTX/GStreamer is configured and validated.
+
 ### 3. Smoke checks
 
 ```bash

@@ -37,6 +37,9 @@ Useful environment overrides:
   VISION_MODEL_PATH                     default: ./yolov8n.pt
   VISION_MODEL_IMGSZ                    default: 224
   VISION_MODEL_CONF                     default: 0.35
+                                          Defaults are a lightweight smoke/comparator
+                                          profile. GoPro segment-overlay proof should
+                                          override task/path/imgsz to segment/best.pt/640.
   VISION_SOURCE_ID                      default: tb3_1_picam
   VISION_IMAGE_TOPIC                    default: /camera/image_raw/compressed
   VISION_GATEWAY_PERIOD_SEC             default: 0.033333
@@ -64,6 +67,9 @@ set_defaults() {
   fi
 
   export VISION_MODEL_WORKER_ENABLED="${VISION_MODEL_WORKER_ENABLED:-true}"
+  # Lightweight default for laptop smoke/TurtleBot comparator runs. Do not treat
+  # this as the GoPro segment-overlay proof profile; that proof must explicitly
+  # set VISION_MODEL_TASK=segment, the segment best.pt path, and imgsz=640.
   export VISION_MODEL_PATH="${VISION_MODEL_PATH:-${ROOT_DIR}/yolov8n.pt}"
   export VISION_MODEL_TASK="${VISION_MODEL_TASK:-detect}"
   export VISION_MODEL_DEVICE="${VISION_MODEL_DEVICE:-0}"

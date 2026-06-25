@@ -61,6 +61,9 @@ Notes:
   - `VISION_MODEL_IMGSZ=224` or `320`
   - `GOPRO_TARGET_FPS=5`
   - enable only the needed ROI path first (`lift_roi`).
+- Naming boundary: "GoPro webcam" in this document means OpenGoPro's USB
+  webcam-mode transport. In SmartFactory source contracts the camera is still
+  `global_cam_01` / global camera, not a generic webcam source.
 
 
 ## Lift transport evidence mode (B안)
@@ -76,7 +79,8 @@ Notes:
 
 ## Run
 
-Start the AI Server + public gateway bundle:
+Start the AI Server + public gateway bundle. The following is the lightweight
+smoke/comparator profile for laptop/TurtleBot checks:
 
 ```bash
 AI_SERVER_HOST=0.0.0.0 \
@@ -88,7 +92,21 @@ VISION_MODEL_IMGSZ=224 \
 ./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
 ```
 
-Start the GoPro USB webcam stream headlessly and verify one OpenCV frame:
+For the GoPro segment-overlay proof profile, override the model settings
+explicitly instead of relying on the lightweight defaults:
+
+```bash
+AI_SERVER_HOST=0.0.0.0 \
+VISION_MODEL_WORKER_ENABLED=true \
+VISION_MODEL_PATH=/home/codelab/yolo_test/runs/segment/bottle_detection_yolov8s_seg/weights/best.pt \
+VISION_MODEL_TASK=segment \
+VISION_MODEL_DEVICE=0 \
+VISION_MODEL_IMGSZ=640 \
+./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
+```
+
+Start the GoPro USB webcam-mode transport headlessly and verify one OpenCV
+frame:
 
 ```bash
 ./scripts/vision/start_gopro_webcam_stream.py --test-read
@@ -161,8 +179,8 @@ PY
 
 ## Design constraints
 
-- 1080p live USB webcam is the baseline because OpenGoPro's webcam enum exposes
-  1080/720/480 real-time webcam modes.
+- 1080p live USB webcam-mode transport is the baseline because OpenGoPro's
+  transport enum exposes 1080/720/480 real-time modes.
 - Higher GoPro recording resolutions are still useful, but they are not assumed
   to be available as the low-latency live USB webcam stream. If true 4K/5.3K
   live input is later needed, add a capture-card/HDMI or verified stream path

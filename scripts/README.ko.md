@@ -65,6 +65,89 @@ WMS_EMIT_ENABLED=false
 
 `WMS_EMIT_ENABLED=false`는 안전 기본값입니다. 실제로 VisionEvent를 Main에 POST하려는 경우에만 명시적으로 `true`로 바꾸세요.
 
+TurtleBot Pi camera comparator 검증처럼 실제 카메라/AI overlay까지 볼 때는
+같은 bundle을 쓰되 가벼운 smoke profile로 모델 처리를 켭니다.
+
+```bash
+VISION_MODEL_WORKER_ENABLED=true \
+VISION_MODEL_PATH="$PWD/yolov8n.pt" \
+VISION_MODEL_TASK=detect \
+VISION_MODEL_IMGSZ=224 \
+VISION_GATEWAY_PUBLISH_EVIDENCE=false \
+WMS_EMIT_ENABLED=false \
+./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
+```
+
+GoPro segment-overlay proof는 위의 가벼운 기본값에 의존하지 말고, 명시적으로
+segment proof profile을 사용하세요.
+
+```bash
+VISION_MODEL_WORKER_ENABLED=true \
+VISION_MODEL_PATH=/home/codelab/yolo_test/runs/segment/bottle_detection_yolov8s_seg/weights/best.pt \
+VISION_MODEL_TASK=segment \
+VISION_MODEL_IMGSZ=640 \
+VISION_GATEWAY_PUBLISH_EVIDENCE=false \
+WMS_EMIT_ENABLED=false \
+./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
+```
+
+이 multi-source bundle은 Main 호환성을 위해 여전히 MJPEG 우선입니다. 동시에 AI Server discovery에서 WebRTC 후보 descriptor를 제공합니다.
+
+```bash
+curl 'http://smartfactory-vision.local:8100/api/v1/vision/streams?source=global_cam_01'
+curl 'http://smartfactory-vision.local:8100/api/v1/vision/streams?source=tb3_1_picam'
+curl 'http://smartfactory-vision.local:8100/api/v1/vision/webrtc/demo?source=global_cam_01&view=full'
+```
+
+Main 쪽 WebRTC 적용 요청서는 다음 문서를 전달하세요.
+[`docs/requests/main-webrtc-vision-integration-request-2026-06-25.md`](../docs/requests/main-webrtc-vision-integration-request-2026-06-25.md)
+
+## 로봇 카메라 bringup / namespace 기준
+
+각 TurtleBot/Raspberry Pi에서는 저대역폭 카메라 launch를 실행합니다.
+
+```bash
+ros2 launch turtlebot3_bringup camera_low_bandwidth.launch.py
+```
+
+각 로봇이 서로 다른 ROS domain으로 분리되어 있으면 namespace 지정은 **필수 아님**입니다.
+현재 권장 lab 구성은 다음입니다.
+
+```text
+tb3_1_picam: ROS_DOMAIN_ID=2, topic=/camera/image_raw/compressed, internal port 18090
+tb3_2_picam: ROS_DOMAIN_ID=5, topic=/camera/image_raw/compressed, internal port 18091
+```
+
+즉 로봇 안에서는 unnamespaced `/camera/image_raw/compressed`를 publish해도 되고,
+Vision sidecar가 domain/source mapping으로 `tb3_1_picam`, `tb3_2_picam` source id를 붙입니다.
+
+반대로 여러 로봇을 의도적으로 같은 ROS domain에 넣는다면 topic 충돌을 피하려고 namespace/remap이 필요합니다. 그 경우 bundle 실행 시 topic을 명시하세요.
+
+```bash
+VISION_SOURCE_1_TOPIC=/tb3_1/camera/image_raw/compressed \
+VISION_SOURCE_2_TOPIC=/tb3_2/camera/image_raw/compressed \
+./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
+```
+
+## GoPro global camera 기준
+
+GoPro는 generic webcam source가 아니라 `global_cam_01` global camera입니다.
+multi-source bundle은 `global_cam_01`을 AI Server upstream으로 노출하지만, GoPro USB/OpenGoPro capture 프로세스를 자동으로 시작하지는 않습니다.
+GoPro proof run에서는 AI Server/bundle을 유지한 채 별도 터미널에서 GoPro stream + adapter를 실행하세요.
+
+```bash
+services/ai-server/.venv/bin/python scripts/vision/start_gopro_webcam_stream.py \
+  --protocol TS --resolution 1080 --fov WIDE --port 8554 --test-read
+
+services/ai-server/.venv/bin/python scripts/vision/run_gopro_smart_roi_adapter.py \
+  --input 'udp://0.0.0.0:8554?overrun_nonfatal=1&fifo_size=50000000' \
+  --source global_cam_01 \
+  --ai-server-url http://127.0.0.1:8100 \
+  --bufferless
+```
+
+WebRTC는 아직 additive/candidate입니다. MediaMTX/GStreamer 같은 실제 media sidecar가 설정·검증되기 전까지 Main 호환 MJPEG는 필수 fallback으로 유지합니다.
+
 ### 3. 확인 URL
 
 ```bash

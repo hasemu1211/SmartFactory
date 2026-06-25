@@ -20,6 +20,7 @@ def test_env_source_upstreams_defaults_to_internal_loopback_allowlist(monkeypatc
     monkeypatch.delenv("VISION_STREAM_SOURCE_UPSTREAMS_JSON", raising=False)
 
     assert gateway._env_source_upstreams() == {
+        "global_cam_01": "http://127.0.0.1:8100",
         "tb3_1_picam": "http://127.0.0.1:18090",
         "tb3_2_picam": "http://127.0.0.1:18091",
     }
@@ -97,7 +98,9 @@ def test_multi_source_bundle_print_config_keeps_source_bridges_loopback_only() -
     )
 
     assert "public_gateway: 0.0.0.0:8090" in result.stdout
+    assert '"global_cam_01":"http://127.0.0.1:8100"' in result.stdout
     assert '"tb3_1_picam":"http://127.0.0.1:18090"' in result.stdout
     assert '"tb3_2_picam":"http://127.0.0.1:18091"' in result.stdout
+    assert "http://0.0.0.0:8100" not in result.stdout
     assert "http://0.0.0.0:18090" not in result.stdout
     assert "http://0.0.0.0:18091" not in result.stdout

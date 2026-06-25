@@ -19,7 +19,7 @@ GoPro 결과는 기본적으로 `PROOF`, `CANDIDATE`, `ALERT`다. 주행 중 단
 ## Why this fits the project
 
 - 전역 카메라는 리프트 주변과 맵 전체 문맥을 동시에 보는 데 유리하다.
-- GoPro/OpenGoPro live webcam baseline은 1080p라서, 주행 내내 고해상도 정밀
+- GoPro/OpenGoPro USB webcam-mode transport baseline은 1080p라서, 주행 내내 고해상도 정밀
   부품 검사를 실시간으로 돌리는 것보다 transition proof에 쓰는 편이 안전하다.
 - GTX 1650급 노트북에서는 `1080p ingest + crop-first ROI + YOLO imgsz 224~320 + 3~5fps`
   부터 시작하는 것이 현실적이다.
@@ -44,15 +44,17 @@ from turning a 3~5 FPS AI loop into delayed evidence.
 
 ## Commands
 
-Start AI Server + gateway:
+Start AI Server + gateway for the GoPro segment-overlay proof. This proof
+profile is intentionally explicit and is separate from the lightweight
+`detect`/`224` smoke defaults in the generic bundle scripts:
 
 ```bash
 AI_SERVER_HOST=0.0.0.0 \
 VISION_MODEL_WORKER_ENABLED=true \
-VISION_MODEL_PATH=./yolov8n.pt \
-VISION_MODEL_TASK=detect \
+VISION_MODEL_PATH=/home/codelab/yolo_test/runs/segment/bottle_detection_yolov8s_seg/weights/best.pt \
+VISION_MODEL_TASK=segment \
 VISION_MODEL_DEVICE=0 \
-VISION_MODEL_IMGSZ=224 \
+VISION_MODEL_IMGSZ=640 \
 ./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
 ```
 

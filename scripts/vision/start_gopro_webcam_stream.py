@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Start a GoPro HERO USB webcam stream without GUI dependencies.
+"""Start a GoPro HERO USB webcam-mode transport without GUI dependencies.
 
 This is the server/laptop-friendly replacement for OpenGoPro's GUI demo:
-it opens the camera over USB using WiredGoPro, starts a webcam stream, prints
-the OpenCV input URL, optionally validates one frame read, and keeps the stream
-alive until interrupted.
+it opens the camera over USB using WiredGoPro, starts OpenGoPro's "webcam"
+transport mode, prints the OpenCV input URL, optionally validates one frame
+read, and keeps the stream alive until interrupted.
+
+Important naming boundary: "webcam" here is the GoPro/OpenGoPro transport
+mode name only. In SmartFactory contracts this device remains the global camera
+source `global_cam_01`, not a generic webcam source.
 """
 
 from __future__ import annotations

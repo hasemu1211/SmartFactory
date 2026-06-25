@@ -60,6 +60,11 @@ set_defaults() {
   fi
 
   export VISION_MODEL_WORKER_ENABLED="${VISION_MODEL_WORKER_ENABLED:-true}"
+  # Lightweight default for Main/MJPEG smoke and TurtleBot comparator runs.
+  # GoPro segment-overlay proof is an explicit override profile:
+  #   VISION_MODEL_TASK=segment
+  #   VISION_MODEL_PATH=/home/codelab/yolo_test/runs/segment/bottle_detection_yolov8s_seg/weights/best.pt
+  #   VISION_MODEL_IMGSZ=640
   export VISION_MODEL_PATH="${VISION_MODEL_PATH:-${ROOT_DIR}/yolov8n.pt}"
   export VISION_MODEL_TASK="${VISION_MODEL_TASK:-detect}"
   export VISION_MODEL_DEVICE="${VISION_MODEL_DEVICE:-0}"
