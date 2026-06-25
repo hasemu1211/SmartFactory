@@ -33,6 +33,7 @@ docs/confluence/qa/*.png
 
 # Agent/runtime local state
 .omx/
+.run/
 omx_wiki/
 
 # Local Confluence exports and draft-only artifacts
