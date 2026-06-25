@@ -96,11 +96,19 @@ browser: http://smartfactory-vision.local:8889/global_cam_01_full
 WHEP:    http://smartfactory-vision.local:8889/global_cam_01_full/whep
 browser: http://smartfactory-vision.local:8889/global_cam_01_lift_roi
 WHEP:    http://smartfactory-vision.local:8889/global_cam_01_lift_roi/whep
+browser: http://smartfactory-vision.local:8889/tb3_1_picam_full
+WHEP:    http://smartfactory-vision.local:8889/tb3_1_picam_full/whep
+browser: http://smartfactory-vision.local:8889/tb3_2_picam_full
+WHEP:    http://smartfactory-vision.local:8889/tb3_2_picam_full/whep
 ```
 
 Main은 AI Server offer가 `selected_transport=webrtc`를 반환할 때 `sidecar.whep_url`을 WebRTC 통로로 쓰고,
 그 외에는 `fallback_path`의 MJPEG를 사용하면 됩니다. Discovery에는 URL 템플릿과 health URL이 보이지만, 실제 선택은 sidecar health 확인 후 offer 응답을 기준으로 하세요. 자세한 문서는
 [`../docs/setup/webrtc-mediamtx-sidecar.md`](../docs/setup/webrtc-mediamtx-sidecar.md)를 보세요.
+
+Main proxy를 경유해 Vision discovery를 호출한다면 Main 쪽 camera/source allowlist에도
+`global_cam_01`, `tb3_1_picam`, `tb3_2_picam`을 모두 등록해야 합니다. Vision 직접
+API/MediaMTX가 정상이더라도 Main이 모르는 source는 `unknown camera source`로 거절될 수 있습니다.
 
 ### 주요 profile
 
@@ -121,6 +129,11 @@ Main은 AI Server offer가 `selected_transport=webrtc`를 반환할 때 `sidecar
 - GoPro OpenGoPro stream
 - GoPro smart ROI adapter
 - WebRTC discovery/offer fallback endpoint
+
+`lab-gopro-tb3-webrtc`는 여기에 MediaMTX sidecar를 추가합니다. 현재 사용 가능한
+하드웨어가 GoPro + `tb3_1_picam` 한 대뿐이면 `global_cam_01/*`와
+`tb3_1_picam/full`은 WebRTC online이 되고, `tb3_2_picam/full`은 같은 설정으로
+대기하다가 두 번째 로봇 카메라가 같은 domain/topic으로 올라오면 online이 됩니다.
 
 WebRTC는 현재 additive/candidate입니다. 실제 media sidecar가 설정되지 않았으면
 offer는 의도적으로 MJPEG fallback을 선택합니다. Main은 WebRTC 우선 시도 후

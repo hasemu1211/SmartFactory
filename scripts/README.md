@@ -78,12 +78,21 @@ browser: http://smartfactory-vision.local:8889/global_cam_01_full
 WHEP:    http://smartfactory-vision.local:8889/global_cam_01_full/whep
 browser: http://smartfactory-vision.local:8889/global_cam_01_lift_roi
 WHEP:    http://smartfactory-vision.local:8889/global_cam_01_lift_roi/whep
+browser: http://smartfactory-vision.local:8889/tb3_1_picam_full
+WHEP:    http://smartfactory-vision.local:8889/tb3_1_picam_full/whep
+browser: http://smartfactory-vision.local:8889/tb3_2_picam_full
+WHEP:    http://smartfactory-vision.local:8889/tb3_2_picam_full/whep
 ```
 
 Main should use `sidecar.whep_url` when the AI Server offer response returns
 `selected_transport=webrtc`; otherwise it should use the MJPEG `fallback_path`.
 Discovery exposes URL templates and the sidecar health URL, but the offer response is the runtime selection gate. See
 [`../docs/setup/webrtc-mediamtx-sidecar.md`](../docs/setup/webrtc-mediamtx-sidecar.md).
+
+If Main calls Vision discovery through its own proxy, Main's camera/source
+allowlist must include `global_cam_01`, `tb3_1_picam`, and `tb3_2_picam`.
+Otherwise Main can reject an otherwise healthy Vision source with
+`unknown camera source`.
 
 ### Profiles
 
@@ -104,6 +113,12 @@ Discovery exposes URL templates and the sidecar health URL, but the offer respon
 - GoPro OpenGoPro stream
 - GoPro smart ROI adapter
 - WebRTC discovery/offer fallback endpoint
+
+`lab-gopro-tb3-webrtc` adds the MediaMTX sidecar. If the currently available
+hardware is GoPro + one `tb3_1_picam`, `global_cam_01/*` and
+`tb3_1_picam/full` can be WebRTC-online now, while `tb3_2_picam/full` uses the
+same configuration and becomes online when the second robot camera is brought
+up with the matching domain/topic.
 
 WebRTC is still additive/candidate. Without a configured media sidecar, the
 offer endpoint intentionally selects MJPEG fallback. Main should prefer WebRTC
