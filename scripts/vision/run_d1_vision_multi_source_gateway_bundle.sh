@@ -78,11 +78,13 @@ set_defaults() {
   export VISION_MODEL_UNMAPPED_CLASS="${VISION_MODEL_UNMAPPED_CLASS:-unknown}"
 
   export VISION_SOURCE_1_ID="${VISION_SOURCE_1_ID:-tb3_1_picam}"
+  export VISION_SOURCE_1_ENABLED="${VISION_SOURCE_1_ENABLED:-true}"
   export VISION_SOURCE_1_DOMAIN="${VISION_SOURCE_1_DOMAIN:-2}"
   export VISION_SOURCE_1_TOPIC="${VISION_SOURCE_1_TOPIC:-/camera/image_raw/compressed}"
   export VISION_SOURCE_1_INTERNAL_PORT="${VISION_SOURCE_1_INTERNAL_PORT:-18090}"
 
   export VISION_SOURCE_2_ID="${VISION_SOURCE_2_ID:-tb3_2_picam}"
+  export VISION_SOURCE_2_ENABLED="${VISION_SOURCE_2_ENABLED:-true}"
   export VISION_SOURCE_2_DOMAIN="${VISION_SOURCE_2_DOMAIN:-5}"
   export VISION_SOURCE_2_TOPIC="${VISION_SOURCE_2_TOPIC:-/camera/image_raw/compressed}"
   export VISION_SOURCE_2_INTERNAL_PORT="${VISION_SOURCE_2_INTERNAL_PORT:-18091}"
@@ -161,8 +163,8 @@ D1 Main-compatible multi-source gateway bundle
   ai_server: ${AI_SERVER_HOST}:${AI_SERVER_PORT}
   public_host: ${public_host}
   public_gateway: ${VISION_STREAM_GATEWAY_HOST}:${VISION_STREAM_GATEWAY_PORT}
-  source1: ${VISION_SOURCE_1_ID}, domain=${VISION_SOURCE_1_DOMAIN}, topic=${VISION_SOURCE_1_TOPIC}, internal_port=${VISION_SOURCE_1_INTERNAL_PORT}
-  source2: ${VISION_SOURCE_2_ID}, domain=${VISION_SOURCE_2_DOMAIN}, topic=${VISION_SOURCE_2_TOPIC}, internal_port=${VISION_SOURCE_2_INTERNAL_PORT}
+  source1: ${VISION_SOURCE_1_ID}, enabled=${VISION_SOURCE_1_ENABLED}, domain=${VISION_SOURCE_1_DOMAIN}, topic=${VISION_SOURCE_1_TOPIC}, internal_port=${VISION_SOURCE_1_INTERNAL_PORT}
+  source2: ${VISION_SOURCE_2_ID}, enabled=${VISION_SOURCE_2_ENABLED}, domain=${VISION_SOURCE_2_DOMAIN}, topic=${VISION_SOURCE_2_TOPIC}, internal_port=${VISION_SOURCE_2_INTERNAL_PORT}
   global_source: ${VISION_GLOBAL_SOURCE_ID}, upstream=${VISION_GLOBAL_UPSTREAM_URL}, ingest=HTTP /api/v1/vision/frame/process
   qos: image_sub=${VISION_GATEWAY_IMAGE_QOS_RELIABILITY}, overlay_pub=${VISION_GATEWAY_OVERLAY_PUB_QOS_RELIABILITY}, overlay_sub=${VISION_STREAM_OVERLAY_SUB_QOS_RELIABILITY}
   pipeline: async=${VISION_GATEWAY_ASYNC_PIPELINE}, inline_process=${VISION_GATEWAY_PROCESS_FRAME_INLINE}, frame_process_path=${VISION_GATEWAY_FRAME_PROCESS_PATH}, period=${VISION_GATEWAY_PERIOD_SEC}s, output_period=${VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC}s, retry_failed=${VISION_GATEWAY_RETRY_FAILED_FRAME}
@@ -330,6 +332,13 @@ start_public_gateway() {
   echo "[multi-gateway] public-gateway pid=${PIDS[-1]}"
 }
 
+is_truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|y|Y|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 main() {
   case "${1:-}" in
     --help|-h) usage; exit 0 ;;
@@ -347,8 +356,16 @@ main() {
 
   start_ai_server
   wait_for_ai_server
-  start_source_pair "${VISION_SOURCE_1_ID}" "${VISION_SOURCE_1_DOMAIN}" "${VISION_SOURCE_1_TOPIC}" "${VISION_SOURCE_1_INTERNAL_PORT}"
-  start_source_pair "${VISION_SOURCE_2_ID}" "${VISION_SOURCE_2_DOMAIN}" "${VISION_SOURCE_2_TOPIC}" "${VISION_SOURCE_2_INTERNAL_PORT}"
+  if is_truthy "${VISION_SOURCE_1_ENABLED}"; then
+    start_source_pair "${VISION_SOURCE_1_ID}" "${VISION_SOURCE_1_DOMAIN}" "${VISION_SOURCE_1_TOPIC}" "${VISION_SOURCE_1_INTERNAL_PORT}"
+  else
+    echo "[multi-gateway] source disabled: ${VISION_SOURCE_1_ID}"
+  fi
+  if is_truthy "${VISION_SOURCE_2_ENABLED}"; then
+    start_source_pair "${VISION_SOURCE_2_ID}" "${VISION_SOURCE_2_DOMAIN}" "${VISION_SOURCE_2_TOPIC}" "${VISION_SOURCE_2_INTERNAL_PORT}"
+  else
+    echo "[multi-gateway] source disabled: ${VISION_SOURCE_2_ID}"
+  fi
   start_public_gateway
 
   echo "[multi-gateway] running. Ctrl-C stops all local child processes."

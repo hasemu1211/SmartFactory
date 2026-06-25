@@ -24,7 +24,73 @@
 [`docs/requests/main-vision-runtime-config-request-2026-06-19.md`](../docs/requests/main-vision-runtime-config-request-2026-06-19.md)를 보세요.
 MAC/IP 값은 외부 공개 또는 DHCP/router 변경 후 사용 전에 반드시 재확인하세요.
 
-## 빠른 실행 순서
+## 권장 실행: operator bundle
+
+사용자 부담을 줄이기 위해 장시간 실행 프로세스는 이제 profile 기반
+operator script로 묶습니다. 일반 데모에서는 아래 4개 명령만 기억하면 됩니다.
+
+```bash
+./scripts/vision/sf_vision.sh profiles
+./scripts/vision/sf_vision.sh up lab-gopro-tb3
+./scripts/vision/sf_vision.sh status
+./scripts/vision/sf_vision.sh smoke
+```
+
+종료:
+
+```bash
+./scripts/vision/sf_vision.sh down
+```
+
+로그 확인:
+
+```bash
+./scripts/vision/sf_vision.sh logs
+./scripts/vision/sf_vision.sh logs vision-bundle
+./scripts/vision/sf_vision.sh logs gopro-adapter
+```
+
+Makefile alias도 같습니다.
+
+```bash
+make vision-profiles
+make vision-up PROFILE=lab-gopro-tb3
+make vision-status
+make vision-smoke-local
+make vision-down
+```
+
+### 주요 profile
+
+| profile | 용도 | 하드웨어 |
+|---|---|---|
+| `local-smoke` | AI Server/gateway/API/WebRTC fallback smoke | 없음 |
+| `tb3-live` | TurtleBot 1대 Pi camera overlay | 로봇 카메라 |
+| `gopro-segment` | GoPro `global_cam_01` segment overlay proof | GoPro |
+| `lab-gopro-tb3` | GoPro + TurtleBot 1대 통합 데모 | GoPro + 로봇 카메라 |
+
+`lab-gopro-tb3`는 내부적으로 다음을 한 번에 띄웁니다.
+
+- `smartfactory-vision.local` mDNS 임시 방송
+- AI Server `:8100`
+- public MJPEG stream gateway `:8090`
+- `tb3_1_picam` ROS2 camera sidecar
+- GoPro OpenGoPro stream
+- GoPro smart ROI adapter
+- WebRTC discovery/offer fallback endpoint
+
+WebRTC는 현재 additive/candidate입니다. 실제 media sidecar가 설정되지 않았으면
+offer는 의도적으로 MJPEG fallback을 선택합니다. Main은 WebRTC 우선 시도 후
+MJPEG fallback을 유지해야 합니다.
+
+로봇 쪽 camera bringup은 안전상 operator bundle이 자동으로 SSH 실행하지 않습니다.
+TurtleBot 쪽에서는 별도로 다음을 실행하세요.
+
+```bash
+ROS_DOMAIN_ID=2 ros2 launch turtlebot3_bringup camera_low_bandwidth.launch.py
+```
+
+## 하위 스크립트 직접 실행 순서 (디버깅용)
 
 ### 1. 임시 hostname 방송
 
@@ -166,7 +232,7 @@ curl http://smartfactory-main.local:8088/api/v1/vision/bridge/status
 | 그룹 | 실행 위치 | 예시 |
 |---|---|---|
 | AI Server | `scripts/ai/` | `run_ai_server.sh`, `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh`, `test_ai_server.sh` |
-| D1 Vision / Main 연동 | `scripts/vision/` | `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `smoke_main_dashboard_gateway.sh` |
+| D1 Vision / Main 연동 | `scripts/vision/` | `sf_vision.sh`, `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `smoke_main_dashboard_gateway.sh` |
 | 계약/검증 | `scripts/validate/` | `validate_contracts.py`, `validate_deployment_assets.py` |
 | 계약 산출물 생성 | `scripts/generate/` | `generate_source_registry_surfaces.py` |
 | 보고서/Confluence 산출물 | `scripts/reports/` | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` |

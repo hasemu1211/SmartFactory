@@ -6,7 +6,73 @@ Filesystem ownership / placement rules: [`../docs/technical/project-filesystem-o
 This directory contains local operator/developer entrypoints. Prefer these
 scripts over ad-hoc commands so Main/Vision integration stays reproducible.
 
-## Current Main/Vision quick start
+## Recommended quick start: operator bundle
+
+Long-running Vision processes are now wrapped by a profile-based operator
+script. For the common lab demo, remember these commands:
+
+```bash
+./scripts/vision/sf_vision.sh profiles
+./scripts/vision/sf_vision.sh up lab-gopro-tb3
+./scripts/vision/sf_vision.sh status
+./scripts/vision/sf_vision.sh smoke
+```
+
+Stop everything:
+
+```bash
+./scripts/vision/sf_vision.sh down
+```
+
+Inspect logs:
+
+```bash
+./scripts/vision/sf_vision.sh logs
+./scripts/vision/sf_vision.sh logs vision-bundle
+./scripts/vision/sf_vision.sh logs gopro-adapter
+```
+
+Make aliases:
+
+```bash
+make vision-profiles
+make vision-up PROFILE=lab-gopro-tb3
+make vision-status
+make vision-smoke-local
+make vision-down
+```
+
+### Profiles
+
+| Profile | Purpose | Hardware |
+|---|---|---|
+| `local-smoke` | AI Server/gateway/API/WebRTC fallback smoke | none |
+| `tb3-live` | one TurtleBot Pi camera overlay | robot camera |
+| `gopro-segment` | GoPro `global_cam_01` segment overlay proof | GoPro |
+| `lab-gopro-tb3` | integrated GoPro + one TurtleBot lab demo | GoPro + robot camera |
+
+`lab-gopro-tb3` starts:
+
+- temporary `smartfactory-vision.local` mDNS publishing
+- AI Server on `:8100`
+- public MJPEG stream gateway on `:8090`
+- `tb3_1_picam` ROS2 camera sidecar
+- GoPro OpenGoPro stream
+- GoPro smart ROI adapter
+- WebRTC discovery/offer fallback endpoint
+
+WebRTC is still additive/candidate. Without a configured media sidecar, the
+offer endpoint intentionally selects MJPEG fallback. Main should prefer WebRTC
+when healthy/configured and keep MJPEG fallback.
+
+Robot-side camera bringup remains safety-owned and is not launched over SSH by
+the operator bundle. On the TurtleBot, run:
+
+```bash
+ROS_DOMAIN_ID=2 ros2 launch turtlebot3_bringup camera_low_bandwidth.launch.py
+```
+
+## Lower-level Main/Vision scripts for debugging
 
 ### 1. Publish the temporary Vision hostname for a lab session
 
@@ -173,7 +239,7 @@ point to those real paths directly.
 | Group | Runnable location | Examples |
 |---|---|---|
 | AI Server | `scripts/ai/` | `run_ai_server.sh`, `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh`, `test_ai_server.sh` |
-| D1 Vision / Main integration | `scripts/vision/` | `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `smoke_main_dashboard_gateway.sh` |
+| D1 Vision / Main integration | `scripts/vision/` | `sf_vision.sh`, `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `smoke_main_dashboard_gateway.sh` |
 | Contracts / validation | `scripts/validate/` | `validate_contracts.py`, `validate_deployment_assets.py` |
 | Generated contract surfaces | `scripts/generate/` | `generate_source_registry_surfaces.py` |
 | Reports / Confluence assets | `scripts/reports/` | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` |

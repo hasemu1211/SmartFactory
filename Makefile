@@ -2,7 +2,7 @@ ROS2_WS ?= $(or $(SMARTFACTORY_ROS2_WS),/home/codelab/turtlebot3_ws)
 ROS_DISTRO ?= jazzy
 ROS_PACKAGES ?= smartfactory_bringup smartfactory_perception_ros
 
-.PHONY: ai-setup ai-test ai-run contracts source-registry-surfaces deploy-validate docker-ai-config vision-check vision-run vision-config vision-smoke-local vision-smoke-main ros-test ros-build-bringup ros-launch-smoke status
+.PHONY: ai-setup ai-test ai-run contracts source-registry-surfaces deploy-validate docker-ai-config vision-profiles vision-up vision-down vision-status vision-logs vision-check vision-run vision-config vision-smoke-local vision-smoke-main ros-test ros-build-bringup ros-launch-smoke status
 
 ai-setup:
 	./scripts/ai/setup_ai_server_env.sh
@@ -25,17 +25,32 @@ deploy-validate:
 docker-ai-config:
 	docker compose -f docker-compose.ai-server.yml config --quiet
 
+vision-profiles:
+	./scripts/vision/sf_vision.sh profiles
+
+vision-up:
+	./scripts/vision/sf_vision.sh up $${PROFILE:-lab-gopro-tb3}
+
+vision-down:
+	./scripts/vision/sf_vision.sh down
+
+vision-status:
+	./scripts/vision/sf_vision.sh status
+
+vision-logs:
+	./scripts/vision/sf_vision.sh logs
+
 vision-check:
-	VISION_MODEL_WORKER_ENABLED=$${VISION_MODEL_WORKER_ENABLED:-false} ./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh --check
+	./scripts/vision/sf_vision.sh check $${PROFILE:-local-smoke}
 
 vision-run:
-	./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
+	./scripts/vision/sf_vision.sh up $${PROFILE:-lab-gopro-tb3}
 
 vision-config:
-	./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh --print-config
+	./scripts/vision/sf_vision.sh print-config $${PROFILE:-lab-gopro-tb3}
 
 vision-smoke-local:
-	./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh --smoke-local
+	./scripts/vision/sf_vision.sh smoke
 
 vision-smoke-main:
 	./scripts/vision/smoke_main_dashboard_gateway.sh
