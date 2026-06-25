@@ -23,7 +23,9 @@ def test_stream_gateway_keeps_main_overlay_and_frame_stream_routes_read_only():
 
     assert 'parsed.path == "/api/v1/vision/overlay/stream"' in source
     assert 'parsed.path == "/api/v1/vision/frame/stream"' in source
-    assert 'f"{self.upstreams[source]}/api/v1/vision/stream/{urllib.parse.quote(source)}.mjpeg?"' in source
+    assert "def _overlay_upstream_url(" in source
+    assert "/api/v1/vision/stream/" in source
+    assert "/api/v1/vision/overlay/stream?" in source
     assert "/api/v1/vision/frame/latest?" in source
     assert "/api/v1/vision/frame/latest/image?" in source
 
