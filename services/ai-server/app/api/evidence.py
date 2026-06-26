@@ -22,6 +22,7 @@ from ..evidence_evaluation import (
     EVENT_TYPE_VALUES,
     EvidenceEvaluationError,
     build_no_frame_evaluation,
+    build_quality_review_evaluation,
     map_lift_roi_evidence_to_evaluation,
     map_vision_event_to_evaluation,
     record_evidence_evaluation_observability,
@@ -55,6 +56,25 @@ class EvidenceEvaluateRequest(BaseModel):
             "properties": {
                 "save_proof": {"type": "boolean", "default": False},
                 "proof_label": {"type": "string"},
+            },
+        },
+    )
+    quality_flags: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Optional conservative quality guardrail. Canonical keys: "
+            "low_pixel_budget, low_quality_evidence, reason_code, and details."
+        ),
+        json_schema_extra={
+            "additionalProperties": False,
+            "properties": {
+                "low_pixel_budget": {"type": "boolean", "default": False},
+                "low_quality_evidence": {"type": "boolean", "default": False},
+                "reason_code": {
+                    "type": "string",
+                    "enum": ["LOW_PIXEL_BUDGET", "LOW_QUALITY_EVIDENCE"],
+                },
+                "details": {"type": "object", "additionalProperties": True},
             },
         },
     )
@@ -101,6 +121,13 @@ def _frame_age_s(frame: StoredFrame) -> float:
 
 
 _ALLOWED_IMAGE_POLICY_KEYS = {"save_proof", "proof_label"}
+_ALLOWED_QUALITY_FLAG_KEYS = {
+    "low_pixel_budget",
+    "low_quality_evidence",
+    "reason_code",
+    "details",
+}
+_QUALITY_REASON_CODES = {"LOW_PIXEL_BUDGET", "LOW_QUALITY_EVIDENCE"}
 
 
 def _ensure_image_policy(image_policy: dict[str, Any]) -> dict[str, Any]:
@@ -113,6 +140,36 @@ def _ensure_image_policy(image_policy: dict[str, Any]) -> dict[str, Any]:
             detail=f"unknown image_policy keys: {', '.join(unknown)}",
         )
     return image_policy
+
+
+def _ensure_quality_flags(quality_flags: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(quality_flags, dict):
+        raise HTTPException(status_code=400, detail="quality_flags must be an object")
+    unknown = sorted(set(quality_flags) - _ALLOWED_QUALITY_FLAG_KEYS)
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown quality_flags keys: {', '.join(unknown)}",
+        )
+    for key in ("low_pixel_budget", "low_quality_evidence"):
+        if key in quality_flags and not isinstance(quality_flags[key], bool):
+            raise HTTPException(
+                status_code=400,
+                detail=f"quality_flags.{key} must be a boolean",
+            )
+    reason_code = quality_flags.get("reason_code")
+    if reason_code is not None and reason_code not in _QUALITY_REASON_CODES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown quality_flags.reason_code: {reason_code}",
+        )
+    details = quality_flags.get("details")
+    if details is not None and not isinstance(details, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="quality_flags.details must be an object",
+        )
+    return quality_flags
 
 
 def _image_policy_store_image(image_policy: dict[str, Any]) -> bool:
@@ -254,6 +311,36 @@ def _evaluation_from_request_payload(
     return None
 
 
+def _evaluation_from_quality_flags(
+    *,
+    request: EvidenceEvaluateRequest,
+) -> dict[str, Any] | None:
+    flags = _ensure_quality_flags(request.quality_flags)
+    if not flags:
+        return None
+    reason_code = flags.get("reason_code")
+    if reason_code is None:
+        if flags.get("low_pixel_budget"):
+            reason_code = "LOW_PIXEL_BUDGET"
+        elif flags.get("low_quality_evidence"):
+            reason_code = "LOW_QUALITY_EVIDENCE"
+    if reason_code is None:
+        return None
+    try:
+        return build_quality_review_evaluation(
+            source=request.source,
+            view=normalize_view_id(request.view),
+            operation=request.operation,
+            expected_evidence_type=request.expected_evidence_type,
+            expected_count=request.expected_count,
+            task_ref=request.task_ref,
+            reason_code=reason_code,
+            quality_details=flags.get("details") or {},
+        )
+    except EvidenceEvaluationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _evaluation_from_latest_runtime_state(
     *,
     request: EvidenceEvaluateRequest,
@@ -328,7 +415,9 @@ def evaluate_evidence(
             detail="image_uri is response-only; use image_policy.save_proof to store a server-generated proof image",
         )
     frame = runtime_context.frame_store.latest(payload.source)
-    evaluation = _evaluation_from_request_payload(request=payload)
+    evaluation = _evaluation_from_quality_flags(request=payload)
+    if evaluation is None:
+        evaluation = _evaluation_from_request_payload(request=payload)
     if evaluation is None:
         evaluation = _evaluation_from_latest_runtime_state(
             request=payload,

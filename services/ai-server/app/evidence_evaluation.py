@@ -7,6 +7,7 @@ import re
 from typing import Any
 from uuid import uuid4
 
+from .alert_window import build_alert_window_metadata
 from .config import get_settings
 from .contracts import validate_evidence_evaluation
 from .observability import structured_log
@@ -17,6 +18,8 @@ MAPPER_VERSION = "evidence-evaluation-mapper.v1"
 EvaluationStatus = str
 EvaluationValidity = str
 ReasonCode = str
+
+QUALITY_REVIEW_REASON_CODES = {"LOW_PIXEL_BUDGET", "LOW_QUALITY_EVIDENCE"}
 
 EVENT_TYPE_VALUES = {
     "NAV_REACHED",
@@ -335,6 +338,21 @@ def _base_evaluation_payload(
         "reason_code": reason_code,
         **(ai_judgement_extra or {}),
     }
+    data_json = {
+        "ai_judgement": ai_judgement,
+        "original_contract": original_contract,
+        "original_payload": original_payload,
+        "mapper_version": MAPPER_VERSION,
+    }
+    alert_window = build_alert_window_metadata(
+        source=source,
+        view=view,
+        operation=operation,
+        reason_code=reason_code,
+        observed_at=observed_at,
+    )
+    if alert_window is not None:
+        data_json["alert_window"] = alert_window
     payload = {
         "schema_version": EVIDENCE_EVALUATION_SCHEMA_VERSION,
         "evaluation_id": evaluation_id or str(uuid4()),
@@ -350,12 +368,7 @@ def _base_evaluation_payload(
         "trusted": False,
         "image_uri": image_uri,
         "task_ref": _clean_task_ref(task_ref),
-        "data_json": {
-            "ai_judgement": ai_judgement,
-            "original_contract": original_contract,
-            "original_payload": original_payload,
-            "mapper_version": MAPPER_VERSION,
-        },
+        "data_json": data_json,
         "observed_at": observed_at,
     }
     validate_evidence_evaluation(payload)
@@ -487,6 +500,7 @@ def build_no_frame_evaluation(
         "SOURCE_STALE",
         "MODEL_UNAVAILABLE",
         "OBJECT_NOT_FOUND",
+        *QUALITY_REVIEW_REASON_CODES,
     }:
         raise EvidenceEvaluationError("unsupported no-frame reason_code")
     return _base_evaluation_payload(
@@ -507,6 +521,47 @@ def build_no_frame_evaluation(
             "expected_count": expected_count,
             "observed_count": None,
             "stable_frames": 0,
+        },
+        evaluation_id=evaluation_id,
+    )
+
+
+def build_quality_review_evaluation(
+    *,
+    source: str,
+    view: str,
+    reason_code: ReasonCode,
+    operation: str = "UNKNOWN",
+    expected_evidence_type: str | None = None,
+    expected_count: int | None = None,
+    task_ref: dict[str, Any] | None = None,
+    evaluation_id: str | None = None,
+    observed_at: str | None = None,
+    quality_details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build an UNCERTAIN/NEEDS_REVIEW response for quality guardrails."""
+
+    if reason_code not in QUALITY_REVIEW_REASON_CODES:
+        raise EvidenceEvaluationError("unsupported quality-review reason_code")
+    return _base_evaluation_payload(
+        source=source,
+        view=view,
+        operation=_normalize_operation(operation),
+        expected_evidence_type=_normalize_event_type(expected_evidence_type),
+        proposed_event_type=None,
+        verification_status="UNCERTAIN",
+        reason_code=reason_code,
+        confidence=None,
+        image_uri=None,
+        task_ref=task_ref,
+        observed_at=observed_at or _now_iso(),
+        original_contract=None,
+        original_payload=None,
+        ai_judgement_extra={
+            "expected_count": expected_count,
+            "observed_count": None,
+            "stable_frames": 0,
+            "quality_details": quality_details or {},
         },
         evaluation_id=evaluation_id,
     )
@@ -543,6 +598,7 @@ __all__ = [
     "EvidenceImageLocation",
     "build_evidence_image_location",
     "build_no_frame_evaluation",
+    "build_quality_review_evaluation",
     "map_lift_roi_evidence_to_evaluation",
     "map_vision_event_to_evaluation",
     "record_evidence_evaluation_observability",

@@ -173,6 +173,11 @@ def validate_evidence_evaluation_policy(payload: dict[str, Any]) -> None:
         raise PolicyError("PASS evidence evaluation must be VALID_CANDIDATE")
     if status == "UNCERTAIN" and validity != "NEEDS_REVIEW":
         raise PolicyError("UNCERTAIN evidence evaluation must be NEEDS_REVIEW")
+    if payload.get("reason_code") in {"LOW_PIXEL_BUDGET", "LOW_QUALITY_EVIDENCE"}:
+        if status != "UNCERTAIN" or validity != "NEEDS_REVIEW":
+            raise PolicyError(
+                "quality-review evidence evaluation must be UNCERTAIN/NEEDS_REVIEW"
+            )
 
     image_uri = payload.get("image_uri")
     if image_uri is not None:

@@ -142,6 +142,59 @@ def test_evidence_evaluate_missing_frame_is_uncertain_no_frame():
     assert body["task_ref"]["task_id"] == "TASK-NO-FRAME"
 
 
+def test_evidence_evaluate_quality_flag_returns_needs_review_before_payload_promotion():
+    _reset_runtime_state()
+
+    response = client.post(
+        "/api/v1/evidence/evaluate",
+        json={
+            "source": "global_cam_01",
+            "view": "full",
+            "operation": "MONITOR",
+            "expected_evidence_type": "ITEM_DROPPED_CANDIDATE",
+            "task_ref": {"task_id": "TASK-QUALITY-REVIEW"},
+            "quality_flags": {
+                "low_pixel_budget": True,
+                "details": {
+                    "object_size_m": 0.04,
+                    "effective_object_px": 12.8,
+                    "min_object_px": 16.0,
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    validate_evidence_evaluation(body)
+    assert body["verification_status"] == "UNCERTAIN"
+    assert body["validity"] == "NEEDS_REVIEW"
+    assert body["reason_code"] == "LOW_PIXEL_BUDGET"
+    assert body["data_json"]["ai_judgement"]["quality_details"][
+        "effective_object_px"
+    ] == 12.8
+    assert body["data_json"]["alert_window"]["max_frames"] == 30
+
+    metrics = client.get("/api/v1/metrics").json()["metrics"]["evidence_evaluation"]
+    assert metrics["reason_total"]["LOW_PIXEL_BUDGET"] == 1
+
+
+def test_evidence_evaluate_rejects_unknown_quality_flag_key():
+    _reset_runtime_state()
+
+    response = client.post(
+        "/api/v1/evidence/evaluate",
+        json={
+            "source": "global_cam_01",
+            "view": "full",
+            "quality_flags": {"raise_fps_now": True},
+        },
+    )
+
+    assert response.status_code == 400
+    assert "unknown quality_flags keys" in response.json()["error"]["message"]
+
+
 def test_evidence_evaluate_rejects_unknown_expected_evidence_type():
     _reset_runtime_state()
 

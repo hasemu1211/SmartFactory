@@ -30,6 +30,7 @@ def test_evidence_evaluation_valid_fixtures_pass_contract_policy():
         "evidence-evaluation.valid.dropped-item-candidate.json",
         "evidence-evaluation.valid.fail.json",
         "evidence-evaluation.valid.pass.json",
+        "evidence-evaluation.valid.uncertain-low-pixel-budget.json",
         "evidence-evaluation.valid.uncertain-no-frame.json",
     }
     for path in fixtures:
@@ -57,6 +58,17 @@ def test_evidence_evaluation_fixtures_remain_advisory_not_trusted():
         ]
         assert payload["data_json"]["ai_judgement"]["validity"] == payload["validity"]
         assert payload["data_json"]["ai_judgement"]["reason_code"] == payload["reason_code"]
+
+
+def test_quality_review_reason_codes_cannot_validate_as_pass():
+    payload = _load(FIXTURE_DIR / "evidence-evaluation.valid.uncertain-low-pixel-budget.json")
+    payload["verification_status"] = "PASS"
+    payload["validity"] = "VALID_CANDIDATE"
+    payload["data_json"]["ai_judgement"]["verification_status"] = "PASS"
+    payload["data_json"]["ai_judgement"]["validity"] = "VALID_CANDIDATE"
+
+    with pytest.raises(Exception):
+        validate_evidence_evaluation(payload)
 
 
 @pytest.mark.parametrize(

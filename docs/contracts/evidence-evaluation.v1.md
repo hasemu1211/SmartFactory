@@ -31,6 +31,25 @@ Canonical proof-image request policy:
 - `image_policy.proof_label` is an optional filename label used only when `save_proof` is `true`.
 - `image_uri` is response-only. Callers must not submit it; AI Server generates it after storing a proof image under its configured evidence image root.
 
+Optional conservative quality guardrail:
+
+```json
+{
+  "quality_flags": {
+    "low_pixel_budget": true,
+    "details": {
+      "object_size_m": 0.04,
+      "effective_object_px": 12.8,
+      "min_object_px": 16.0
+    }
+  }
+}
+```
+
+When a quality flag is set, AI Server returns `UNCERTAIN`/`NEEDS_REVIEW`
+instead of promoting the frame. This is used for small GoPro/global-camera
+dropped-item targets before increasing continuous inference load.
+
 ## Required response fields
 
 | Field | Meaning |
@@ -62,6 +81,8 @@ reason_code:
   COUNT_MISMATCH
   DROPPED_ITEM_DETECTED
   LOW_CONFIDENCE
+  LOW_PIXEL_BUDGET
+  LOW_QUALITY_EVIDENCE
   ROI_NOT_STABLE
   NO_FRAME
   OBJECT_NOT_FOUND
@@ -69,6 +90,11 @@ reason_code:
   MODEL_UNAVAILABLE
   POLICY_NOT_APPLICABLE
 ```
+
+`LOW_PIXEL_BUDGET` and `LOW_QUALITY_EVIDENCE` are conservative GoPro/global-camera
+guardrail outcomes. They always mean `verification_status=UNCERTAIN` and
+`validity=NEEDS_REVIEW`; Main should store/review them as advisory evidence,
+not as task-completion truth.
 
 ## Stage 1 invariants
 

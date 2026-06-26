@@ -8,6 +8,7 @@ from app.contracts import validate_evidence_evaluation
 from app.evidence_evaluation import (
     build_evidence_image_location,
     build_no_frame_evaluation,
+    build_quality_review_evaluation,
     map_lift_roi_evidence_to_evaluation,
     map_vision_event_to_evaluation,
     record_evidence_evaluation_observability,
@@ -196,6 +197,9 @@ def test_vision_event_mapper_handles_expected_dropped_item_candidate():
     assert evaluation["proposed_event_type"] == "ITEM_DROPPED_CANDIDATE"
     assert evaluation["data_json"]["original_payload"] == original
     assert evaluation["data_json"]["ai_judgement"]["stable_frames"] == 2
+    assert evaluation["data_json"]["alert_window"]["trigger_reason_code"] == (
+        "DROPPED_ITEM_DETECTED"
+    )
 
 
 def test_vision_event_mapper_marks_stale_event_uncertain():
@@ -239,6 +243,36 @@ def test_no_frame_evaluation_is_uncertain_without_original_payload():
     assert evaluation["image_uri"] is None
     assert evaluation["data_json"]["original_contract"] is None
     assert evaluation["data_json"]["original_payload"] is None
+
+
+def test_quality_review_evaluation_is_uncertain_and_carries_alert_window_metadata():
+    evaluation = build_quality_review_evaluation(
+        source="global_cam_01",
+        view="full",
+        operation="MONITOR",
+        expected_evidence_type="ITEM_DROPPED_CANDIDATE",
+        task_ref={"task_id": "TASK-LOW-PIXEL"},
+        reason_code="LOW_PIXEL_BUDGET",
+        observed_at=OBSERVED_AT,
+        evaluation_id="55555555-5555-4555-8555-555555555555",
+        quality_details={
+            "object_size_m": 0.04,
+            "effective_object_px": 12.8,
+            "min_object_px": 16.0,
+        },
+    )
+
+    _assert_valid_advisory(evaluation)
+    assert evaluation["verification_status"] == "UNCERTAIN"
+    assert evaluation["validity"] == "NEEDS_REVIEW"
+    assert evaluation["reason_code"] == "LOW_PIXEL_BUDGET"
+    assert evaluation["data_json"]["ai_judgement"]["quality_details"][
+        "effective_object_px"
+    ] == 12.8
+    assert evaluation["data_json"]["alert_window"]["policy_version"] == (
+        "gopro-sparse-alert-window.v1"
+    )
+    assert evaluation["data_json"]["alert_window"]["advisory_only"] is True
 
 
 def test_evidence_image_location_is_sanitized_and_persisted(tmp_path: Path):

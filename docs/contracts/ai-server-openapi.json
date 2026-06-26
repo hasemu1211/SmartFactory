@@ -421,6 +421,31 @@
                           }
                         }
                       }
+                    },
+                    {
+                      "if": {
+                        "properties": {
+                          "reason_code": {
+                            "enum": [
+                              "LOW_PIXEL_BUDGET",
+                              "LOW_QUALITY_EVIDENCE"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "reason_code"
+                        ]
+                      },
+                      "then": {
+                        "properties": {
+                          "verification_status": {
+                            "const": "UNCERTAIN"
+                          },
+                          "validity": {
+                            "const": "NEEDS_REVIEW"
+                          }
+                        }
+                      }
                     }
                   ],
                   "properties": {
@@ -516,6 +541,8 @@
                         "COUNT_MISMATCH",
                         "DROPPED_ITEM_DETECTED",
                         "LOW_CONFIDENCE",
+                        "LOW_PIXEL_BUDGET",
+                        "LOW_QUALITY_EVIDENCE",
                         "ROI_NOT_STABLE",
                         "NO_FRAME",
                         "OBJECT_NOT_FOUND",
@@ -6198,6 +6225,33 @@
             "title": "Image Policy",
             "description": "Proof-image policy. Canonical keys: save_proof and proof_label."
           },
+          "quality_flags": {
+            "properties": {
+              "low_pixel_budget": {
+                "type": "boolean",
+                "default": false
+              },
+              "low_quality_evidence": {
+                "type": "boolean",
+                "default": false
+              },
+              "reason_code": {
+                "type": "string",
+                "enum": [
+                  "LOW_PIXEL_BUDGET",
+                  "LOW_QUALITY_EVIDENCE"
+                ]
+              },
+              "details": {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            },
+            "additionalProperties": false,
+            "type": "object",
+            "title": "Quality Flags",
+            "description": "Optional conservative quality guardrail. Canonical keys: low_pixel_budget, low_quality_evidence, reason_code, and details."
+          },
           "image_uri": {
             "anyOf": [
               {
@@ -6429,7 +6483,7 @@
         },
         "type": "object",
         "title": "WebRtcOfferRequest",
-        "description": "Media-only WebRTC offer probe request.\n\nThe current AI Server route is an additive broker/descriptor surface. It\nnever publishes ROS control, mutates evidence truth, or writes Main DB\nstate. A configured sidecar owns actual RTP/WebRTC media negotiation."
+        "description": "Media-only WebRTC offer probe request.\n\nThe AI Server route is an additive media-only broker. It never publishes\nROS control, mutates evidence truth, or writes Main DB state. When a WHEP\nsidecar is configured, this endpoint proxies the browser SDP offer to that\nsidecar and returns the SDP answer in the Main-facing contract."
       }
     }
   }
