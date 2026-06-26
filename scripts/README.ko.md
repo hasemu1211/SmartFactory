@@ -89,6 +89,68 @@ Sidecar 단독 확인:
 ./scripts/vision/run_webrtc_sidecar_mediamtx.sh --status
 ```
 
+### WebRTC/direct-media 상태를 안전하게 판별하는 probe
+
+`lab-gopro-tb3-webrtc`를 켠 뒤 “지금 WebRTC가 실제로 쓸 만한 direct media
+경로인지, 아니면 MJPEG를 다시 H264로 바꾼 호환 경로인지”를 확인하려면 다음
+probe를 실행하세요.
+
+```bash
+python3 scripts/vision/probe_direct_media_candidates.py
+```
+
+JSON으로 남기려면:
+
+```bash
+python3 scripts/vision/probe_direct_media_candidates.py \
+  --json \
+  --output /tmp/sf_direct_media_probe.json
+```
+
+이 probe는 **안전한 읽기 전용 진단**입니다.
+
+- ROS2 bringup을 시작하지 않음
+- robot motion / Nav2 / `/cmd_vel`을 건드리지 않음
+- MediaMTX/ffmpeg/GoPro stream 같은 live process를 새로 띄우지 않음
+- map 세팅이 없어도 실행 가능
+- Main `:8090` MJPEG fallback과 ROS no-control 계약을 확인 대상으로만 봄
+
+판정 순서는 다음입니다.
+
+| 후보 | 의미 | 기대 상태 |
+|---|---|---|
+| `direct_clean_media_webrtc` | GoPro/PiCam 원본 media가 직접 WebRTC로 가는 최선 경로 | 최종 목표 |
+| `camera_input_h264_transcode_webrtc` | `/dev/videoN` 또는 camera input을 바로 H264/WebRTC로 변환 | 차선 목표 |
+| `mjpeg_overlay_h264_transcode_webrtc` | 현재 호환 baseline: MJPEG/overlay를 다시 H264/WebRTC로 변환 | 지금 실험 가능, 지연은 MJPEG와 비슷할 수 있음 |
+| `http_mjpeg_gateway` | 기존 Main 호환 `:8090` MJPEG fallback | 항상 유지해야 함 |
+
+현재처럼 GoPro가 `/dev/video*`로 보이지 않고 direct RTSP/UDP/TCP URL도 없으면
+`direct_clean_media_webrtc`와 `camera_input_h264_transcode_webrtc`는 `blocked`로
+나오는 것이 정상입니다. 이때 `tb3_1_picam_full` 같은 MediaMTX path가 online이면
+`mjpeg_overlay_h264_transcode_webrtc`는 `available`로 나옵니다.
+
+direct media 후보를 따로 검증해야 할 때는 HTTP/HTTPS URL이 아니라 redirect 안전
+문제 때문에 다음처럼 RTSP/UDP/TCP 또는 local device 경로를 쓰세요.
+
+```bash
+DIRECT_CLEAN_MEDIA_URL='rtsp://127.0.0.1:18554/global_cam_01_full' \
+python3 scripts/vision/probe_direct_media_candidates.py
+
+CAMERA_INPUT_URL='/dev/video0' \
+python3 scripts/vision/probe_direct_media_candidates.py
+```
+
+요약하면, operator 입장에서는 다음 순서로 보면 됩니다.
+
+```bash
+# 1) live 실행은 tmux Smartfactory:3:Development 안에서만
+./scripts/vision/sf_vision.sh up lab-gopro-tb3-webrtc
+
+# 2) 다른 터미널에서 읽기 전용 상태 확인 가능
+./scripts/vision/sf_vision.sh status
+python3 scripts/vision/probe_direct_media_candidates.py
+```
+
 GoPro/global camera는 **미디어 스트리밍 FPS**와 **AI 추론 FPS**를 분리합니다.
 `lab-gopro-tb3-webrtc`의 기본 의도는 브라우저/WebRTC는 30 FPS target,
 낙하물/overlay AI는 `GOPRO_AI_MONITOR_FPS=5`, 전이 시점 증거는
