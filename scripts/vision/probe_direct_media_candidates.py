@@ -26,7 +26,7 @@ import sys
 from typing import Any, Callable, Iterable, Mapping
 from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 SCHEMA_VERSION = "smartfactory-direct-media-probe.v1"
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -51,6 +51,63 @@ MEDIA_PROBE_SCHEMES = {"http", "https", "rtsp", "rtmp", "tcp", "udp"}
 HTTP_MEDIA_FFPROBE_DISABLED_REASON = "http_media_ffprobe_disabled_use_rtsp_udp_tcp_or_device"
 MIN_FFPROBE_TIMEOUT_S = 0.1
 MAX_FFPROBE_TIMEOUT_S = 5.0
+SENSITIVE_QUERY_KEYS = {
+    "access_token",
+    "api_key",
+    "apikey",
+    "auth",
+    "authorization",
+    "key",
+    "pass",
+    "passwd",
+    "password",
+    "secret",
+    "token",
+}
+URL_TOKEN_RE = re.compile(r"\b(?:https?|rtsp|rtmp|tcp|udp)://[^\s\"'<>]+")
+
+
+def redact_url(value: str) -> str:
+    if not value:
+        return value
+    try:
+        parts = urlsplit(value)
+    except ValueError:
+        return value
+    if not parts.scheme or not parts.netloc:
+        return value
+
+    netloc = parts.netloc
+    if "@" in netloc:
+        netloc = "<redacted>@" + netloc.rsplit("@", 1)[1]
+
+    query = parts.query
+    if query:
+        query = urlencode(
+            [
+                (key, "REDACTED" if key.lower() in SENSITIVE_QUERY_KEYS else val)
+                for key, val in parse_qsl(query, keep_blank_values=True)
+            ],
+            doseq=True,
+        )
+    return urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
+
+
+def redact_text(value: str) -> str:
+    if not value:
+        return value
+    return URL_TOKEN_RE.sub(lambda match: redact_url(match.group(0)), value)
+
+
+def redact_command_args(args: Iterable[str]) -> list[str]:
+    return [redact_text(arg) for arg in args]
+
+
+def redact_input_match(match: Mapping[str, str]) -> dict[str, str]:
+    redacted = dict(match)
+    if "url" in redacted:
+        redacted["url"] = redact_url(redacted["url"])
+    return redacted
 
 
 @dataclasses.dataclass(frozen=True)
@@ -68,12 +125,12 @@ class CommandResult:
 
     def as_observation(self) -> dict[str, Any]:
         return {
-            "args": list(self.args),
+            "args": redact_command_args(self.args),
             "returncode": self.returncode,
-            "stdout": self.stdout.strip(),
-            "stderr": self.stderr.strip(),
+            "stdout": redact_text(self.stdout.strip()),
+            "stderr": redact_text(self.stderr.strip()),
             "timed_out": self.timed_out,
-            "error": self.error,
+            "error": redact_text(self.error or "") or None,
         }
 
 
@@ -98,11 +155,11 @@ class HttpResult:
         if len(body) > max_body_chars:
             body = body[:max_body_chars] + "...<truncated>"
         return {
-            "url": self.url,
+            "url": redact_url(self.url),
             "ok": self.ok,
             "status": self.status,
-            "body": body,
-            "error": self.error,
+            "body": redact_text(body),
+            "error": redact_text(self.error or "") or None,
         }
 
 
@@ -284,6 +341,153 @@ def stream_path_id(spec: str) -> str:
     return f"{safe_source}_{safe_view}"
 
 
+def split_stream_spec(spec: str) -> tuple[str, str]:
+    spec = spec.strip()
+    if "/" in spec:
+        source, view = spec.split("/", 1)
+    else:
+        source, view = spec, "full"
+    return source.strip(), view.strip()
+
+
+def env_suffix(value: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]+", "_", value).strip("_").upper()
+
+
+def first_env_value(env: Mapping[str, str], keys: Iterable[str]) -> str:
+    for key in keys:
+        value = env.get(key)
+        if value:
+            return value
+    return ""
+
+
+def render_sidecar_url_template(template: str, spec: str, env: Mapping[str, str]) -> str:
+    source, view = split_stream_spec(spec)
+    path = stream_path_id(spec)
+    return (
+        template.replace("{source}", source)
+        .replace("{source_id}", source)
+        .replace("{view}", view)
+        .replace("{view_id}", view)
+        .replace("{path}", path)
+        .replace("{path_id}", path)
+        .replace("{max_fps}", env.get("WEBRTC_SIDECAR_INPUT_MAX_FPS", "15"))
+    )
+
+
+def sidecar_input_matches_from_env(env: Mapping[str, str], kind: str, stream_specs: list[str]) -> list[dict[str, str]]:
+    template_key = f"WEBRTC_SIDECAR_{kind}_INPUT_URL_TEMPLATE"
+    legacy_key = f"WEBRTC_SIDECAR_{kind}_INPUT_URL"
+    specs = stream_specs or list(DEFAULT_STREAM_SPECS)
+    matches: list[dict[str, str]] = []
+    for spec in specs:
+        source, view = split_stream_spec(spec)
+        path = stream_path_id(spec)
+        source_suffix = env_suffix(source)
+        view_suffix = env_suffix(view)
+        path_suffix = env_suffix(path)
+        keys = [
+            f"{template_key}_{path_suffix}",
+            f"{template_key}_{source_suffix}_{view_suffix}",
+            f"WEBRTC_SIDECAR_{path_suffix}_{kind}_INPUT_URL_TEMPLATE",
+            f"WEBRTC_SIDECAR_{source_suffix}_{view_suffix}_{kind}_INPUT_URL_TEMPLATE",
+            f"{legacy_key}_{path_suffix}",
+            f"{legacy_key}_{source_suffix}_{view_suffix}",
+        ]
+        for key in keys:
+            template = env.get(key)
+            if template:
+                matches.append({
+                    "url": render_sidecar_url_template(template, spec, env),
+                    "matched_stream_spec": spec,
+                    "matched_path_id": path,
+                    "env_key": key,
+                    "scope": "stream",
+                })
+                break
+    for key in [template_key, legacy_key]:
+        template = env.get(key)
+        if template:
+            for spec in specs:
+                matches.append(
+                    {
+                        "url": render_sidecar_url_template(template, spec, env),
+                        "matched_stream_spec": spec,
+                        "matched_path_id": stream_path_id(spec),
+                        "env_key": key,
+                        "scope": "global_template",
+                    }
+                )
+            break
+    return matches
+
+
+def sidecar_input_match_from_env(env: Mapping[str, str], kind: str, stream_specs: list[str]) -> dict[str, str]:
+    matches = sidecar_input_matches_from_env(env, kind, stream_specs)
+    if matches:
+        return matches[0]
+    return {}
+
+
+def sidecar_input_url_from_env(env: Mapping[str, str], kind: str, stream_specs: list[str]) -> str:
+    return sidecar_input_match_from_env(env, kind, stream_specs).get("url", "")
+
+
+def explicit_input_match(
+    *,
+    url: str | None,
+    configured_by: str,
+    stream_specs: list[str],
+    env_key: str | None = None,
+) -> dict[str, str]:
+    if not url:
+        return {}
+    spec = stream_specs[0] if stream_specs else DEFAULT_STREAM_SPECS[0]
+    match = {
+        "url": url,
+        "matched_stream_spec": spec,
+        "matched_path_id": stream_path_id(spec),
+        "configured_by": configured_by,
+        "scope": "explicit_url",
+    }
+    if env_key:
+        match["env_key"] = env_key
+    return match
+
+
+def probe_input_matches(
+    matches: list[dict[str, str]],
+    runner: CommandRunner,
+    timeout_s: float,
+) -> dict[str, Any]:
+    if not matches:
+        return probe_media_url("", runner, timeout_s)
+
+    first_probe: dict[str, Any] | None = None
+    attempts: list[dict[str, Any]] = []
+    for match in matches:
+        probed = probe_media_url(match.get("url", ""), runner, timeout_s)
+        probed["input_match"] = redact_input_match(match)
+        attempt = {
+            "ok": probed.get("ok"),
+            "reason": probed.get("reason"),
+            "url": probed.get("url"),
+            "input_match": probed.get("input_match"),
+            "has_video_stream": probed.get("has_video_stream"),
+        }
+        attempts.append(attempt)
+        if first_probe is None:
+            first_probe = probed
+        if probed.get("ok") is True:
+            probed["input_attempts"] = attempts
+            return probed
+
+    assert first_probe is not None
+    first_probe["input_attempts"] = attempts
+    return first_probe
+
+
 def command_presence(names: Iterable[str]) -> dict[str, dict[str, Any]]:
     out: dict[str, dict[str, Any]] = {}
     for name in names:
@@ -328,23 +532,24 @@ def detect_v4l2(runner: CommandRunner) -> dict[str, Any]:
 def probe_media_url(url: str, runner: CommandRunner, timeout_s: float) -> dict[str, Any]:
     if not url:
         return {"configured": False, "ok": False, "reason": "url_empty"}
+    safe_url = redact_url(url)
     allowed, url_reason = validate_probe_url(
         url,
         allowed_schemes=MEDIA_PROBE_SCHEMES,
         allow_video_device_path=True,
     )
     if not allowed:
-        return {"configured": True, "url": url, "ok": False, "reason": f"url_not_allowed:{url_reason}"}
+        return {"configured": True, "url": safe_url, "ok": False, "reason": f"url_not_allowed:{url_reason}"}
     parsed = urlsplit(url)
     if parsed.scheme.lower() in {"http", "https"}:
         return {
             "configured": True,
-            "url": url,
+            "url": safe_url,
             "ok": False,
             "reason": HTTP_MEDIA_FFPROBE_DISABLED_REASON,
         }
     if shutil.which("ffprobe") is None:
-        return {"configured": True, "url": url, "ok": False, "reason": "ffprobe_not_installed"}
+        return {"configured": True, "url": safe_url, "ok": False, "reason": "ffprobe_not_installed"}
     timeout_s = clamp_ffprobe_timeout(timeout_s)
     result = runner(
         [
@@ -377,7 +582,7 @@ def probe_media_url(url: str, runner: CommandRunner, timeout_s: float) -> dict[s
         reason = "ffprobe_timeout" if result.timed_out else "ffprobe_failed"
     return {
         "configured": True,
-        "url": url,
+        "url": safe_url,
         "ok": ok,
         "command": result.as_observation(),
         "stream_info": body,
@@ -510,6 +715,8 @@ def build_candidates(observations: Mapping[str, Any]) -> list[dict[str, Any]]:
     has_readable_device = has_readable_video_device(video_devices)
     if camera_probe.get("ok"):
         camera_status, camera_reason = "available", "configured_camera_input_url_readable_by_ffprobe"
+    elif camera_probe.get("configured"):
+        camera_status, camera_reason = "blocked", str(camera_probe.get("reason") or "camera_input_url_not_readable")
     elif has_readable_device and ffmpeg_present and mediamtx_present:
         camera_status, camera_reason = "available", "readable_local_video_device_present_for_camera_input_h264_transcode"
     elif has_video_device and not has_readable_device:
@@ -590,10 +797,26 @@ def build_candidates(observations: Mapping[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def probe_match_for_candidate(candidate: Mapping[str, Any]) -> Mapping[str, Any]:
+    checks = candidate.get("checks") if isinstance(candidate.get("checks"), Mapping) else {}
+    if candidate.get("transport_class") == "direct_clean_media_webrtc":
+        probe = checks.get("direct_media_probe")
+    elif candidate.get("transport_class") == "camera_input_h264_transcode_webrtc":
+        probe = checks.get("camera_input_probe")
+    else:
+        probe = None
+    if isinstance(probe, Mapping) and isinstance(probe.get("input_match"), Mapping):
+        return probe["input_match"]
+    return {}
+
+
 def build_recommendation(candidates: list[dict[str, Any]]) -> dict[str, Any]:
     first_available = next((item for item in candidates if item.get("status") == "available"), None)
     if first_available:
         transport = str(first_available["transport_class"])
+        match = probe_match_for_candidate(first_available)
+        matched_stream = str(match.get("matched_stream_spec") or "") if match else ""
+        matched_path = str(match.get("matched_path_id") or "") if match else ""
         if transport == "direct_clean_media_webrtc":
             action = "Promote direct clean media WebRTC for measured Main trial; keep :8090 fallback enabled."
         elif transport == "camera_input_h264_transcode_webrtc":
@@ -602,7 +825,16 @@ def build_recommendation(candidates: list[dict[str, Any]]) -> dict[str, Any]:
             action = "Use current MediaMTX sidecar only as compatibility WebRTC baseline; expect latency similar to MJPEG."
         else:
             action = "Stay on MJPEG fallback until a WebRTC media path becomes measurable."
-        return {"selected_transport_class": transport, "action": action, "status": "ready_for_safe_trial"}
+        if matched_stream:
+            action = f"{action} Matched stream: {matched_stream}; do not infer every configured stream has this transport."
+        return {
+            "selected_transport_class": transport,
+            "action": action,
+            "status": "ready_for_safe_trial",
+            "matched_stream_spec": matched_stream or None,
+            "matched_path_id": matched_path or None,
+            "scope": str(match.get("scope") or "profile") if match else "profile",
+        }
     return {
         "selected_transport_class": None,
         "action": "No candidate is currently available; start lab profile in tmux Smartfactory:3:Development when hardware is ready, then rerun this probe.",
@@ -621,13 +853,54 @@ def build_probe_report(
     ffprobe_timeout_s: float = 1.0,
 ) -> dict[str, Any]:
     env = merged_env(profile, runtime_env)
-    direct_url = direct_url or env.get("DIRECT_CLEAN_MEDIA_URL") or env.get("GOPRO_DIRECT_MEDIA_URL") or ""
-    camera_input_url = camera_input_url or env.get("CAMERA_INPUT_URL") or env.get("WEBRTC_CAMERA_INPUT_URL") or ""
     ffprobe_timeout_s = clamp_ffprobe_timeout(ffprobe_timeout_s)
 
     http_observations = collect_http_observations(env, fetcher)
     stream_specs = stream_specs_from_env(env)
     stream_path_ids = [stream_path_id(spec) for spec in stream_specs]
+    direct_matches = [
+        match
+        for match in [
+            explicit_input_match(url=direct_url, configured_by="cli_arg", stream_specs=stream_specs),
+            explicit_input_match(
+            url=env.get("DIRECT_CLEAN_MEDIA_URL"),
+            configured_by="env",
+            env_key="DIRECT_CLEAN_MEDIA_URL",
+            stream_specs=stream_specs,
+            ),
+            explicit_input_match(
+            url=env.get("GOPRO_DIRECT_MEDIA_URL"),
+            configured_by="env",
+            env_key="GOPRO_DIRECT_MEDIA_URL",
+            stream_specs=stream_specs,
+            ),
+        ]
+        if match
+    ]
+    direct_matches.extend(sidecar_input_matches_from_env(env, "DIRECT", stream_specs))
+    camera_matches = [
+        match
+        for match in [
+            explicit_input_match(url=camera_input_url, configured_by="cli_arg", stream_specs=stream_specs),
+            explicit_input_match(
+            url=env.get("CAMERA_INPUT_URL"),
+            configured_by="env",
+            env_key="CAMERA_INPUT_URL",
+            stream_specs=stream_specs,
+            ),
+            explicit_input_match(
+            url=env.get("WEBRTC_CAMERA_INPUT_URL"),
+            configured_by="env",
+            env_key="WEBRTC_CAMERA_INPUT_URL",
+            stream_specs=stream_specs,
+            ),
+        ]
+        if match
+    ]
+    camera_matches.extend(sidecar_input_matches_from_env(env, "CAMERA", stream_specs))
+
+    direct_probe = probe_input_matches(direct_matches, runner, ffprobe_timeout_s)
+    camera_probe = probe_input_matches(camera_matches, runner, ffprobe_timeout_s)
     observations: dict[str, Any] = {
         "profile": profile,
         "profile_file": str(REPO_ROOT / "config" / "vision" / "profiles" / f"{profile}.env"),
@@ -638,8 +911,8 @@ def build_probe_report(
         "video_devices": list_video_devices(),
         "usb": detect_usb_devices(runner),
         "v4l2": detect_v4l2(runner),
-        "direct_media_probe": probe_media_url(direct_url, runner, ffprobe_timeout_s),
-        "camera_input_probe": probe_media_url(camera_input_url, runner, ffprobe_timeout_s),
+        "direct_media_probe": direct_probe,
+        "camera_input_probe": camera_probe,
         "http": http_observations,
         "environment": {
             "AI_SERVER_URL": env.get("AI_SERVER_URL") or f"http://127.0.0.1:{env.get('AI_SERVER_PORT', '8100')}",

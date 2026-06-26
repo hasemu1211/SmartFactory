@@ -125,6 +125,24 @@ Sidecar-only checks:
 ./scripts/vision/run_webrtc_sidecar_mediamtx.sh --status
 ```
 
+`--print-config` shows each stream's `input_candidates`. The default order is
+`direct,camera,mjpeg`: native/direct media first, local camera input second, and
+the existing MJPEG overlay gateway as the final compatibility fallback.
+
+```bash
+WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE='rtsp://127.0.0.1:8555/{source}_{view}' \
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --print-config
+
+WEBRTC_SIDECAR_CAMERA_INPUT_URL_TEMPLATE_GLOBAL_CAM_01_FULL='/dev/video0' \
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --print-config
+```
+
+Supported placeholders are `{source}`, `{view}`, `{path}`, and `{max_fps}`.
+Config output and logs redact URL userinfo and sensitive query values. If a
+direct/camera candidate does not make its MediaMTX path online within
+`WEBRTC_SIDECAR_CANDIDATE_START_TIMEOUT_S`, the publisher moves to the next
+candidate so the MJPEG fallback is not hidden behind a hung input.
+
 GoPro/global-camera media FPS and AI inference FPS are separate. The
 `lab-gopro-tb3-webrtc` intent is 30 FPS WebRTC/browser media when healthy,
 `GOPRO_AI_MONITOR_FPS=5` for continuous dropped-item/overlay inference, and
@@ -158,6 +176,7 @@ Sidecar details are in [`../docs/setup/webrtc-mediamtx-sidecar.md`](../docs/setu
 |---|---|---|
 | `local-smoke` | AI Server/gateway/API/WebRTC fallback smoke | none |
 | `tb3-live` | one TurtleBot Pi camera overlay | robot camera |
+| `tb3-live-webrtc` | tb3_1 Pi camera MJPEG-derived WebRTC without GoPro; hermetic against stale direct/camera env | robot camera + `mediamtx` |
 | `gopro-segment` | GoPro `global_cam_01` segment overlay proof | GoPro |
 | `lab-gopro-tb3` | integrated GoPro + one TurtleBot lab demo, MJPEG stable path | GoPro + robot camera |
 | `lab-gopro-tb3-webrtc` | same demo plus MediaMTX WebRTC sidecar | GoPro + robot camera + `mediamtx` |
@@ -181,6 +200,19 @@ up with the matching domain/topic.
 WebRTC is still additive/candidate. Without a configured media sidecar, the
 offer endpoint intentionally selects MJPEG fallback. Main should prefer WebRTC
 when healthy/configured and keep MJPEG fallback.
+
+When GoPro USB is unstable but tb3_1 PiCam should still be tested through WebRTC, use:
+
+```bash
+./scripts/vision/sf_vision.sh up tb3-live-webrtc
+# or keep the friendly wrapper:
+SF_LAB_PROFILE=tb3-live-webrtc ./scripts/vision/sf_lab.sh all
+```
+
+`tb3-live-webrtc` intentionally pins `WEBRTC_SIDECAR_INPUT_PRIORITY=mjpeg`, so
+old direct/camera candidate variables from a reused shell do not change the
+PiCam-only fallback path. Use `lab-gopro-tb3-webrtc` or an explicit sidecar
+profile when you want to test direct/camera media candidates.
 
 Robot-side camera bringup remains safety-owned and is not launched over SSH by
 the operator bundle. On the TurtleBot, run:

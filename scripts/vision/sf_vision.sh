@@ -126,6 +126,7 @@ load_profile() {
   export GOPRO_OPERATION="${GOPRO_OPERATION:-MONITOR}"
   export GOPRO_ROI_KIND="${GOPRO_ROI_KIND:-DROPPED_ITEM}"
   export SF_VISION_WEBRTC_SIDECAR_ENABLED="${SF_VISION_WEBRTC_SIDECAR_ENABLED:-false}"
+  export SF_VISION_SWEEP_STALE_WEBRTC="${SF_VISION_SWEEP_STALE_WEBRTC:-true}"
   export MEDIAMTX_RTSP_PORT="${MEDIAMTX_RTSP_PORT:-18554}"
   export MEDIAMTX_WEBRTC_PORT="${MEDIAMTX_WEBRTC_PORT:-8889}"
   export MEDIAMTX_WEBRTC_ICE_UDP_PORT="${MEDIAMTX_WEBRTC_ICE_UDP_PORT:-8189}"
@@ -233,6 +234,128 @@ alive_pid() {
   [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null
 }
 
+terminate_pid() {
+  local label="$1" pid="$2" signal="${3:-TERM}"
+  [ -n "${pid:-}" ] || return 0
+  [ "${pid}" != "$$" ] || return 0
+  if alive_pid "${pid}"; then
+    echo "[sf-vision] stopping ${label} pid=${pid}"
+    kill "-${signal}" "${pid}" 2>/dev/null || true
+    return 0
+  fi
+}
+
+terminate_processes_matching() {
+  local label="$1" needle="$2" signal="${3:-TERM}"
+  [ -n "${needle:-}" ] || return 0
+  local pid cmd matched=0
+  while read -r pid cmd; do
+    [ -n "${pid:-}" ] || continue
+    [ "${pid}" != "$$" ] || continue
+    case "${cmd}" in
+      *"${needle}"*)
+        terminate_pid "${label}" "${pid}" "${signal}"
+        matched=1
+        ;;
+    esac
+  done < <(ps -eo pid=,args=)
+  return "${matched}"
+}
+
+process_is_ffmpeg() {
+  local pid="$1"
+  local comm args first
+  comm="$(ps -p "${pid}" -o comm= 2>/dev/null | awk '{print $1}' || true)"
+  case "${comm}" in
+    ffmpeg) return 0 ;;
+  esac
+  args="$(process_cmd "${pid}")"
+  first="${args%% *}"
+  case "$(basename "${first}")" in
+    ffmpeg) return 0 ;;
+  esac
+  return 1
+}
+
+terminate_ffmpeg_processes_matching_all() {
+  local label="$1" signal="$2"
+  shift 2
+  [ "$#" -gt 0 ] || return 0
+  local pid cmd needle matched=0 ok
+  while read -r pid cmd; do
+    [ -n "${pid:-}" ] || continue
+    [ "${pid}" != "$$" ] || continue
+    process_is_ffmpeg "${pid}" || continue
+    ok=1
+    for needle in "$@"; do
+      case "${cmd}" in
+        *"${needle}"*) ;;
+        *) ok=0; break ;;
+      esac
+    done
+    if [ "${ok}" -eq 1 ]; then
+      terminate_pid "${label}" "${pid}" "${signal}"
+      matched=1
+    fi
+  done < <(ps -eo pid=,args=)
+  return "${matched}"
+}
+
+process_cmd() {
+  local pid="$1"
+  ps -p "${pid}" -o args= 2>/dev/null || true
+}
+
+terminate_recorded_sidecar_pids() {
+  local sidecar_run_dir="${RUN_DIR}/webrtc-sidecar"
+  local sidecar_pid_file="${sidecar_run_dir}/pids.tsv"
+  local mediamtx_config="${sidecar_run_dir}/mediamtx.yml"
+  local name pid log cmd
+
+  if [ -f "${sidecar_pid_file}" ]; then
+    while IFS=$'\t' read -r name pid log; do
+      [ -n "${pid:-}" ] || continue
+      cmd="$(process_cmd "${pid}")"
+      case "${name}:${cmd}" in
+        mediamtx:*"${mediamtx_config}"*|publisher-*:*"${ROOT_DIR}/scripts/vision/run_webrtc_sidecar_mediamtx.sh"*)
+          terminate_pid "recorded WebRTC sidecar ${name}" "${pid}" TERM
+          ;;
+      esac
+    done < "${sidecar_pid_file}"
+  fi
+
+  local status_file="${sidecar_run_dir}/status.env"
+  if [ -f "${status_file}" ]; then
+    local mediamtx_pid=""
+    mediamtx_pid="$(grep -E '^MEDIAMTX_PID=' "${status_file}" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
+    if [ -n "${mediamtx_pid}" ]; then
+      cmd="$(process_cmd "${mediamtx_pid}")"
+      case "${cmd}" in
+        *"${mediamtx_config}"*) terminate_pid "recorded WebRTC sidecar mediamtx" "${mediamtx_pid}" TERM ;;
+      esac
+    fi
+  fi
+}
+
+stop_stale_webrtc_sidecar_processes() {
+  is_truthy "${SF_VISION_SWEEP_STALE_WEBRTC:-true}" || return 0
+
+  local sidecar_run_dir="${RUN_DIR}/webrtc-sidecar"
+  local rtsp_output="rtsp://127.0.0.1:${MEDIAMTX_RTSP_PORT:-18554}/"
+
+  if [ ! -f "${sidecar_run_dir}/pids.tsv" ] && [ ! -f "${sidecar_run_dir}/status.env" ]; then
+    return 0
+  fi
+
+  terminate_recorded_sidecar_pids
+  terminate_ffmpeg_processes_matching_all \
+    "stale SmartFactory MJPEG WebRTC publisher" \
+    TERM \
+    "ffmpeg" \
+    "${rtsp_output}" \
+    "/api/v1/vision/overlay/stream?source=" || true
+}
+
 ensure_not_running() {
   if [ -f "${SUPERVISOR_PID_FILE}" ]; then
     local old_pid
@@ -320,6 +443,9 @@ wait_for_url() {
 current_tmux_context() {
   if [ -z "${TMUX:-}" ] || ! command -v tmux >/dev/null 2>&1; then
     return 1
+  fi
+  if [ -n "${TMUX_PANE:-}" ]; then
+    tmux display-message -p -t "${TMUX_PANE}" '#S:#I:#W' 2>/dev/null && return 0
   fi
   tmux display-message -p '#S:#I:#W' 2>/dev/null
 }
@@ -569,6 +695,7 @@ down() {
   if [ "${stopped}" -eq 0 ]; then
     echo "[sf-vision] no live recorded runtime found"
   fi
+  stop_stale_webrtc_sidecar_processes
 }
 
 cmd="${1:-}"

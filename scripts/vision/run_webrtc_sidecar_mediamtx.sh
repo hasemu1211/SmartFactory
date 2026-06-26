@@ -38,6 +38,16 @@ WEBRTC_SIDECAR_INPUT_MAX_DELAY="${WEBRTC_SIDECAR_INPUT_MAX_DELAY:-0}"
 WEBRTC_SIDECAR_AVIOFLAGS_DIRECT="${WEBRTC_SIDECAR_AVIOFLAGS_DIRECT:-false}"
 WEBRTC_SIDECAR_OUTPUT_MUXDELAY="${WEBRTC_SIDECAR_OUTPUT_MUXDELAY:-0}"
 WEBRTC_SIDECAR_OUTPUT_MUXPRELOAD="${WEBRTC_SIDECAR_OUTPUT_MUXPRELOAD:-0}"
+WEBRTC_SIDECAR_CANDIDATE_START_TIMEOUT_S="${WEBRTC_SIDECAR_CANDIDATE_START_TIMEOUT_S:-20}"
+WEBRTC_SIDECAR_NETWORK_RW_TIMEOUT_US="${WEBRTC_SIDECAR_NETWORK_RW_TIMEOUT_US:-3000000}"
+WEBRTC_SIDECAR_INPUT_PRIORITY="${WEBRTC_SIDECAR_INPUT_PRIORITY:-direct,camera,mjpeg}"
+WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE="${WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE:-${DIRECT_CLEAN_MEDIA_URL:-${GOPRO_DIRECT_MEDIA_URL:-}}}"
+WEBRTC_SIDECAR_CAMERA_INPUT_URL_TEMPLATE="${WEBRTC_SIDECAR_CAMERA_INPUT_URL_TEMPLATE:-${WEBRTC_CAMERA_INPUT_URL:-${CAMERA_INPUT_URL:-}}}"
+WEBRTC_SIDECAR_DIRECT_INPUT_FORMAT="${WEBRTC_SIDECAR_DIRECT_INPUT_FORMAT:-auto}"
+WEBRTC_SIDECAR_CAMERA_INPUT_FORMAT="${WEBRTC_SIDECAR_CAMERA_INPUT_FORMAT:-auto}"
+WEBRTC_SIDECAR_MJPEG_INPUT_FORMAT="${WEBRTC_SIDECAR_MJPEG_INPUT_FORMAT:-mpjpeg}"
+WEBRTC_SIDECAR_CAMERA_INPUT_FPS="${WEBRTC_SIDECAR_CAMERA_INPUT_FPS:-${WEBRTC_SIDECAR_TARGET_FPS}}"
+WEBRTC_SIDECAR_CAMERA_INPUT_SIZE="${WEBRTC_SIDECAR_CAMERA_INPUT_SIZE:-}"
 WEBRTC_SIDECAR_INPUT_URL_TEMPLATE="${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE:-}"
 if [ -z "${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE}" ]; then
   WEBRTC_SIDECAR_INPUT_URL_TEMPLATE="http://127.0.0.1:${VISION_STREAM_GATEWAY_PORT:-8090}/api/v1/vision/overlay/stream?source={source}&view={view}&max_fps={max_fps}"
@@ -86,6 +96,9 @@ current_tmux_context() {
   if [ -z "${TMUX:-}" ] || ! command -v tmux >/dev/null 2>&1; then
     return 1
   fi
+  if [ -n "${TMUX_PANE:-}" ]; then
+    tmux display-message -p -t "${TMUX_PANE}" '#S:#I:#W' 2>/dev/null && return 0
+  fi
   tmux display-message -p '#S:#I:#W' 2>/dev/null
 }
 
@@ -117,6 +130,87 @@ is_executable_cmd() {
 
 slug() {
   printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '_' | sed -e 's/^_*//' -e 's/_*$//'
+}
+
+env_suffix() {
+  slug "$1" | tr '[:lower:]-' '[:upper:]_'
+}
+
+redact_url() {
+  local raw="$1"
+  if ! command -v python3 >/dev/null 2>&1; then
+    printf '%s' "${raw}" | sed -E 's#(://)[^/@]+@#\\1<redacted>@#'
+    return
+  fi
+  python3 - "$raw" <<'PY'
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+import sys
+
+raw = sys.argv[1]
+sensitive = {"token", "access_token", "auth", "authorization", "password", "passwd", "pass", "secret", "api_key", "apikey", "key"}
+try:
+    parts = urlsplit(raw)
+except ValueError:
+    print(raw)
+    raise SystemExit(0)
+
+if not parts.scheme or not parts.netloc:
+    print(raw)
+    raise SystemExit(0)
+
+netloc = parts.netloc
+if "@" in netloc:
+    netloc = "<redacted>@" + netloc.rsplit("@", 1)[1]
+
+if parts.query:
+    query = urlencode(
+        [(k, "REDACTED" if k.lower() in sensitive else v) for k, v in parse_qsl(parts.query, keep_blank_values=True)],
+        doseq=True,
+    )
+else:
+    query = parts.query
+
+print(urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment)))
+PY
+}
+
+redact_stream() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    sed -E \
+      -e 's#(://)[^/@[:space:]]+@#\1<redacted>@#g' \
+      -e 's#([?&](token|access_token|auth|authorization|password|passwd|pass|secret|api_key|apikey|key)=)[^&[:space:]]+#\1REDACTED#gI'
+    return
+  fi
+  python3 - <<'PY'
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+import re
+import sys
+
+sensitive = {"token", "access_token", "auth", "authorization", "password", "passwd", "pass", "secret", "api_key", "apikey", "key"}
+url_re = re.compile(r"\b(?:https?|rtsp|rtmp|tcp|udp)://[^\s\"'<>]+")
+
+def redact_url(raw: str) -> str:
+    try:
+        parts = urlsplit(raw)
+    except ValueError:
+        return raw
+    if not parts.scheme or not parts.netloc:
+        return raw
+    netloc = parts.netloc
+    if "@" in netloc:
+        netloc = "<redacted>@" + netloc.rsplit("@", 1)[1]
+    query = parts.query
+    if query:
+        query = urlencode(
+            [(k, "REDACTED" if k.lower() in sensitive else v) for k, v in parse_qsl(query, keep_blank_values=True)],
+            doseq=True,
+        )
+    return urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
+
+for line in sys.stdin:
+    sys.stdout.write(url_re.sub(lambda match: redact_url(match.group(0)), line))
+    sys.stdout.flush()
+PY
 }
 
 csv_to_json_array() {
@@ -166,15 +260,137 @@ stream_path_id() {
   printf '%s_%s' "${source}" "${view}"
 }
 
-render_input_url() {
-  local source="$1" view="$2"
-  local url="${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE}"
+render_url_template() {
+  local template="$1" source="$2" view="$3" path="$4"
+  local url="${template}"
   url="${url//\{source\}/${source}}"
   url="${url//\{source_id\}/${source}}"
   url="${url//\{view\}/${view}}"
   url="${url//\{view_id\}/${view}}"
+  url="${url//\{path\}/${path}}"
+  url="${url//\{path_id\}/${path}}"
   url="${url//\{max_fps\}/${WEBRTC_SIDECAR_INPUT_MAX_FPS}}"
   printf '%s' "${url}"
+}
+
+render_input_url() {
+  local source="$1" view="$2"
+  local path
+  path="$(slug "${source}_${view}")"
+  render_url_template "${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE}" "${source}" "${view}" "${path}"
+}
+
+first_set_env_value() {
+  local name
+  for name in "$@"; do
+    if [ -n "${!name:-}" ]; then
+      printf '%s' "${!name}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+stream_template_value() {
+  local kind="$1" source="$2" view="$3" path="$4"
+  local source_suffix view_suffix path_suffix template_var legacy_var
+  source_suffix="$(env_suffix "${source}")"
+  view_suffix="$(env_suffix "${view}")"
+  path_suffix="$(env_suffix "${path}")"
+  template_var="WEBRTC_SIDECAR_${kind}_INPUT_URL_TEMPLATE"
+  legacy_var="WEBRTC_SIDECAR_${kind}_INPUT_URL"
+  first_set_env_value \
+    "${template_var}_${path_suffix}" \
+    "${template_var}_${source_suffix}_${view_suffix}" \
+    "WEBRTC_SIDECAR_${path_suffix}_${kind}_INPUT_URL_TEMPLATE" \
+    "WEBRTC_SIDECAR_${source_suffix}_${view_suffix}_${kind}_INPUT_URL_TEMPLATE" \
+    "${legacy_var}_${path_suffix}" \
+    "${legacy_var}_${source_suffix}_${view_suffix}" \
+    "${template_var}" \
+    "${legacy_var}" || true
+}
+
+stream_format_value() {
+  local kind="$1" source="$2" view="$3" path="$4" fallback="$5"
+  local source_suffix view_suffix path_suffix format_var
+  source_suffix="$(env_suffix "${source}")"
+  view_suffix="$(env_suffix "${view}")"
+  path_suffix="$(env_suffix "${path}")"
+  format_var="WEBRTC_SIDECAR_${kind}_INPUT_FORMAT"
+  first_set_env_value \
+    "${format_var}_${path_suffix}" \
+    "${format_var}_${source_suffix}_${view_suffix}" \
+    "WEBRTC_SIDECAR_${path_suffix}_${kind}_INPUT_FORMAT" \
+    "WEBRTC_SIDECAR_${source_suffix}_${view_suffix}_${kind}_INPUT_FORMAT" \
+    "${format_var}" || printf '%s' "${fallback}"
+}
+
+normalize_transport_token() {
+  case "${1//[[:space:]]/}" in
+    direct|direct_clean_media|direct_clean_media_webrtc) printf 'direct_clean_media_webrtc' ;;
+    camera|camera_input|camera_input_h264|camera_input_h264_transcode_webrtc) printf 'camera_input_h264_transcode_webrtc' ;;
+    mjpeg|overlay|mjpeg_overlay|mjpeg_overlay_h264_transcode_webrtc|fallback) printf 'mjpeg_overlay_h264_transcode_webrtc' ;;
+    *) return 1 ;;
+  esac
+}
+
+candidate_line_for_transport() {
+  local transport="$1" source="$2" view="$3" path="$4" template url format
+  case "${transport}" in
+    direct_clean_media_webrtc)
+      template="$(stream_template_value DIRECT "${source}" "${view}" "${path}")"
+      [ -n "${template}" ] || return 0
+      url="$(render_url_template "${template}" "${source}" "${view}" "${path}")"
+      format="$(stream_format_value DIRECT "${source}" "${view}" "${path}" "${WEBRTC_SIDECAR_DIRECT_INPUT_FORMAT}")"
+      ;;
+    camera_input_h264_transcode_webrtc)
+      template="$(stream_template_value CAMERA "${source}" "${view}" "${path}")"
+      [ -n "${template}" ] || return 0
+      url="$(render_url_template "${template}" "${source}" "${view}" "${path}")"
+      format="$(stream_format_value CAMERA "${source}" "${view}" "${path}" "${WEBRTC_SIDECAR_CAMERA_INPUT_FORMAT}")"
+      if [ "${format}" = "auto" ] && [[ "${url}" == /dev/video* ]]; then
+        format="v4l2"
+      fi
+      ;;
+    mjpeg_overlay_h264_transcode_webrtc)
+      url="$(render_url_template "${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE}" "${source}" "${view}" "${path}")"
+      format="${WEBRTC_SIDECAR_MJPEG_INPUT_FORMAT}"
+      ;;
+    *) return 0 ;;
+  esac
+  [ -n "${url}" ] || return 0
+  printf '%s\t%s\t%s\n' "${transport}" "${format}" "${url}"
+}
+
+render_input_candidates() {
+  local source="$1" view="$2" path="$3"
+  local token transport seen="," emitted_mjpeg=0
+  local IFS=','
+  for token in ${WEBRTC_SIDECAR_INPUT_PRIORITY}; do
+    transport="$(normalize_transport_token "${token}" || true)"
+    [ -n "${transport}" ] || continue
+    case "${seen}" in
+      *",${transport},"*) continue ;;
+    esac
+    seen="${seen}${transport},"
+    [ "${transport}" = "mjpeg_overlay_h264_transcode_webrtc" ] && emitted_mjpeg=1
+    candidate_line_for_transport "${transport}" "${source}" "${view}" "${path}"
+  done
+  if [ "${emitted_mjpeg}" -eq 0 ]; then
+    candidate_line_for_transport "mjpeg_overlay_h264_transcode_webrtc" "${source}" "${view}" "${path}"
+  fi
+}
+
+write_input_candidates_file() {
+  local source="$1" view="$2" path="$3"
+  local candidate_file="${RUN_DIR}/input-candidates-${path}.tsv"
+  local old_umask
+  old_umask="$(umask)"
+  umask 077
+  render_input_candidates "${source}" "${view}" "${path}" > "${candidate_file}"
+  umask "${old_umask}"
+  chmod 600 "${candidate_file}" 2>/dev/null || true
+  printf '%s' "${candidate_file}"
 }
 
 read_stream_specs() {
@@ -223,7 +439,7 @@ mediamtx_webrtc_additional_hosts_csv() {
 }
 
 print_config() {
-  local specs=() spec source view path input_url
+  local specs=() spec source view path input_url candidates first_transport first_format first_url
   read_stream_specs specs
   local additional_hosts
   additional_hosts="$(mediamtx_webrtc_additional_hosts_csv)"
@@ -241,7 +457,13 @@ SmartFactory Vision WebRTC sidecar config
   mediamtx_ports: rtsp=${MEDIAMTX_RTSP_PORT}/tcp, webrtc=${MEDIAMTX_WEBRTC_PORT}/tcp, ice=${MEDIAMTX_WEBRTC_ICE_UDP_PORT}/udp, api=127.0.0.1:${MEDIAMTX_API_PORT}/tcp
   webrtc_allow_origins: ${MEDIAMTX_WEBRTC_ALLOW_ORIGINS}
   webrtc_additional_hosts: ${additional_hosts:-<auto-interface-only>}
-  input_url_template: ${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE}
+  input_priority: ${WEBRTC_SIDECAR_INPUT_PRIORITY}
+  direct_input_url_template: $(redact_url "${WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE:-<unset>}")
+  camera_input_url_template: $(redact_url "${WEBRTC_SIDECAR_CAMERA_INPUT_URL_TEMPLATE:-<unset>}")
+  mjpeg_fallback_input_url_template: $(redact_url "${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE}")
+  input_url_template: $(redact_url "${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE}")
+  candidate_start_timeout_s: ${WEBRTC_SIDECAR_CANDIDATE_START_TIMEOUT_S}
+  network_rw_timeout_us: ${WEBRTC_SIDECAR_NETWORK_RW_TIMEOUT_US}
   video_filter: ${WEBRTC_SIDECAR_VIDEO_FILTER}
   encoder: ${WEBRTC_SIDECAR_ENCODER}
   x264_preset: ${WEBRTC_SIDECAR_X264_PRESET}
@@ -262,10 +484,28 @@ CONFIG
     source="$(stream_source "${spec}")"
     view="$(stream_view "${spec}")"
     path="$(stream_path_id "${spec}")"
-    input_url="$(render_input_url "${source}" "${view}")"
+    candidates="$(render_input_candidates "${source}" "${view}" "${path}")"
+    first_transport=""
+    first_format=""
+    first_url=""
+    if [ -n "${candidates}" ]; then
+      IFS=$'\t' read -r first_transport first_format first_url <<< "$(printf '%s\n' "${candidates}" | head -n 1)"
+    fi
+    input_url="${first_url:-$(render_input_url "${source}" "${view}")}"
     cat <<CONFIG
     - spec=${spec} path=${path}
-      input=${input_url}
+      input=$(redact_url "${input_url}")
+      input_transport=${first_transport:-<none>}
+      input_format=${first_format:-<none>}
+      input_candidates:
+CONFIG
+    while IFS=$'\t' read -r candidate_transport candidate_format candidate_url; do
+      [ -n "${candidate_transport:-}" ] || continue
+      cat <<CONFIG
+        - transport=${candidate_transport} format=${candidate_format} url=$(redact_url "${candidate_url}")
+CONFIG
+    done <<< "${candidates}"
+    cat <<CONFIG
       rtsp=rtsp://127.0.0.1:${MEDIAMTX_RTSP_PORT}/${path}
       browser=http://${WEBRTC_SIDECAR_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/${path}/
       whep=http://${WEBRTC_SIDECAR_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/${path}/whep
@@ -371,6 +611,7 @@ run_check() {
 
 write_config() {
   mkdir -p "${RUN_DIR}" "${LOG_DIR}"
+  chmod 700 "${RUN_DIR}" "${LOG_DIR}" 2>/dev/null || true
   local specs=() spec path
   read_stream_specs specs
   local additional_hosts="[]"
@@ -419,6 +660,7 @@ YAML
     source: publisher
 YAML
   done
+  chmod 600 "${CONFIG_FILE}" 2>/dev/null || true
 }
 
 record_process() {
@@ -448,8 +690,61 @@ alive_pid() {
   [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null
 }
 
+mediamtx_path_ready() {
+  local path="$1"
+  if ! is_executable_cmd "${CURL_BIN}"; then
+    return 1
+  fi
+  local body
+  body="$("${CURL_BIN}" -fsS --max-time 1 "http://127.0.0.1:${MEDIAMTX_API_PORT}/v3/paths/list" 2>/dev/null || true)"
+  [ -n "${body}" ] || return 1
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "${path}" "${body}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    payload = json.loads(sys.argv[2])
+except Exception:
+    raise SystemExit(1)
+for item in payload.get("items", []):
+    if not isinstance(item, dict):
+        continue
+    name = item.get("name") or item.get("path")
+    if name != path:
+        continue
+    if item.get("ready") is True or item.get("available") is True or item.get("online") is True or item.get("sourceReady") is True:
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+    return $?
+  fi
+  printf '%s' "${body}" | grep -q "\"name\":\"${path}\"" && printf '%s' "${body}" | grep -Eq '"(ready|available|online|sourceReady)":true'
+}
+
+wait_for_candidate_start() {
+  local path="$1" ffmpeg_pid="$2" timeout_s="$3"
+  if [ "${timeout_s}" -le 0 ]; then
+    return 0
+  fi
+  local start now
+  start="$(date +%s)"
+  while alive_pid "${ffmpeg_pid}"; do
+    if mediamtx_path_ready "${path}"; then
+      return 0
+    fi
+    now="$(date +%s)"
+    if [ $((now - start)) -ge "${timeout_s}" ]; then
+      return 1
+    fi
+    sleep 0.25
+  done
+  return 2
+}
+
 publisher_loop() {
-  local source="$1" view="$2" path="$3" input_url="$4" rtsp_url="$5"
+  local source="$1" view="$2" path="$3" candidate_file="$4" rtsp_url="$5"
   local restart_count=0
   local encoder_extra_args=()
   local input_extra_args=()
@@ -461,30 +756,76 @@ publisher_loop() {
   fi
   while true; do
     restart_count=$((restart_count + 1))
-    printf '[webrtc-sidecar] publisher path=%s source=%s view=%s start attempt=%s input=%s output=%s at %s\n' \
-      "${path}" "${source}" "${view}" "${restart_count}" "${input_url}" "${rtsp_url}" "$(date -Is)"
-    set +e
-    "${FFMPEG_BIN}" \
-      -hide_banner -loglevel warning \
-      -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2 \
-      -analyzeduration "${WEBRTC_SIDECAR_INPUT_ANALYZEDURATION}" \
-      -probesize "${WEBRTC_SIDECAR_INPUT_PROBESIZE}" \
-      -max_delay "${WEBRTC_SIDECAR_INPUT_MAX_DELAY}" \
-      -fflags nobuffer -flags low_delay "${input_extra_args[@]}" \
-      -use_wallclock_as_timestamps 1 \
-      -f mpjpeg -i "${input_url}" \
-      -vf "${WEBRTC_SIDECAR_VIDEO_FILTER}" \
-      -an -c:v "${WEBRTC_SIDECAR_ENCODER}" -preset "${WEBRTC_SIDECAR_X264_PRESET}" \
-      -tune zerolatency "${encoder_extra_args[@]}" -pix_fmt yuv420p -r "${WEBRTC_SIDECAR_TARGET_FPS}" \
-      -g "${WEBRTC_SIDECAR_GOP}" -bf 0 \
-      -b:v "${WEBRTC_SIDECAR_BITRATE}" -maxrate "${WEBRTC_SIDECAR_BITRATE}" -bufsize "${WEBRTC_SIDECAR_BUFSIZE}" \
-      -muxdelay "${WEBRTC_SIDECAR_OUTPUT_MUXDELAY}" -muxpreload "${WEBRTC_SIDECAR_OUTPUT_MUXPRELOAD}" \
-      -flush_packets 1 \
-      -f rtsp -rtsp_transport tcp "${rtsp_url}"
-    local code=$?
-    set -e
-    printf '[webrtc-sidecar] publisher path=%s exited status=%s; retrying in %ss at %s\n' \
-      "${path}" "${code}" "${WEBRTC_SIDECAR_RESTART_SEC}" "$(date -Is)"
+    local candidate_transport candidate_format input_url tried=0
+    while IFS=$'\t' read -r candidate_transport candidate_format input_url; do
+      [ -n "${candidate_transport:-}" ] || continue
+      tried=1
+      local input_format_args=()
+      local transport_args=()
+      case "${candidate_format}" in
+        ""|auto) ;;
+        mjpeg|mpjpeg) input_format_args=(-f mpjpeg) ;;
+        v4l2)
+          input_format_args=(-f v4l2)
+          [ -n "${WEBRTC_SIDECAR_CAMERA_INPUT_FPS}" ] && input_format_args+=(-framerate "${WEBRTC_SIDECAR_CAMERA_INPUT_FPS}")
+          [ -n "${WEBRTC_SIDECAR_CAMERA_INPUT_SIZE}" ] && input_format_args+=(-video_size "${WEBRTC_SIDECAR_CAMERA_INPUT_SIZE}")
+          ;;
+        *) input_format_args=(-f "${candidate_format}") ;;
+      esac
+      case "${input_url}" in
+        rtsp://*) transport_args=(-rtsp_transport tcp -rw_timeout "${WEBRTC_SIDECAR_NETWORK_RW_TIMEOUT_US}") ;;
+        http://*|https://*) transport_args=(-rw_timeout "${WEBRTC_SIDECAR_NETWORK_RW_TIMEOUT_US}" -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2) ;;
+        tcp://*|udp://*) transport_args=(-rw_timeout "${WEBRTC_SIDECAR_NETWORK_RW_TIMEOUT_US}") ;;
+      esac
+      printf '[webrtc-sidecar] publisher path=%s source=%s view=%s start attempt=%s transport=%s format=%s input=%s output=%s at %s\n' \
+        "${path}" "${source}" "${view}" "${restart_count}" "${candidate_transport}" "${candidate_format}" "$(redact_url "${input_url}")" "${rtsp_url}" "$(date -Is)"
+      set +e
+      "${FFMPEG_BIN}" \
+        -hide_banner -loglevel warning \
+        "${transport_args[@]}" \
+        -analyzeduration "${WEBRTC_SIDECAR_INPUT_ANALYZEDURATION}" \
+        -probesize "${WEBRTC_SIDECAR_INPUT_PROBESIZE}" \
+        -max_delay "${WEBRTC_SIDECAR_INPUT_MAX_DELAY}" \
+        -fflags nobuffer -flags low_delay "${input_extra_args[@]}" \
+        -use_wallclock_as_timestamps 1 \
+        "${input_format_args[@]}" -i "${input_url}" \
+        -vf "${WEBRTC_SIDECAR_VIDEO_FILTER}" \
+        -an -c:v "${WEBRTC_SIDECAR_ENCODER}" -preset "${WEBRTC_SIDECAR_X264_PRESET}" \
+        -tune zerolatency "${encoder_extra_args[@]}" -pix_fmt yuv420p -r "${WEBRTC_SIDECAR_TARGET_FPS}" \
+        -g "${WEBRTC_SIDECAR_GOP}" -bf 0 \
+        -b:v "${WEBRTC_SIDECAR_BITRATE}" -maxrate "${WEBRTC_SIDECAR_BITRATE}" -bufsize "${WEBRTC_SIDECAR_BUFSIZE}" \
+        -muxdelay "${WEBRTC_SIDECAR_OUTPUT_MUXDELAY}" -muxpreload "${WEBRTC_SIDECAR_OUTPUT_MUXPRELOAD}" \
+        -flush_packets 1 \
+        -f rtsp -rtsp_transport tcp "${rtsp_url}" \
+        > >(redact_stream) 2> >(redact_stream >&2) &
+      local ffmpeg_pid=$!
+      wait_for_candidate_start "${path}" "${ffmpeg_pid}" "${WEBRTC_SIDECAR_CANDIDATE_START_TIMEOUT_S}"
+      local start_code=$?
+      local code
+      if [ "${start_code}" -eq 0 ]; then
+        wait "${ffmpeg_pid}"
+        code=$?
+      elif [ "${start_code}" -eq 1 ]; then
+        printf '[webrtc-sidecar] publisher path=%s transport=%s did not become ready within %ss; trying next candidate at %s\n' \
+          "${path}" "${candidate_transport}" "${WEBRTC_SIDECAR_CANDIDATE_START_TIMEOUT_S}" "$(date -Is)"
+        kill -INT "${ffmpeg_pid}" 2>/dev/null || true
+        sleep 0.5
+        kill -TERM "${ffmpeg_pid}" 2>/dev/null || true
+        wait "${ffmpeg_pid}" 2>/dev/null
+        code=124
+      else
+        wait "${ffmpeg_pid}"
+        code=$?
+      fi
+      set -e
+      printf '[webrtc-sidecar] publisher path=%s transport=%s exited status=%s at %s\n' \
+        "${path}" "${candidate_transport}" "${code}" "$(date -Is)"
+    done < "${candidate_file}"
+    if [ "${tried}" -eq 0 ]; then
+      printf '[webrtc-sidecar] publisher path=%s has no input candidates in %s\n' "${path}" "${candidate_file}"
+    fi
+    printf '[webrtc-sidecar] publisher path=%s exhausted candidates; retrying in %ss at %s\n' \
+      "${path}" "${WEBRTC_SIDECAR_RESTART_SEC}" "$(date -Is)"
     sleep "${WEBRTC_SIDECAR_RESTART_SEC}"
   done
 }
@@ -511,9 +852,10 @@ cleanup() {
 run_sidecar() {
   require_live_tmux_context
   run_check
+  umask 077
   rm -f "${PID_FILE}"
   write_config
-  local specs=() spec source view path input_url rtsp_url publisher_log
+  local specs=() spec source view path candidate_file rtsp_url publisher_log
   read_stream_specs specs
   write_status starting "" "${#specs[@]}"
   log "starting MediaMTX with ${CONFIG_FILE}"
@@ -528,10 +870,10 @@ run_sidecar() {
     source="$(stream_source "${spec}")"
     view="$(stream_view "${spec}")"
     path="$(stream_path_id "${spec}")"
-    input_url="$(render_input_url "${source}" "${view}")"
+    candidate_file="$(write_input_candidates_file "${source}" "${view}" "${path}")"
     rtsp_url="rtsp://127.0.0.1:${MEDIAMTX_RTSP_PORT}/${path}"
     publisher_log="${LOG_DIR}/publisher-${path}.log"
-    publisher_loop "${source}" "${view}" "${path}" "${input_url}" "${rtsp_url}" > "${publisher_log}" 2>&1 &
+    publisher_loop "${source}" "${view}" "${path}" "${candidate_file}" "${rtsp_url}" > "${publisher_log}" 2>&1 &
     local publisher_pid=$!
     PIDS+=("${publisher_pid}")
     NAMES+=("publisher-${path}")

@@ -148,6 +148,28 @@ Sidecar 단독 확인:
 ./scripts/vision/run_webrtc_sidecar_mediamtx.sh --status
 ```
 
+`--print-config`의 `input_candidates`는 실제 송출 우선순서를 보여줍니다.
+기본값은 `direct,camera,mjpeg`이며, direct/camera 후보가 없거나 실패하면
+기존 MJPEG overlay fallback을 유지합니다.
+
+```bash
+# 전체 stream 공통 direct media 후보
+WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE='rtsp://127.0.0.1:8555/{source}_{view}' \
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --print-config
+
+# 특정 stream만 local camera 후보 지정
+WEBRTC_SIDECAR_CAMERA_INPUT_URL_TEMPLATE_GLOBAL_CAM_01_FULL='/dev/video0' \
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --print-config
+```
+
+지원 placeholder는 `{source}`, `{view}`, `{path}`, `{max_fps}`입니다.
+예: `global_cam_01/full` → `{path}=global_cam_01_full`.
+
+직접 카메라 URL에 계정/토큰이 들어갈 수 있으므로 `--print-config`와 로그에는
+userinfo와 민감 query 값이 redaction되어 표시됩니다. direct/camera 후보가
+`WEBRTC_SIDECAR_CANDIDATE_START_TIMEOUT_S` 안에 MediaMTX path를 online으로 만들지
+못하면 다음 후보로 넘어가며, 마지막 MJPEG fallback은 계속 유지됩니다.
+
 ### WebRTC/direct-media 상태를 안전하게 판별하는 probe
 
 `lab-gopro-tb3-webrtc`를 켠 뒤 “지금 WebRTC가 실제로 쓸 만한 direct media
@@ -173,6 +195,8 @@ python3 scripts/vision/probe_direct_media_candidates.py \
 - MediaMTX/ffmpeg/GoPro stream 같은 live process를 새로 띄우지 않음
 - map 세팅이 없어도 실행 가능
 - Main `:8090` MJPEG fallback과 ROS no-control 계약을 확인 대상으로만 봄
+- direct/camera 후보가 특정 stream에서만 발견되면 `matched_stream_spec`을 함께
+  출력하므로, 그 결과를 profile 전체의 direct 가능으로 오해하지 말 것
 
 판정 순서는 다음입니다.
 
@@ -189,7 +213,9 @@ python3 scripts/vision/probe_direct_media_candidates.py \
 `mjpeg_overlay_h264_transcode_webrtc`는 `available`로 나옵니다.
 
 direct media 후보를 따로 검증해야 할 때는 HTTP/HTTPS URL이 아니라 redirect 안전
-문제 때문에 다음처럼 RTSP/UDP/TCP 또는 local device 경로를 쓰세요.
+문제 때문에 다음처럼 RTSP/UDP/TCP 또는 local device 경로를 쓰세요. Probe는
+아래 legacy 변수뿐 아니라 sidecar의 `WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE*`,
+`WEBRTC_SIDECAR_CAMERA_INPUT_URL_TEMPLATE*`도 읽습니다.
 
 ```bash
 DIRECT_CLEAN_MEDIA_URL='rtsp://127.0.0.1:18554/global_cam_01_full' \
@@ -205,10 +231,20 @@ python3 scripts/vision/probe_direct_media_candidates.py
 # 1) live 실행은 tmux Smartfactory:3:Development 안에서만
 ./scripts/vision/sf_vision.sh up lab-gopro-tb3-webrtc
 
+# GoPro USB가 불안정하고 tb3_1 PiCam만 WebRTC로 확인할 때
+./scripts/vision/sf_vision.sh up tb3-live-webrtc
+# 또는 wrapper 유지:
+SF_LAB_PROFILE=tb3-live-webrtc ./scripts/vision/sf_lab.sh all
+
 # 2) 다른 터미널에서 읽기 전용 상태 확인 가능
 ./scripts/vision/sf_vision.sh status
 python3 scripts/vision/probe_direct_media_candidates.py
 ```
+
+`tb3-live-webrtc`는 PiCam 단독 확인용으로 `WEBRTC_SIDECAR_INPUT_PRIORITY=mjpeg`를
+고정합니다. 그래서 이전 shell에 남아 있던 direct/camera 후보 URL이 이 profile의
+동작을 바꾸지 않습니다. direct/camera media 후보를 실험하려면
+`lab-gopro-tb3-webrtc` 또는 별도 sidecar profile을 쓰세요.
 
 GoPro/global camera는 **미디어 스트리밍 FPS**와 **AI 추론 FPS**를 분리합니다.
 `lab-gopro-tb3-webrtc`의 기본 의도는 브라우저/WebRTC는 30 FPS target,

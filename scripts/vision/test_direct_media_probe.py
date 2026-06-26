@@ -127,6 +127,169 @@ def test_probe_can_report_direct_clean_media_available(monkeypatch):
     assert report["recommendation"]["selected_transport_class"] == "direct_clean_media_webrtc"
 
 
+
+def test_probe_reads_sidecar_direct_and_camera_templates(monkeypatch):
+    monkeypatch.setattr(probe.shutil, "which", _which_all)
+    monkeypatch.setattr(probe, "list_video_devices", lambda: [])
+    direct_args = (
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,width,height,r_frame_rate,avg_frame_rate",
+        "-of",
+        "json",
+        "rtsp://127.0.0.1:8555/global_cam_01_full",
+    )
+    camera_args = (
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,width,height,r_frame_rate,avg_frame_rate",
+        "-of",
+        "json",
+        "/dev/video0",
+    )
+    runner = FakeRunner(
+        {
+            ("lsusb",): "",
+            ("v4l2-ctl", "--list-devices"): "",
+            direct_args: json.dumps({"streams": [{"codec_name": "h264", "width": 1920, "height": 1080}]}),
+            camera_args: json.dumps({"streams": [{"codec_name": "rawvideo", "width": 1280, "height": 720}]}),
+        }
+    )
+
+    report = probe.build_probe_report(
+        runtime_env={
+            "WEBRTC_SIDECAR_STREAMS": "global_cam_01/full,tb3_1_picam/full",
+            "WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE": "rtsp://127.0.0.1:8555/{source}_{view}",
+            "WEBRTC_SIDECAR_CAMERA_INPUT_URL_TEMPLATE_GLOBAL_CAM_01_FULL": "/dev/video0",
+        },
+        runner=runner,
+        fetcher=FakeFetcher(),
+    )
+
+    assert report["observations"]["direct_media_probe"]["url"] == "rtsp://127.0.0.1:8555/global_cam_01_full"
+    assert report["observations"]["direct_media_probe"]["input_match"]["matched_stream_spec"] == "global_cam_01/full"
+    assert report["observations"]["direct_media_probe"]["input_match"]["env_key"] == "WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE"
+    assert report["observations"]["camera_input_probe"]["url"] == "/dev/video0"
+    assert report["observations"]["camera_input_probe"]["input_match"]["env_key"] == "WEBRTC_SIDECAR_CAMERA_INPUT_URL_TEMPLATE_GLOBAL_CAM_01_FULL"
+    assert report["candidates"][0]["status"] == "available"
+    assert report["recommendation"]["matched_stream_spec"] == "global_cam_01/full"
+
+
+def test_probe_redacts_credentials_in_urls_and_command_observations(monkeypatch):
+    monkeypatch.setattr(probe.shutil, "which", _which_all)
+    monkeypatch.setattr(probe, "list_video_devices", lambda: [])
+    raw_url = "rtsp://admin:secret@camera.local:8554/global_cam_01_full?token=abc&quality=ok"
+    redacted_url = "rtsp://<redacted>@camera.local:8554/global_cam_01_full?token=REDACTED&quality=ok"
+    ffprobe_args = (
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,width,height,r_frame_rate,avg_frame_rate",
+        "-of",
+        "json",
+        raw_url,
+    )
+    runner = FakeRunner(
+        {
+            ("lsusb",): "",
+            ("v4l2-ctl", "--list-devices"): "",
+            ffprobe_args: probe.CommandResult(
+                ffprobe_args,
+                1,
+                stderr=f"could not open {raw_url}",
+            ),
+        }
+    )
+
+    report = probe.build_probe_report(
+        runtime_env={
+            "WEBRTC_SIDECAR_STREAMS": "global_cam_01/full",
+            "WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE": raw_url,
+        },
+        runner=runner,
+        fetcher=FakeFetcher(),
+    )
+
+    encoded = json.dumps(report, sort_keys=True)
+    assert "admin:secret" not in encoded
+    assert "token=abc" not in encoded
+    direct_probe = report["observations"]["direct_media_probe"]
+    assert direct_probe["url"] == redacted_url
+    assert direct_probe["input_match"]["url"] == redacted_url
+    assert direct_probe["command"]["args"][-1] == redacted_url
+    assert redacted_url in direct_probe["command"]["stderr"]
+
+
+def test_probe_global_template_selects_later_available_stream(monkeypatch):
+    monkeypatch.setattr(probe.shutil, "which", _which_all)
+    monkeypatch.setattr(probe, "list_video_devices", lambda: [])
+    first_url = "rtsp://127.0.0.1:8555/global_cam_01_full"
+    second_url = "rtsp://127.0.0.1:8555/tb3_1_picam_full"
+    first_args = (
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,width,height,r_frame_rate,avg_frame_rate",
+        "-of",
+        "json",
+        first_url,
+    )
+    second_args = (
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,width,height,r_frame_rate,avg_frame_rate",
+        "-of",
+        "json",
+        second_url,
+    )
+    runner = FakeRunner(
+        {
+            ("lsusb",): "",
+            ("v4l2-ctl", "--list-devices"): "",
+            first_args: probe.CommandResult(first_args, 1, stderr="offline"),
+            second_args: json.dumps({"streams": [{"codec_name": "h264", "width": 320, "height": 240}]}),
+        }
+    )
+
+    report = probe.build_probe_report(
+        runtime_env={
+            "WEBRTC_SIDECAR_STREAMS": "global_cam_01/full,tb3_1_picam/full",
+            "WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE": "rtsp://127.0.0.1:8555/{path}",
+        },
+        runner=runner,
+        fetcher=FakeFetcher(),
+    )
+
+    direct_probe = report["observations"]["direct_media_probe"]
+    assert direct_probe["ok"] is True
+    assert direct_probe["url"] == second_url
+    assert direct_probe["input_match"]["matched_stream_spec"] == "tb3_1_picam/full"
+    assert [attempt["input_match"]["matched_stream_spec"] for attempt in direct_probe["input_attempts"]] == [
+        "global_cam_01/full",
+        "tb3_1_picam/full",
+    ]
+    assert report["candidates"][0]["status"] == "available"
+    assert report["recommendation"]["matched_stream_spec"] == "tb3_1_picam/full"
+
+
 def test_probe_rejects_empty_ffprobe_streams_for_direct_media(monkeypatch):
     monkeypatch.setattr(probe.shutil, "which", _which_all)
     monkeypatch.setattr(probe, "list_video_devices", lambda: [])
@@ -218,6 +381,84 @@ def test_probe_rejects_http_media_before_ffprobe(monkeypatch):
     assert opened["called"] is False
     assert not any(call[0][0] == "ffprobe" for call in runner.calls)
 
+
+
+
+def test_probe_scans_all_streams_for_specific_sidecar_template(monkeypatch):
+    monkeypatch.setattr(probe.shutil, "which", _which_all)
+    monkeypatch.setattr(probe, "list_video_devices", lambda: [])
+    camera_args = (
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,width,height,r_frame_rate,avg_frame_rate",
+        "-of",
+        "json",
+        "/dev/video9",
+    )
+    runner = FakeRunner(
+        {
+            ("lsusb",): "",
+            ("v4l2-ctl", "--list-devices"): "",
+            camera_args: json.dumps({"streams": [{"codec_name": "rawvideo"}]}),
+        }
+    )
+
+    report = probe.build_probe_report(
+        runtime_env={
+            "WEBRTC_SIDECAR_STREAMS": "global_cam_01/full,tb3_1_picam/full",
+            "WEBRTC_SIDECAR_CAMERA_INPUT_URL_TEMPLATE_TB3_1_PICAM_FULL": "/dev/video9",
+        },
+        runner=runner,
+        fetcher=FakeFetcher(),
+    )
+
+    assert report["observations"]["camera_input_probe"]["url"] == "/dev/video9"
+    assert report["observations"]["camera_input_probe"]["input_match"]["matched_stream_spec"] == "tb3_1_picam/full"
+    assert report["observations"]["camera_input_probe"]["input_match"]["matched_path_id"] == "tb3_1_picam_full"
+    assert report["observations"]["camera_input_probe"]["input_match"]["env_key"] == "WEBRTC_SIDECAR_CAMERA_INPUT_URL_TEMPLATE_TB3_1_PICAM_FULL"
+    assert report["candidates"][1]["status"] == "available"
+    assert report["recommendation"]["matched_stream_spec"] == "tb3_1_picam/full"
+    assert "do not infer every configured stream" in report["recommendation"]["action"]
+
+def test_probe_reports_configured_camera_template_failure_reason(monkeypatch):
+    monkeypatch.setattr(probe.shutil, "which", _which_all)
+    monkeypatch.setattr(probe, "list_video_devices", lambda: [])
+    camera_args = (
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=codec_name,width,height,r_frame_rate,avg_frame_rate",
+        "-of",
+        "json",
+        "/dev/video0",
+    )
+    runner = FakeRunner(
+        {
+            ("lsusb",): "",
+            ("v4l2-ctl", "--list-devices"): "",
+            camera_args: probe.CommandResult(camera_args, 1, stderr="missing"),
+        }
+    )
+
+    report = probe.build_probe_report(
+        runtime_env={
+            "WEBRTC_SIDECAR_STREAMS": "global_cam_01/full",
+            "WEBRTC_SIDECAR_CAMERA_INPUT_URL_TEMPLATE_GLOBAL_CAM_01_FULL": "/dev/video0",
+        },
+        runner=runner,
+        fetcher=FakeFetcher(),
+    )
+
+    camera = report["candidates"][1]
+    assert camera["status"] == "blocked"
+    assert camera["reason"] == "ffprobe_failed"
 
 def test_probe_blocks_unreadable_video_devices(monkeypatch):
     monkeypatch.setattr(probe.shutil, "which", _which_all)
