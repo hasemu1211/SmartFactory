@@ -217,18 +217,12 @@ Table task_logs {
   result text [not null] // COMPLETED, FAILED, CANCELLED
   result_evidence_id bigint // decisive evidence_events.id value; logical reference, no FK
 
-  robot_id text
-  item_id text
-  quantity integer
-  to_location_id text
-  to_floor integer
-
   started_at timestamptz
   finished_at timestamptz [not null]
   error_reason text
 
   summary text
-  snapshot_json jsonb // optional supporting evidence ids / final task snapshot
+  snapshot_json jsonb // robot/item/location/quantity/supporting evidence ids if needed
   logged_at timestamptz [not null]
 
   indexes {
@@ -236,8 +230,6 @@ Table task_logs {
     task_type
     result
     result_evidence_id
-    robot_id
-    item_id
     finished_at
     logged_at
   }
