@@ -6,10 +6,54 @@ Filesystem ownership / placement rules: [`../docs/technical/project-filesystem-o
 This directory contains local operator/developer entrypoints. Prefer these
 scripts over ad-hoc commands so Main/Vision integration stays reproducible.
 
-## Recommended quick start: operator bundle
+## Easiest operator path: `sf_lab.sh`
 
-Long-running Vision processes are now wrapped by a profile-based operator
-script. For the common lab demo, remember these commands:
+Operators do not need to remember profile names or environment variables for the
+current lab setup. Start long-running live processes only inside tmux
+`Smartfactory:3:Development`.
+
+```bash
+# all-in-one: GoPro global camera + TurtleBot Pi camera WebRTC, AI Server API, MJPEG fallback
+./scripts/vision/sf_lab.sh all
+# or: make vision-lab-all
+
+# inspect status/URLs
+./scripts/vision/sf_lab.sh status
+./scripts/vision/sf_lab.sh urls
+
+# stop
+./scripts/vision/sf_lab.sh down
+```
+
+Separated helper commands use the same wrapper:
+
+```bash
+./scripts/vision/sf_lab.sh probe
+./scripts/vision/sf_lab.sh api health
+./scripts/vision/sf_lab.sh api streams
+./scripts/vision/sf_lab.sh api worker-status global_cam_01
+./scripts/vision/sf_lab.sh api evidence-plan PICKUP
+./scripts/vision/sf_lab.sh api evidence-mock DROPOFF
+./scripts/vision/sf_lab.sh api evaluate-no-frame global_cam_01 lift_roi PICKUP
+./scripts/vision/sf_lab.sh api evaluate-quality global_cam_01 full
+```
+
+| Goal | Command | Notes |
+|---|---|---|
+| Start everything | `./scripts/vision/sf_lab.sh all` | WebRTC + AI Server API + MJPEG fallback + mDNS |
+| Operator stream alias | `./scripts/vision/sf_lab.sh stream` | currently the same safe bundle as `all` |
+| Print Main-facing URLs | `./scripts/vision/sf_lab.sh urls` | browser/handoff checks |
+| Print evidence-plan JSON | `./scripts/vision/sf_lab.sh api evidence-plan` | no hardware required |
+| Print evidence mock JSON | `./scripts/vision/sf_lab.sh api evidence-mock` | no Main DB mutation |
+| Call the running AI Server evidence API | `evaluate-no-frame` / `evaluate-quality` | `/api/v1/evidence/evaluate` contract |
+
+`sf_lab.sh` defaults to profile `lab-gopro-tb3-webrtc` and delegates to the
+existing `sf_vision.sh` bundle. Use the lower-level scripts below only for
+debugging or profile changes.
+
+## Lower-level profile entrypoint: `sf_vision.sh`
+
+Use this profile-based operator script when you need lower-level debugging or profile changes.
 
 ```bash
 ./scripts/vision/sf_vision.sh profiles
@@ -32,7 +76,17 @@ Inspect logs:
 ./scripts/vision/sf_vision.sh logs gopro-adapter
 ```
 
-Make aliases:
+Make aliases are also available. Easy `sf_lab.sh` aliases:
+
+```bash
+make vision-lab-all
+make vision-lab-status
+make vision-lab-urls
+make vision-lab-api-plan OPERATION=PICKUP
+make vision-lab-down
+```
+
+Lower-level `sf_vision.sh` profile aliases:
 
 ```bash
 make vision-profiles
@@ -42,7 +96,7 @@ make vision-smoke-local
 make vision-down
 ```
 
-### Easiest path with the WebRTC sidecar
+### Lower-level WebRTC sidecar profile
 
 The stable default remains `lab-gopro-tb3`. Use `lab-gopro-tb3-webrtc` when
 Main/browser should prefer WebRTC while retaining MJPEG fallback.

@@ -24,10 +24,59 @@
 [`docs/requests/main-vision-runtime-config-request-2026-06-19.md`](../docs/requests/main-vision-runtime-config-request-2026-06-19.md)를 보세요.
 MAC/IP 값은 외부 공개 또는 DHCP/router 변경 후 사용 전에 반드시 재확인하세요.
 
-## 권장 실행: operator bundle
+## 가장 쉬운 실행: `sf_lab.sh`
 
-사용자 부담을 줄이기 위해 장시간 실행 프로세스는 이제 profile 기반
-operator script로 묶습니다. 일반 데모에서는 아래 4개 명령만 기억하면 됩니다.
+운영자는 환경변수/profile 이름을 몰라도 아래 wrapper만 쓰면 됩니다.
+장시간 live 프로세스는 안전상 tmux `Smartfactory:3:Development` 안에서만 켜세요.
+
+```bash
+# 통합 실행: GoPro global camera + TurtleBot Pi camera WebRTC, AI Server API, MJPEG fallback
+./scripts/vision/sf_lab.sh all
+# 또는 make vision-lab-all
+
+# 상태/URL 확인
+./scripts/vision/sf_lab.sh status
+./scripts/vision/sf_lab.sh urls
+
+# 종료
+./scripts/vision/sf_lab.sh down
+```
+
+분리해서 확인하고 싶을 때도 같은 wrapper를 씁니다.
+
+```bash
+# WebRTC/direct-media 후보 읽기 전용 진단
+./scripts/vision/sf_lab.sh probe
+
+# Main/connector가 받을 JSON API 표면 확인
+./scripts/vision/sf_lab.sh api health
+./scripts/vision/sf_lab.sh api streams
+./scripts/vision/sf_lab.sh api worker-status global_cam_01
+./scripts/vision/sf_lab.sh api evidence-plan PICKUP
+./scripts/vision/sf_lab.sh api evidence-mock DROPOFF
+./scripts/vision/sf_lab.sh api evaluate-no-frame global_cam_01 lift_roi PICKUP
+./scripts/vision/sf_lab.sh api evaluate-quality global_cam_01 full
+```
+
+역할 구분은 다음처럼 보면 됩니다.
+
+| 원하는 것 | 명령 | 비고 |
+|---|---|---|
+| 전부 한 번에 켜기 | `./scripts/vision/sf_lab.sh all` | WebRTC + AI Server API + MJPEG fallback + mDNS |
+| 스트리밍만 operator 관점에서 켜기 | `./scripts/vision/sf_lab.sh stream` | 현재는 `all`과 같은 안전 bundle |
+| Main이 받을 stream/API URL 보기 | `./scripts/vision/sf_lab.sh urls` | 전달/브라우저 확인용 |
+| 증거 판단 JSON 계약 보기 | `./scripts/vision/sf_lab.sh api evidence-plan` | 하드웨어 없이 plan JSON |
+| 증거 판단 mock JSON 보기 | `./scripts/vision/sf_lab.sh api evidence-mock` | Main DB 변경 없음 |
+| 실제 실행 중 AI Server에 평가 요청 | `./scripts/vision/sf_lab.sh api evaluate-no-frame` / `evaluate-quality` | 응답은 `/api/v1/evidence/evaluate` 계약 |
+
+`sf_lab.sh`는 내부적으로 기본 profile `lab-gopro-tb3-webrtc`와 기존
+`sf_vision.sh` bundle을 사용합니다. 따라서 복잡한 환경변수는 기본값으로 숨기되,
+디버깅이 필요하면 아래의 `sf_vision.sh`/sidecar 스크립트를 직접 사용할 수 있습니다.
+
+## 기존 profile 직접 실행: `sf_vision.sh`
+
+`sf_lab.sh`보다 낮은 수준의 profile 기반 operator script입니다.
+디버깅이나 profile 전환이 필요할 때 사용하세요.
 
 ```bash
 ./scripts/vision/sf_vision.sh profiles
@@ -50,7 +99,17 @@ operator script로 묶습니다. 일반 데모에서는 아래 4개 명령만 �
 ./scripts/vision/sf_vision.sh logs gopro-adapter
 ```
 
-Makefile alias도 같습니다.
+Makefile alias도 있습니다. `sf_lab.sh`에 대응하는 쉬운 alias는 다음입니다.
+
+```bash
+make vision-lab-all
+make vision-lab-status
+make vision-lab-urls
+make vision-lab-api-plan OPERATION=PICKUP
+make vision-lab-down
+```
+
+하위 `sf_vision.sh` profile을 직접 쓸 때는 기존 alias를 사용하세요.
 
 ```bash
 make vision-profiles
@@ -60,7 +119,7 @@ make vision-smoke-local
 make vision-down
 ```
 
-### WebRTC sidecar까지 켜는 가장 쉬운 경로
+### WebRTC sidecar profile 직접 실행
 
 기본 안정 경로는 여전히 `lab-gopro-tb3`입니다. Main/browser가 WebRTC를 우선
 받아보고 MJPEG fallback도 유지해야 하면 `lab-gopro-tb3-webrtc`를 사용합니다.

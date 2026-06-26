@@ -2,7 +2,7 @@ ROS2_WS ?= $(or $(SMARTFACTORY_ROS2_WS),/home/codelab/turtlebot3_ws)
 ROS_DISTRO ?= jazzy
 ROS_PACKAGES ?= smartfactory_bringup smartfactory_perception_ros
 
-.PHONY: ai-setup ai-test ai-run contracts source-registry-surfaces deploy-validate docker-ai-config vision-profiles vision-up vision-up-webrtc vision-down vision-status vision-logs vision-check vision-webrtc-check vision-webrtc-status vision-run vision-config vision-smoke-local vision-smoke-main ros-test ros-build-bringup ros-launch-smoke status
+.PHONY: ai-setup ai-test ai-run contracts source-registry-surfaces deploy-validate docker-ai-config vision-profiles vision-lab-all vision-lab-status vision-lab-urls vision-lab-api-plan vision-lab-down vision-up vision-up-webrtc vision-down vision-status vision-logs vision-check vision-webrtc-check vision-webrtc-status vision-run vision-config vision-smoke-local vision-smoke-main ros-test ros-build-bringup ros-launch-smoke status
 
 ai-setup:
 	./scripts/ai/setup_ai_server_env.sh
@@ -27,6 +27,21 @@ docker-ai-config:
 
 vision-profiles:
 	./scripts/vision/sf_vision.sh profiles
+
+vision-lab-all:
+	./scripts/vision/sf_lab.sh all
+
+vision-lab-status:
+	./scripts/vision/sf_lab.sh status
+
+vision-lab-urls:
+	./scripts/vision/sf_lab.sh urls
+
+vision-lab-api-plan:
+	./scripts/vision/sf_lab.sh api evidence-plan $${OPERATION:-PICKUP}
+
+vision-lab-down:
+	./scripts/vision/sf_lab.sh down
 
 vision-up:
 	./scripts/vision/sf_vision.sh up $${PROFILE:-lab-gopro-tb3}

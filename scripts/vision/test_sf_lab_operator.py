@@ -1,0 +1,181 @@
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[2]
+SCRIPT = ROOT / "scripts" / "vision" / "sf_lab.sh"
+
+
+def run(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
+    return subprocess.run(
+        [str(SCRIPT), *args],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+        env=merged_env,
+    )
+
+
+def fake_curl(tmp_path: Path) -> tuple[Path, Path]:
+    curl_bin = tmp_path / "curl"
+    capture = tmp_path / "curl-capture.json"
+    curl_bin.write_text(
+        """#!/usr/bin/env python3
+import json
+import os
+import sys
+
+args = sys.argv[1:]
+payload = None
+url = args[-1] if args else None
+for index, arg in enumerate(args):
+    if arg == "-d" and index + 1 < len(args):
+        payload = args[index + 1]
+with open(os.environ["FAKE_CURL_CAPTURE"], "w", encoding="utf-8") as handle:
+    json.dump({"args": args, "payload": payload, "url": url}, handle, sort_keys=True)
+print(json.dumps({"ok": True, "url": url}, sort_keys=True))
+"""
+    )
+    curl_bin.chmod(0o755)
+    return curl_bin, capture
+
+
+def fake_curl_env(tmp_path: Path, capture: Path) -> dict[str, str]:
+    return {
+        "PATH": f"{tmp_path}:/usr/bin:/bin",
+        "FAKE_CURL_CAPTURE": str(capture),
+        "AI_SERVER_URL": "http://ai-server.local:8100",
+    }
+
+
+def test_sf_lab_wrapper_is_valid_bash_and_has_operator_help() -> None:
+    subprocess.run(["bash", "-n", str(SCRIPT)], cwd=ROOT, check=True)
+
+    result = run("help")
+
+    assert "sf_lab.sh all" in result.stdout
+    assert "WebRTC global/Pi streams + AI Server API + MJPEG fallback" in result.stdout
+    assert "api evaluate-quality" in result.stdout
+    assert "Robot Pi camera" in result.stdout
+
+
+def test_sf_lab_urls_prints_main_api_webrtc_and_mjpeg_urls() -> None:
+    result = run("urls")
+
+    assert "http://smartfactory-main.local:8088/operate/control" in result.stdout
+    assert "http://smartfactory-vision.local:8100/api/v1/evidence/evaluate" in result.stdout
+    assert "Local API helper target:" in result.stdout
+    assert "http://127.0.0.1:8100" in result.stdout
+    assert "http://smartfactory-vision.local:8889/global_cam_01_full/" in result.stdout
+    assert "http://smartfactory-vision.local:8889/tb3_1_picam_full/whep" in result.stdout
+    assert "http://smartfactory-vision.local:8090/streams/global_cam_01.mjpeg" in result.stdout
+
+
+def test_sf_lab_api_evidence_plan_is_no_hardware_and_reuse_first() -> None:
+    result = run("api", "evidence-plan", "DROPOFF")
+    payload = json.loads(result.stdout)
+
+    assert payload["schema_version"] == "gopro-evidence-capture-sidecar.plan.v1"
+    assert payload["operation"] == "DROPOFF"
+    assert payload["main_db_mutation"] is False
+    assert payload["long_running_live_process"] is False
+    assert payload["reuse_first_endpoints"]["evidence_evaluate"].endswith(
+        "/api/v1/evidence/evaluate"
+    )
+
+
+def test_sf_lab_api_evaluate_quality_posts_main_facing_evidence_request(tmp_path: Path) -> None:
+    _, capture = fake_curl(tmp_path)
+
+    result = run(
+        "api",
+        "evaluate-quality",
+        "global_cam_01",
+        "full",
+        env=fake_curl_env(tmp_path, capture),
+    )
+
+    assert json.loads(result.stdout)["ok"] is True
+    observed = json.loads(capture.read_text())
+    assert observed["url"] == "http://ai-server.local:8100/api/v1/evidence/evaluate"
+    payload = json.loads(observed["payload"])
+    assert payload["source"] == "global_cam_01"
+    assert payload["view"] == "full"
+    assert payload["expected_evidence_type"] == "ITEM_DROPPED_CANDIDATE"
+    assert payload["quality_flags"]["low_pixel_budget"] is True
+
+
+def test_sf_lab_api_worker_tick_posts_controlled_no_motion_payload(tmp_path: Path) -> None:
+    _, capture = fake_curl(tmp_path)
+
+    result = run(
+        "api",
+        "worker-tick",
+        "tb3_1_picam",
+        "force",
+        env=fake_curl_env(tmp_path, capture),
+    )
+
+    assert json.loads(result.stdout)["ok"] is True
+    observed = json.loads(capture.read_text())
+    assert observed["url"] == "http://ai-server.local:8100/api/v1/vision/worker/tick"
+    payload = json.loads(observed["payload"])
+    assert payload == {"source": "tb3_1_picam", "force": True}
+
+
+def test_sf_lab_api_webrtc_offer_url_encodes_source_and_view(tmp_path: Path) -> None:
+    _, capture = fake_curl(tmp_path)
+
+    result = run(
+        "api",
+        "webrtc-offer",
+        "tb3 1/picam",
+        "lift roi",
+        env=fake_curl_env(tmp_path, capture),
+    )
+
+    assert json.loads(result.stdout)["ok"] is True
+    observed = json.loads(capture.read_text())
+    assert observed["url"] == (
+        "http://ai-server.local:8100/api/v1/vision/streams/"
+        "tb3%201%2Fpicam/webrtc/offer?view=lift%20roi"
+    )
+
+
+def test_sf_lab_api_evaluate_no_frame_normalizes_lowercase_operation(tmp_path: Path) -> None:
+    _, capture = fake_curl(tmp_path)
+
+    result = run(
+        "api",
+        "evaluate-no-frame",
+        "global_cam_01",
+        "lift_roi",
+        "pickup",
+        env=fake_curl_env(tmp_path, capture),
+    )
+
+    assert json.loads(result.stdout)["ok"] is True
+    payload = json.loads(json.loads(capture.read_text())["payload"])
+    assert payload["operation"] == "PICKUP"
+    assert payload["expected_evidence_type"] == "ITEM_PICKED"
+
+
+def test_sf_lab_api_evaluate_no_frame_rejects_unknown_operation() -> None:
+    result = subprocess.run(
+        [str(SCRIPT), "api", "evaluate-no-frame", "global_cam_01", "lift_roi", "typo"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 2
+    assert "operation must be PICKUP or DROPOFF" in result.stderr
