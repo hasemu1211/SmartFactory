@@ -6,10 +6,10 @@ Project SmartFactory_CurrentState_AppendOnlyLogs {
   Principle:
   - Keep the main diagram close to the current Image #1 shape.
   - Current-state tables may be updated/deleted after task completion.
-  - Log tables are append-only and intentionally do not FK back to current-state rows.
+  - task_logs and item_change_logs are append-only and intentionally do not FK back to current-state rows.
   - commands is a static command definition table keyed by task_type + sequence_no.
-  - Runtime command progress/status is derived from append-only evidence_events.
-  - evidence_events.task_id is a historical id only, not a FK constraint.
+  - Runtime command progress/status is derived from evidence_events while a task is active.
+  - evidence_events may be deleted after task completion once needed proof is copied into task_logs.
   - No reservations table in this draft: active tasks themselves are the resource claims.
   '''
 }
@@ -68,6 +68,8 @@ Table tasks {
   robot_id text
   item_id text
   quantity integer [not null]
+  from_location_id text
+  from_floor integer [note: '1 or 2 when the source is a stacked slot']
   to_location_id text
   to_floor integer [note: '1 or 2 when the target is a stacked slot']
 
@@ -77,12 +79,11 @@ Table tasks {
   finished_at timestamptz
 
   indexes {
-    status
-    priority
-    robot_id
+    (status, priority, created_at)
+    (robot_id, status)
     item_id
-    to_location_id
-    to_floor
+    (from_location_id, from_floor, status)
+    (to_location_id, to_floor, status)
     created_at
   }
 }
@@ -117,10 +118,10 @@ Table commands {
 }
 
 /*
-  Append-only evidence/event ledger.
-  This is the proof source for command progress/status and safety stop creation.
-  task_id is kept as a historical value only, so tasks can be deleted.
-  command_id points to the static command definition that this evidence satisfies.
+  Runtime evidence/event buffer.
+  This is the proof source for command progress/status and safety stop creation while a task is active.
+  After task completion, copy the decisive/supporting proof into task_logs.snapshot_json,
+  then these rows can be deleted.
 */
 Table evidence_events {
   id bigint [pk, increment]
@@ -206,6 +207,45 @@ Table item_change_logs {
   Append-only task result/event log.
   No FK to tasks, because finished tasks can be removed.
   The copied fields are intentional audit snapshots, not current-state duplication.
+
+  Recommended snapshot_json shape:
+  {
+    "task": {
+      "robot_id": "tb3_1",
+      "item_id": "BOX_A",
+      "quantity": 1,
+      "from_location_id": "STORAGE_01",
+      "from_floor": 2,
+      "to_location_id": "OUTBOUND_01",
+      "to_floor": 1
+    },
+    "decisive_evidence": {
+      "command_id": 4,
+      "event_type": "ITEM_PLACED",
+      "source": "camera_01",
+      "confidence": 0.94,
+      "severity": "INFO",
+      "trusted": true,
+      "image_url": "...",
+      "observed_at": "...",
+      "data": { "marker_id": 12, "slot": "OUTBOUND_01", "floor": 1 }
+    },
+    "supporting_evidence": [
+      {
+        "command_id": 1,
+        "event_type": "NAV_REACHED",
+        "source": "nav_server",
+        "confidence": null,
+        "severity": "INFO",
+        "trusted": true,
+        "observed_at": "...",
+        "data": { "distance_m": 0.08 }
+      }
+    ]
+  }
+
+  Keep copied evidence compact: no binary images, no full raw payload dumps,
+  only small proof fields needed to explain the final result.
 */
 Table task_logs {
   id bigint [pk, increment]
@@ -215,21 +255,21 @@ Table task_logs {
 
   task_type text [not null]
   result text [not null] // COMPLETED, FAILED, CANCELLED
-  result_evidence_id bigint // decisive evidence_events.id value; logical reference, no FK
+  result_evidence_type text // decisive evidence type copied from evidence_events
 
   started_at timestamptz
   finished_at timestamptz [not null]
   error_reason text
 
   summary text
-  snapshot_json jsonb // robot/item/location/quantity/supporting evidence ids if needed
+  snapshot_json jsonb [note: 'final task snapshot + compact copied evidence rows: command_id, event_type, source, confidence, severity, trusted, image_url, observed_at, small data_json subset']
   logged_at timestamptz [not null]
 
   indexes {
     task_id
     task_type
     result
-    result_evidence_id
+    result_evidence_type
     finished_at
     logged_at
   }
@@ -245,6 +285,7 @@ Ref: inventory.location_id > locations.id
 
 Ref: tasks.robot_id > robots.id
 Ref: tasks.item_id > items.id
+Ref: tasks.from_location_id > locations.id
 Ref: tasks.to_location_id > locations.id
 
 Ref: evidence_events.command_id > commands.id
