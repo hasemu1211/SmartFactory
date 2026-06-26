@@ -182,6 +182,7 @@ Table item_change_logs {
   task_id bigint
   item_id text [not null]
   location_id text
+  floor int
 
   event_type text [not null]
   quantity_change integer [not null]
