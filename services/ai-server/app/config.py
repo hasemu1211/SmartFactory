@@ -109,6 +109,7 @@ def _legacy_source_registry(*, source_ids: list[str], image_topics: list[str]) -
         BrowserSurface,
         NormalizedTopics,
         PhysicalInput,
+        SourceBudgets,
         SourceDefinition,
         SourceViewDefinition,
     )
@@ -157,6 +158,13 @@ def _legacy_source_registry(*, source_ids: list[str], image_topics: list[str]) -
                     overlay=f"/sf/vision/sources/{source_id}/overlay/compressed",
                 ),
                 evidence_event_topic="/sf/vision/events",
+                budgets=SourceBudgets(
+                    target_fps_semantics="legacy_ai_ingest_default",
+                    preview_media_fps=None,
+                    ai_monitor_fps=None,
+                    evidence_imgsz=None,
+                    browser_primary_transport_semantics="legacy_internal_rosbridge_metadata",
+                ),
                 views=(
                     SourceViewDefinition(
                         view_id="full",

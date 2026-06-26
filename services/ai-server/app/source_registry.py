@@ -34,6 +34,31 @@ class NormalizedTopics:
 
 
 @dataclass(frozen=True)
+class SourceBudgets:
+    """Per-source budget semantics for preview media, AI monitor, and evidence.
+
+    `target_fps` remains a legacy field in the source registry.  This additive
+    object prevents Main/WebRTC callers from interpreting that legacy value as
+    the dashboard preview FPS after the GoPro split-budget work.
+    """
+
+    target_fps_semantics: str
+    preview_media_fps: float | None
+    ai_monitor_fps: float | None
+    evidence_imgsz: int | None
+    browser_primary_transport_semantics: str
+
+    def as_snapshot(self) -> dict[str, Any]:
+        return {
+            "target_fps_semantics": self.target_fps_semantics,
+            "preview_media_fps": self.preview_media_fps,
+            "ai_monitor_fps": self.ai_monitor_fps,
+            "evidence_imgsz": self.evidence_imgsz,
+            "browser_primary_transport_semantics": self.browser_primary_transport_semantics,
+        }
+
+
+@dataclass(frozen=True)
 class SourceViewDefinition:
     view_id: str
     kind: str
@@ -64,6 +89,7 @@ class SourceDefinition:
     browser: BrowserSurface
     normalized_topics: NormalizedTopics
     evidence_event_topic: str
+    budgets: SourceBudgets
     views: tuple[SourceViewDefinition, ...] = ()
 
     @property
@@ -104,6 +130,7 @@ class SourceDefinition:
                 "overlay": self.normalized_topics.overlay,
             },
             "evidence_event_topic": self.evidence_event_topic,
+            "budgets": self.budgets.as_snapshot(),
             "views": [view.as_snapshot() for view in self.views],
         }
 
@@ -196,6 +223,62 @@ def _optional_string(value: Any, *, path: str) -> str | None:
     return _require_string(value, path=path)
 
 
+def _optional_positive_float(value: Any, *, path: str) -> float | None:
+    if value is None:
+        return None
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or value <= 0
+    ):
+        raise SourceRegistryError(f"{path} must be a positive number")
+    return float(value)
+
+
+def _optional_positive_int(value: Any, *, path: str) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise SourceRegistryError(f"{path} must be a positive integer")
+    return int(value)
+
+
+def _parse_budgets(
+    raw: Any,
+    *,
+    index: int,
+    target_fps: float | None,
+) -> SourceBudgets:
+    if raw is None:
+        raw = {}
+    budgets = _require_mapping(raw, path=f"sources[{index}].budgets")
+    return SourceBudgets(
+        target_fps_semantics=_require_string(
+            budgets.get("target_fps_semantics", "legacy_ai_ingest_default"),
+            path=f"sources[{index}].budgets.target_fps_semantics",
+        ),
+        preview_media_fps=_optional_positive_float(
+            budgets.get("preview_media_fps", target_fps),
+            path=f"sources[{index}].budgets.preview_media_fps",
+        ),
+        ai_monitor_fps=_optional_positive_float(
+            budgets.get("ai_monitor_fps", target_fps),
+            path=f"sources[{index}].budgets.ai_monitor_fps",
+        ),
+        evidence_imgsz=_optional_positive_int(
+            budgets.get("evidence_imgsz"),
+            path=f"sources[{index}].budgets.evidence_imgsz",
+        ),
+        browser_primary_transport_semantics=_require_string(
+            budgets.get(
+                "browser_primary_transport_semantics",
+                "legacy_internal_browser_metadata",
+            ),
+            path=f"sources[{index}].budgets.browser_primary_transport_semantics",
+        ),
+    )
+
+
 def _parse_views(raw: Any, *, source_id: str, index: int) -> tuple[SourceViewDefinition, ...]:
     if raw is None:
         raw = [
@@ -263,11 +346,9 @@ def _parse_source(raw: Any, *, index: int) -> SourceDefinition:
     if not isinstance(enabled, bool):
         raise SourceRegistryError(f"sources[{index}].enabled must be a boolean")
 
-    target_fps = item.get("target_fps")
-    if target_fps is not None:
-        if not isinstance(target_fps, (int, float)) or target_fps <= 0:
-            raise SourceRegistryError(f"sources[{index}].target_fps must be a positive number")
-        target_fps = float(target_fps)
+    target_fps = _optional_positive_float(
+        item.get("target_fps"), path=f"sources[{index}].target_fps"
+    )
 
     return SourceDefinition(
         source_id=source_id,
@@ -311,6 +392,11 @@ def _parse_source(raw: Any, *, index: int) -> SourceDefinition:
         ),
         evidence_event_topic=_require_string(
             item["evidence_event_topic"], path=f"sources[{index}].evidence_event_topic"
+        ),
+        budgets=_parse_budgets(
+            item.get("budgets"),
+            index=index,
+            target_fps=target_fps,
         ),
         views=_parse_views(item.get("views"), source_id=source_id, index=index),
     )

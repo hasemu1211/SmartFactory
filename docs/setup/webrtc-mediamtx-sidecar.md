@@ -12,8 +12,8 @@ Use the normal MJPEG-safe profile when WebRTC is not needed:
 ./scripts/vision/sf_vision.sh up lab-gopro-tb3
 ```
 
-Use the WebRTC sidecar profile when Main/browser should prefer WebRTC and keep
-MJPEG fallback:
+Use the WebRTC sidecar profile when Main/browser should test WebRTC candidates
+while keeping MJPEG fallback:
 
 ```bash
 ./scripts/vision/sf_vision.sh check lab-gopro-tb3-webrtc
@@ -71,9 +71,16 @@ Default profile streams:
 | `tb3_1_picam/full` | `tb3_1_picam_full` | `http://smartfactory-vision.local:8889/tb3_1_picam_full` | `http://smartfactory-vision.local:8889/tb3_1_picam_full/whep` |
 | `tb3_2_picam/full` | `tb3_2_picam_full` | `http://smartfactory-vision.local:8889/tb3_2_picam_full` | `http://smartfactory-vision.local:8889/tb3_2_picam_full/whep` |
 
-The runner reads the already-proven MJPEG overlay stream and republishes it to
-MediaMTX as low-latency H.264 RTSP via ffmpeg. Main/browser reads WebRTC from
-MediaMTX.
+The current runner reads the already-proven MJPEG overlay stream and republishes
+it to MediaMTX as low-latency H.264 RTSP via ffmpeg. Main/browser reads WebRTC
+from MediaMTX.
+
+That MJPEG-derived WebRTC path is the compatibility baseline, not the final
+best-quality requirement. Direct clean media WebRTC should be preferred when a
+GoPro/Pi source can feed MediaMTX directly (native H.264/TS/RTSP/UDP) or through
+a camera-input H.264 transcode without first passing through the AI/MJPEG overlay
+gateway. The existing `:8090` MJPEG gateway remains the production-compatible
+fallback until Main migration to direct WebRTC is explicitly complete.
 
 For GoPro/global camera operation, the media and AI budgets are separate. The
 WebRTC profile may request `WEBRTC_SIDECAR_TARGET_FPS=30` for browser smoothness

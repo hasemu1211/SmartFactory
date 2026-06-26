@@ -63,6 +63,13 @@
         "overlay": "/sf/vision/sources/global_cam_01/overlay/compressed"
       },
       "evidence_event_topic": "/sf/vision/events",
+      "budgets": {
+        "target_fps_semantics": "legacy_ai_ingest_default",
+        "preview_media_fps": 30.0,
+        "ai_monitor_fps": 5.0,
+        "evidence_imgsz": 960,
+        "browser_primary_transport_semantics": "legacy_internal_rosbridge_metadata"
+      },
       "views": [
         {
           "view_id": "full",
@@ -107,6 +114,13 @@
         "overlay": "/sf/vision/sources/global_depth_01/overlay/compressed"
       },
       "evidence_event_topic": "/sf/vision/events",
+      "budgets": {
+        "target_fps_semantics": "planned_ingest_default",
+        "preview_media_fps": 15.0,
+        "ai_monitor_fps": 5.0,
+        "evidence_imgsz": null,
+        "browser_primary_transport_semantics": "disabled_planned_source_metadata"
+      },
       "views": [
         {
           "view_id": "full",
@@ -145,6 +159,13 @@
         "overlay": "/sf/vision/sources/tb3_1_picam/overlay/compressed"
       },
       "evidence_event_topic": "/sf/vision/events",
+      "budgets": {
+        "target_fps_semantics": "legacy_ai_ingest_default",
+        "preview_media_fps": 30.0,
+        "ai_monitor_fps": 10.0,
+        "evidence_imgsz": null,
+        "browser_primary_transport_semantics": "legacy_internal_rosbridge_metadata"
+      },
       "views": [
         {
           "view_id": "full",
@@ -177,6 +198,13 @@
         "overlay": "/sf/vision/sources/tb3_2_picam/overlay/compressed"
       },
       "evidence_event_topic": "/sf/vision/events",
+      "budgets": {
+        "target_fps_semantics": "legacy_ai_ingest_default",
+        "preview_media_fps": 30.0,
+        "ai_monitor_fps": 10.0,
+        "evidence_imgsz": null,
+        "browser_primary_transport_semantics": "legacy_internal_rosbridge_metadata"
+      },
       "views": [
         {
           "view_id": "full",

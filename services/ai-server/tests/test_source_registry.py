@@ -2,9 +2,11 @@ import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+import pytest
 
 from app.config import REPO_ROOT, _legacy_source_registry, get_settings
 from app.main import app
+from app.source_registry import SourceRegistryError, load_source_registry
 
 client = TestClient(app)
 
@@ -26,6 +28,87 @@ def test_source_registry_loads_mvp_sources_and_topics():
     assert tb3_1.physical_input.topic == "/tb3_1/camera/image_raw/compressed"
     assert tb3_1.physical_input.message_type == "sensor_msgs/msg/CompressedImage"
     assert tb3_1.normalized_topics.overlay == "/sf/vision/sources/tb3_1_picam/overlay/compressed"
+    assert tb3_1.budgets.preview_media_fps == 30.0
+    assert tb3_1.budgets.ai_monitor_fps == 10.0
+    assert tb3_1.budgets.evidence_imgsz is None
+    assert (
+        tb3_1.budgets.browser_primary_transport_semantics
+        == "legacy_internal_rosbridge_metadata"
+    )
+
+
+def test_source_registry_budget_semantics_separate_preview_ai_and_evidence():
+    registry = get_settings().source_registry
+    global_cam = registry.get("global_cam_01")
+
+    assert global_cam.target_fps == 10.0
+    assert global_cam.budgets.as_snapshot() == {
+        "target_fps_semantics": "legacy_ai_ingest_default",
+        "preview_media_fps": 30.0,
+        "ai_monitor_fps": 5.0,
+        "evidence_imgsz": 960,
+        "browser_primary_transport_semantics": "legacy_internal_rosbridge_metadata",
+    }
+
+
+def _source_registry_yaml_with_budget_line(line: str) -> str:
+    return f"""
+schema_version: vision-sources.v1
+sources:
+  - source_id: test_cam
+    kind: global_rgb
+    robot_id: null
+    frame_id: test_frame
+    enabled: true
+    target_fps: 10.0
+    notes: test
+    budgets:
+      target_fps_semantics: legacy_ai_ingest_default
+      {line}
+      browser_primary_transport_semantics: legacy_internal_rosbridge_metadata
+    physical_input:
+      topic: /test/image_raw
+      message_type: sensor_msgs/msg/Image
+      content_type: image/raw
+      preferred_transport: raw
+    browser:
+      legacy_topic: null
+      legacy_message_type: null
+      primary_transport: rosbridge
+    normalized_topics:
+      image: /sf/vision/sources/test_cam/image/compressed
+      overlay: /sf/vision/sources/test_cam/overlay/compressed
+    evidence_event_topic: /sf/vision/events
+    views:
+      - view_id: full
+        kind: full_frame
+        can_confirm_internal_color_indexing: false
+"""
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "preview_media_fps: true",
+        "preview_media_fps: 0",
+        "preview_media_fps: -1",
+        'preview_media_fps: "fast"',
+    ],
+)
+def test_source_registry_rejects_invalid_budget_float_values(tmp_path: Path, line: str):
+    path = tmp_path / "sources.yaml"
+    path.write_text(_source_registry_yaml_with_budget_line(line), encoding="utf-8")
+
+    with pytest.raises(SourceRegistryError, match="preview_media_fps must be a positive number"):
+        load_source_registry(path)
+
+
+def test_source_registry_rejects_invalid_evidence_imgsz_bool(tmp_path: Path):
+    path = tmp_path / "sources.yaml"
+    path.write_text(_source_registry_yaml_with_budget_line("evidence_imgsz: true"), encoding="utf-8")
+
+    with pytest.raises(SourceRegistryError, match="evidence_imgsz must be a positive integer"):
+        load_source_registry(path)
 
 
 def test_source_registry_view_contract_keeps_realsense_planned_and_view_scoped():

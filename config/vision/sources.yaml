@@ -7,6 +7,12 @@ sources:
     enabled: true
     target_fps: 10.0
     notes: GoPro/global RGB overview evidence with crop-first smart ROI views for lift/pallet analysis
+    budgets:
+      target_fps_semantics: legacy_ai_ingest_default
+      preview_media_fps: 30.0
+      ai_monitor_fps: 5.0
+      evidence_imgsz: 960
+      browser_primary_transport_semantics: legacy_internal_rosbridge_metadata
     physical_input:
       topic: /global_camera/image_raw
       message_type: sensor_msgs/msg/Image
@@ -40,6 +46,11 @@ sources:
     enabled: false
     target_fps: 15.0
     notes: planned D435 global full/ROI crop views; disabled until mounted and calibrated
+    budgets:
+      target_fps_semantics: planned_ingest_default
+      preview_media_fps: 15.0
+      ai_monitor_fps: 5.0
+      browser_primary_transport_semantics: disabled_planned_source_metadata
     physical_input:
       topic: null
       message_type: sensor_msgs/msg/Image
@@ -69,6 +80,11 @@ sources:
     enabled: true
     target_fps: 10.0
     notes: front marker/dock/local item evidence
+    budgets:
+      target_fps_semantics: legacy_ai_ingest_default
+      preview_media_fps: 30.0
+      ai_monitor_fps: 10.0
+      browser_primary_transport_semantics: legacy_internal_rosbridge_metadata
     physical_input:
       topic: /tb3_1/camera/image_raw/compressed
       message_type: sensor_msgs/msg/CompressedImage
@@ -90,6 +106,11 @@ sources:
     enabled: true
     target_fps: 10.0
     notes: front marker/dock/local item evidence
+    budgets:
+      target_fps_semantics: legacy_ai_ingest_default
+      preview_media_fps: 30.0
+      ai_monitor_fps: 10.0
+      browser_primary_transport_semantics: legacy_internal_rosbridge_metadata
     physical_input:
       topic: /tb3_2/camera/image_raw/compressed
       message_type: sensor_msgs/msg/CompressedImage

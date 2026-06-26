@@ -62,6 +62,21 @@ def test_vision_streams_declares_http_gateway_primary_and_internal_rosbridge_pol
     assert body["control_topics_published"] == []
     assert body["webrtc_policy"]["status"] == "candidate_additive"
     assert body["webrtc_policy"]["primary_until_parity"] == "mjpeg"
+    assert body["webrtc_policy"]["production_compatible_fallback"] == "http_mjpeg_gateway"
+    assert body["webrtc_policy"]["preferred_order"] == [
+        "direct_clean_media_webrtc",
+        "camera_input_h264_transcode_webrtc",
+        "mjpeg_overlay_h264_transcode_webrtc",
+        "http_mjpeg_gateway",
+    ]
+    assert body["webrtc_policy"]["transport_rank_order"] == "lower_is_preferred"
+    assert body["webrtc_policy"]["promotion_gate"] == {
+        "requires_backward_compatible_fields": True,
+        "requires_health_check": True,
+        "requires_latency_or_quality_evidence": True,
+        "must_keep_mjpeg_fallback": True,
+    }
+    assert body["webrtc_policy"]["current_webrtc_transport_origin"] == "mjpeg_overlay_gateway"
     assert body["webrtc_policy"]["media_only"] is True
     assert body["webrtc_policy"]["motion_command_allowed"] is False
     assert body["webrtc_policy"]["control_topics_published"] == []
@@ -90,6 +105,13 @@ def test_vision_streams_declares_http_gateway_primary_and_internal_rosbridge_pol
     sources = {item["source"]: item for item in body["sources"]}
     global_source = sources["global_cam_01"]
     assert global_source["available_views"] == list(source_definition("global_cam_01").view_ids)
+    assert global_source["budgets"] == {
+        "target_fps_semantics": "legacy_ai_ingest_default",
+        "preview_media_fps": 30.0,
+        "ai_monitor_fps": 5.0,
+        "evidence_imgsz": 960,
+        "browser_primary_transport_semantics": "legacy_internal_rosbridge_metadata",
+    }
     assert len(global_source["stream_transports"]) == 2 * len(
         source_definition("global_cam_01").view_ids
     )
@@ -102,12 +124,22 @@ def test_vision_streams_declares_http_gateway_primary_and_internal_rosbridge_pol
         "http://<vision-host>:8090/api/v1/vision/overlay/stream?"
         "source=global_cam_01&view=full&max_fps=30"
     )
+    assert mjpeg["transport_origin"] == "http_mjpeg_gateway"
+    assert mjpeg["transport_class"] == "http_mjpeg_gateway"
+    assert mjpeg["transport_rank"] == 4
+    assert mjpeg["transport_rank_order"] == "lower_is_preferred"
+    assert mjpeg["production_compatible_fallback"] is True
     webrtc = _transport(global_source, kind="webrtc", view="full")
     assert webrtc["status"] == "candidate"
     assert webrtc["offer_path"] == (
         "/api/v1/vision/streams/global_cam_01/webrtc/offer?view=full"
     )
     assert webrtc["fallback_path"] == mjpeg["path"]
+    assert webrtc["transport_origin"] == "mjpeg_overlay_gateway"
+    assert webrtc["transport_class"] == "mjpeg_overlay_h264_transcode_webrtc"
+    assert webrtc["transport_rank"] == 3
+    assert webrtc["transport_rank_order"] == "lower_is_preferred"
+    assert webrtc["preferred_until_direct_media_ready"] is False
     assert webrtc["media_only"] is True
     assert webrtc["sidecar_required"] is True
     assert webrtc["sidecar"]["status"] == "not_configured"
@@ -148,6 +180,13 @@ def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
     assert source["mjpeg_path"] == "/api/v1/vision/stream/tb3_1_picam.mjpeg"
     assert source["default_view"] == "full"
     assert source["available_views"] == ["full"]
+    assert source["budgets"] == {
+        "target_fps_semantics": "legacy_ai_ingest_default",
+        "preview_media_fps": 30.0,
+        "ai_monitor_fps": 10.0,
+        "evidence_imgsz": None,
+        "browser_primary_transport_semantics": "legacy_internal_rosbridge_metadata",
+    }
     assert source["frame_metadata_path"] == "/api/v1/vision/frame/latest?source=tb3_1_picam"
     assert source["overlay_metadata_path"] == "/api/v1/vision/overlay/latest?source=tb3_1_picam"
     assert source["metrics_path"] == "/api/v1/metrics?source=tb3_1_picam"
@@ -167,6 +206,11 @@ def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
             "fallback_path": (
                 "/api/v1/vision/overlay/stream?source=tb3_1_picam&view=full&max_fps=30"
             ),
+            "transport_origin": "http_mjpeg_gateway",
+            "transport_class": "http_mjpeg_gateway",
+            "transport_rank": 4,
+            "transport_rank_order": "lower_is_preferred",
+            "production_compatible_fallback": True,
             "media_only": True,
             "db_writes": False,
             "evidence_truth_mutation": False,
@@ -186,6 +230,11 @@ def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
                 "/api/v1/vision/overlay/stream?source=tb3_1_picam&view=full&max_fps=30"
             ),
             "fallback_kind": "mjpeg",
+            "transport_origin": "mjpeg_overlay_gateway",
+            "transport_class": "mjpeg_overlay_h264_transcode_webrtc",
+            "transport_rank": 3,
+            "transport_rank_order": "lower_is_preferred",
+            "preferred_until_direct_media_ready": False,
             "media_only": True,
             "sidecar_required": True,
             "sidecar": {
@@ -250,6 +299,28 @@ def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
     bad = client.get("/api/v1/vision/streams", params={"source": "bad_cam"})
     assert bad.status_code == 400
     assert bad.json()["error"]["code"] == "BAD_REQUEST"
+
+
+def test_stream_transport_ranking_metadata_is_policy_consistent():
+    response = client.get("/api/v1/vision/streams", params={"source": "global_cam_01"})
+
+    assert response.status_code == 200
+    body = response.json()
+    preferred_order = body["webrtc_policy"]["preferred_order"]
+    assert body["webrtc_policy"]["transport_rank_order"] == "lower_is_preferred"
+    expected_ranks = {name: index + 1 for index, name in enumerate(preferred_order)}
+    source = body["sources"][0]
+
+    fallback_seen = False
+    for transport in source["stream_transports"]:
+        transport_class = transport["transport_class"]
+        assert transport_class in preferred_order
+        assert transport["transport_rank_order"] == "lower_is_preferred"
+        assert transport["transport_rank"] == expected_ranks[transport_class]
+        if transport_class == "http_mjpeg_gateway":
+            fallback_seen = True
+            assert transport["production_compatible_fallback"] is True
+    assert fallback_seen is True
 
 
 def test_webrtc_offer_endpoint_is_media_only_and_forced_fallback_records_metrics():
@@ -390,9 +461,12 @@ def test_webrtc_offer_endpoint_selects_webrtc_when_sidecar_descriptor_is_configu
         "http://media-sidecar.local/global_cam_01_full"
     )
     assert body["media_only"] is True
+    assert body["motion_command_allowed"] is False
+    assert body["control_topics_published"] == []
     assert body["side_effects"]["db_writes"] is False
     assert body["side_effects"]["evidence_truth_mutated"] is False
     assert body["side_effects"]["ros_control_published"] is False
+    assert body["side_effects"]["ros_topics_started_by_http_request"] is False
 
     metrics = client.get(
         "/api/v1/metrics",

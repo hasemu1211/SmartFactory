@@ -63,7 +63,9 @@ VISION_WEBRTC_SIDECAR_STREAMS=global_cam_01/full,global_cam_01/lift_roi,tb3_1_pi
 
 의미:
 
-- MediaMTX sidecar가 Vision MJPEG overlay stream을 받아 RTSP/WebRTC path로 재송출합니다.
+- 현재 MediaMTX sidecar는 Vision MJPEG overlay stream을 받아 RTSP/WebRTC path로 재송출합니다.
+- 이 경로는 호환 baseline/fallback입니다. 최종 품질 목표는 GoPro/Pi clean media가 native H.264/TS/RTSP/UDP 또는 camera-input H.264 transcode로 MediaMTX/WebRTC에 들어가고, AI overlay는 metadata/canvas 또는 MJPEG fallback으로 처리되는 방향입니다.
+- 따라서 Main은 기존 `:8090` MJPEG fallback을 계속 유지하되, discovery/offer 응답의 additive transport metadata와 health gate에 따라 direct WebRTC가 준비되면 우선 선택할 수 있어야 합니다.
 - WebRTC 후보 path:
   - `http://smartfactory-vision.local:8889/global_cam_01_full`
   - `http://smartfactory-vision.local:8889/global_cam_01_full/whep`
