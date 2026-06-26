@@ -422,12 +422,24 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--source", default=os.environ.get("GOPRO_VISION_SOURCE", "global_cam_01"))
     parser.add_argument("--roi-view", default=os.environ.get("GOPRO_ROI_VIEW", "lift_roi"))
     parser.add_argument("--roi-hint-normalized", default=os.environ.get("GOPRO_ROI_HINT_NORMALIZED", ""), help="optional x1,y1,x2,y2 normalized map/mount hint")
-    parser.add_argument("--target-fps", type=float, default=float(os.environ.get("GOPRO_TARGET_FPS", "5")))
+    parser.add_argument(
+        "--target-fps",
+        type=float,
+        default=float(
+            os.environ.get("GOPRO_AI_MONITOR_FPS", os.environ.get("GOPRO_TARGET_FPS", "5"))
+        ),
+    )
     parser.add_argument("--bufferless", action=argparse.BooleanOptionalAction, default=os.environ.get("GOPRO_BUFFERLESS", "true").lower() not in {"0", "false", "no"}, help="capture in a background thread and process only the latest frame")
     parser.add_argument("--capture-warmup-sec", type=float, default=float(os.environ.get("GOPRO_CAPTURE_WARMUP_SEC", "1.0")), help="discard early auto-exposure/stream startup frames before processing")
     parser.add_argument("--read-stall-timeout-sec", type=float, default=float(os.environ.get("GOPRO_READ_STALL_TIMEOUT_SEC", "5.0")), help="when --bufferless and --max-frames is set, stop if no new frame arrives before this timeout")
     parser.add_argument("--jpeg-quality", type=int, default=int(os.environ.get("GOPRO_JPEG_QUALITY", "85")))
-    parser.add_argument("--model-input-size", type=int, default=int(os.environ.get("VISION_MODEL_IMGSZ", "640")))
+    parser.add_argument(
+        "--model-input-size",
+        type=int,
+        default=int(
+            os.environ.get("GOPRO_AI_MONITOR_IMGSZ", os.environ.get("VISION_MODEL_IMGSZ", "640"))
+        ),
+    )
     parser.add_argument("--timeout", type=float, default=2.0)
     parser.add_argument("--max-frames", type=int, default=0, help="0 means run until interrupted")
     parser.add_argument("--save-roi-dir", default=os.environ.get("GOPRO_ROI_SAVE_DIR", ""))

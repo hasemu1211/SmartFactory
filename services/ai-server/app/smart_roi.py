@@ -147,11 +147,13 @@ def parse_normalized_bbox(value: str | Sequence[float] | None) -> tuple[float, f
         if not value.strip():
             return None
         parts = [part.strip() for part in value.replace(";", ",").split(",")]
+        if len(parts) != 4:
+            raise ValueError("normalized ROI hint must contain x1,y1,x2,y2")
+        bbox = tuple(float(part) for part in parts)
     else:
-        parts = list(value)
-    if len(parts) != 4:
-        raise ValueError("normalized ROI hint must contain x1,y1,x2,y2")
-    bbox = tuple(float(part) for part in parts)
+        if len(value) != 4:
+            raise ValueError("normalized ROI hint must contain x1,y1,x2,y2")
+        bbox = tuple(float(part) for part in value)
     x1, y1, x2, y2 = bbox
     if not (0.0 <= x1 < x2 <= 1.0 and 0.0 <= y1 < y2 <= 1.0):
         raise ValueError("normalized ROI hint must satisfy 0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1")
@@ -328,3 +330,44 @@ def event_for_roi_overlay(event: dict[str, Any], selection: SmartRoiSelection) -
     metadata["roi_selection"] = selection.metadata()
     roi_event["metadata"] = metadata
     return roi_event
+
+
+def estimate_object_pixel_budget(
+    *,
+    object_size_m: float,
+    visible_scene_width_m: float,
+    frame_width_px: int,
+    pixel_gain_vs_full_resize: float = 1.0,
+    min_object_px: float = 12.0,
+) -> dict[str, Any]:
+    """Estimate model-space pixels available for a small object.
+
+    This is a deterministic planning/observability helper, not a detector.
+    It lets the GoPro/global-camera path report when a 4 cm dropped-item target
+    is below the current stream/evidence pixel budget before operators raise
+    continuous AI FPS or model input size.
+    """
+
+    if object_size_m <= 0:
+        raise ValueError("object_size_m must be positive")
+    if visible_scene_width_m <= 0:
+        raise ValueError("visible_scene_width_m must be positive")
+    if frame_width_px <= 0:
+        raise ValueError("frame_width_px must be positive")
+    if pixel_gain_vs_full_resize <= 0:
+        raise ValueError("pixel_gain_vs_full_resize must be positive")
+    if min_object_px <= 0:
+        raise ValueError("min_object_px must be positive")
+
+    full_frame_object_px = (object_size_m / visible_scene_width_m) * float(frame_width_px)
+    effective_object_px = full_frame_object_px * float(pixel_gain_vs_full_resize)
+    return {
+        "object_size_m": round(float(object_size_m), 4),
+        "visible_scene_width_m": round(float(visible_scene_width_m), 4),
+        "frame_width_px": int(frame_width_px),
+        "pixel_gain_vs_full_resize": round(float(pixel_gain_vs_full_resize), 3),
+        "full_frame_object_px": round(full_frame_object_px, 2),
+        "effective_object_px": round(effective_object_px, 2),
+        "min_object_px": round(float(min_object_px), 2),
+        "meets_min_object_px": effective_object_px >= float(min_object_px),
+    }

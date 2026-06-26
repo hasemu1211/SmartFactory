@@ -40,7 +40,25 @@ GoPro HERO11 USB/OpenGoPro TS stream
 
 The adapter captures in a background thread and processes only the latest frame
 when `--bufferless` is enabled. This prevents stale OpenCV/FFMPEG queue frames
-from turning a 3~5 FPS AI loop into delayed evidence.
+from turning a sparse AI loop into delayed evidence.
+
+Runtime budgets are intentionally split:
+
+| Plane | Profile variables | Default intent |
+|---|---|---|
+| Media/browser stream | `GOPRO_STREAM_TARGET_FPS`, `WEBRTC_SIDECAR_TARGET_FPS` | 30 FPS target when the host/network can sustain it |
+| Continuous AI monitor | `GOPRO_AI_MONITOR_FPS`, `GOPRO_AI_MONITOR_IMGSZ`, `GOPRO_DROPPED_ITEM_CONF` | 5 FPS, crop-first, latest-frame dropped-item/overlay monitoring |
+| Transition proof | `GOPRO_EVIDENCE_IMGSZ`, `GOPRO_EVIDENCE_CAPTURE_MODE`, `GOPRO_EVIDENCE_RUNTIME_SCOPE` | no-hardware plan/mock contract now; live transition capture wiring is a later hardware-gated step |
+
+`GOPRO_TARGET_FPS` remains as a legacy alias for old scripts, but new operator
+profiles drive the GoPro adapter with `GOPRO_AI_MONITOR_FPS`.
+
+No-hardware plan/mock check:
+
+```bash
+./scripts/vision/run_gopro_evidence_capture_sidecar.py --check
+./scripts/vision/run_gopro_evidence_capture_sidecar.py --mock-once --operation PICKUP
+```
 
 ## Commands
 
@@ -72,7 +90,11 @@ GOPRO_INPUT='udp://0.0.0.0:8554?overrun_nonfatal=1&fifo_size=50000000'
 
 ### 1) LIFT_UP -> DRIVE proof
 
-Run for a short burst at transition time:
+Run for a short burst at transition time after the hardware-gated live capture
+story is enabled. The current no-hardware implementation keeps the public API
+reuse-first: proof evaluation uses
+`/api/v1/lift-roi/evaluate-image` and `/api/v1/evidence/evaluate`; it does not
+add a new public `capture-lift-roi` endpoint.
 
 ```bash
 mkdir -p evidence/lift_up
@@ -80,7 +102,7 @@ mkdir -p evidence/lift_up
   --input "$GOPRO_INPUT" \
   --source global_cam_01 \
   --roi-view lift_roi \
-  --target-fps 3 \
+  --target-fps "${GOPRO_AI_MONITOR_FPS:-5}" \
   --max-frames 5 \
   --bufferless \
   --evaluate-lift-roi \
@@ -103,7 +125,7 @@ mkdir -p evidence/transit_roi
   --input "$GOPRO_INPUT" \
   --source global_cam_01 \
   --roi-view lift_roi \
-  --target-fps 5 \
+  --target-fps "${GOPRO_AI_MONITOR_FPS:-5}" \
   --bufferless \
   --evaluate-lift-roi \
   --operation MONITOR \
@@ -123,7 +145,7 @@ mkdir -p evidence/pre_dropoff
   --input "$GOPRO_INPUT" \
   --source global_cam_01 \
   --roi-view lift_roi \
-  --target-fps 3 \
+  --target-fps "${GOPRO_AI_MONITOR_FPS:-5}" \
   --max-frames 5 \
   --bufferless \
   --evaluate-lift-roi \
@@ -143,6 +165,9 @@ mkdir -p evidence/pre_dropoff
   `--bufferless` is used.
 - Evidence directories contain both full-frame and ROI images for transition
   proof runs.
+- Small-object quality guardrails return `LOW_PIXEL_BUDGET` or
+  `LOW_QUALITY_EVIDENCE` as `UNCERTAIN`/`NEEDS_REVIEW` and attach bounded
+  `data_json.alert_window` metadata before raising continuous AI FPS/imgsz.
 - Main/GUI can view:
   - `...?source=global_cam_01&view=full`
   - `...?source=global_cam_01&view=lift_roi`

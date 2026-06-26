@@ -59,7 +59,8 @@ Notes:
   `--pack-venv` to create a best-effort archive under `dist/`.
 - GTX 1650-class GPUs should start with conservative settings:
   - `VISION_MODEL_IMGSZ=224` or `320`
-  - `GOPRO_TARGET_FPS=5`
+  - `GOPRO_AI_MONITOR_FPS=5` for continuous inference
+  - `GOPRO_STREAM_TARGET_FPS=30` only as a media/browser target when healthy
   - enable only the needed ROI path first (`lift_roi`).
 - Naming boundary: "GoPro webcam" in this document means OpenGoPro's USB
   webcam-mode transport. In SmartFactory source contracts the camera is still
@@ -126,7 +127,7 @@ source:
   --input 'udp://0.0.0.0:8554?overrun_nonfatal=1&fifo_size=50000000' \
   --source global_cam_01 \
   --roi-view lift_roi \
-  --target-fps 5 \
+  --target-fps "${GOPRO_AI_MONITOR_FPS:-5}" \
   --bufferless
 ```
 
@@ -141,7 +142,7 @@ Optional model-backed lift ROI check:
   --input /dev/video0 \
   --source global_cam_01 \
   --roi-view lift_roi \
-  --target-fps 3 \
+  --target-fps "${GOPRO_AI_MONITOR_FPS:-5}" \
   --evaluate-lift-roi \
   --operation MONITOR \
   --bufferless
@@ -188,3 +189,11 @@ PY
 - Detection should crop before resize. A 4K or 1080p full frame resized directly
   to YOLO input can erase small lift/load details; crop-first keeps many more
   model-space pixels for the same object.
+- Media FPS, continuous AI FPS, and transition-proof quality are separate
+  knobs. Start with low continuous AI load and use short high-quality proof
+  capture at PICKUP/DROPOFF boundaries once the hardware-gated live transition
+  capture story is enabled. In this no-hardware implementation,
+  `GOPRO_EVIDENCE_RUNTIME_SCOPE=plan_mock_no_hardware` makes that boundary
+  explicit. If 4 cm dropped items are below pixel budget, return
+  `LOW_PIXEL_BUDGET`/`LOW_QUALITY_EVIDENCE` for review before increasing
+  continuous load.

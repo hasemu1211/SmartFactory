@@ -4,6 +4,7 @@ import numpy as np
 
 from app.smart_roi import (
     crop_smart_roi,
+    estimate_object_pixel_budget,
     event_for_roi_overlay,
     parse_normalized_bbox,
     select_smart_roi,
@@ -79,3 +80,31 @@ def test_roi_coordinate_mapping_round_trips_detector_boxes_for_full_frame_events
     )
     assert roi_event is not None
     assert roi_event["bbox_xyxy"] == [10.0, 20.0, 30.0, 40.0]
+
+
+def test_pixel_budget_estimator_marks_four_cm_target_below_low_res_stream_budget():
+    estimate = estimate_object_pixel_budget(
+        object_size_m=0.04,
+        visible_scene_width_m=4.0,
+        frame_width_px=1280,
+        pixel_gain_vs_full_resize=1.0,
+        min_object_px=16.0,
+    )
+
+    assert estimate["full_frame_object_px"] == 12.8
+    assert estimate["effective_object_px"] == 12.8
+    assert estimate["meets_min_object_px"] is False
+
+
+def test_pixel_budget_estimator_reports_crop_first_gain_as_enough_for_review():
+    estimate = estimate_object_pixel_budget(
+        object_size_m=0.04,
+        visible_scene_width_m=4.0,
+        frame_width_px=1920,
+        pixel_gain_vs_full_resize=3.0,
+        min_object_px=16.0,
+    )
+
+    assert estimate["full_frame_object_px"] == 19.2
+    assert estimate["effective_object_px"] == 57.6
+    assert estimate["meets_min_object_px"] is True

@@ -114,6 +114,13 @@ load_profile() {
   export GOPRO_SOURCE="${GOPRO_SOURCE:-global_cam_01}"
   export GOPRO_ROI_VIEW="${GOPRO_ROI_VIEW:-lift_roi}"
   export GOPRO_TARGET_FPS="${GOPRO_TARGET_FPS:-5}"
+  export GOPRO_STREAM_TARGET_FPS="${GOPRO_STREAM_TARGET_FPS:-30}"
+  export GOPRO_AI_MONITOR_FPS="${GOPRO_AI_MONITOR_FPS:-${GOPRO_TARGET_FPS}}"
+  export GOPRO_AI_MONITOR_IMGSZ="${GOPRO_AI_MONITOR_IMGSZ:-${VISION_MODEL_IMGSZ:-640}}"
+  export GOPRO_EVIDENCE_IMGSZ="${GOPRO_EVIDENCE_IMGSZ:-960}"
+  export GOPRO_DROPPED_ITEM_CONF="${GOPRO_DROPPED_ITEM_CONF:-0.25}"
+  export GOPRO_EVIDENCE_CAPTURE_MODE="${GOPRO_EVIDENCE_CAPTURE_MODE:-parallel_then_pause_then_stream_frame}"
+  export GOPRO_EVIDENCE_RUNTIME_SCOPE="${GOPRO_EVIDENCE_RUNTIME_SCOPE:-plan_mock_no_hardware}"
   export GOPRO_BUFFERLESS="${GOPRO_BUFFERLESS:-true}"
   export GOPRO_EVALUATE_LIFT_ROI="${GOPRO_EVALUATE_LIFT_ROI:-false}"
   export GOPRO_OPERATION="${GOPRO_OPERATION:-MONITOR}"
@@ -206,7 +213,14 @@ GoPro:
   protocol/resolution/fov/port=${GOPRO_PROTOCOL}/${GOPRO_RESOLUTION}/${GOPRO_FOV}/${GOPRO_PORT}
   input=${GOPRO_INPUT}
   source/view=${GOPRO_SOURCE}/${GOPRO_ROI_VIEW}
-  target_fps=${GOPRO_TARGET_FPS}
+  stream_target_fps=${GOPRO_STREAM_TARGET_FPS}
+  ai_monitor_fps=${GOPRO_AI_MONITOR_FPS}
+  ai_monitor_imgsz=${GOPRO_AI_MONITOR_IMGSZ}
+  evidence_imgsz=${GOPRO_EVIDENCE_IMGSZ}
+  dropped_item_conf=${GOPRO_DROPPED_ITEM_CONF}
+  evidence_capture_mode=${GOPRO_EVIDENCE_CAPTURE_MODE}
+  evidence_runtime_scope=${GOPRO_EVIDENCE_RUNTIME_SCOPE}
+  legacy_target_fps_alias=${GOPRO_TARGET_FPS}
 CONFIG
 }
 
@@ -249,6 +263,13 @@ VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE=${VISION_WEBRTC_SIDECAR_BROWSER_URL_T
 VISION_WEBRTC_SIDECAR_HEALTH_URL=${VISION_WEBRTC_SIDECAR_HEALTH_URL:-}
 VISION_WEBRTC_SIDECAR_PATHS_API_URL=${VISION_WEBRTC_SIDECAR_PATHS_API_URL:-}
 VISION_WEBRTC_SIDECAR_STREAMS=${VISION_WEBRTC_SIDECAR_STREAMS:-}
+GOPRO_STREAM_TARGET_FPS=${GOPRO_STREAM_TARGET_FPS}
+GOPRO_AI_MONITOR_FPS=${GOPRO_AI_MONITOR_FPS}
+GOPRO_AI_MONITOR_IMGSZ=${GOPRO_AI_MONITOR_IMGSZ}
+GOPRO_EVIDENCE_IMGSZ=${GOPRO_EVIDENCE_IMGSZ}
+GOPRO_DROPPED_ITEM_CONF=${GOPRO_DROPPED_ITEM_CONF}
+GOPRO_EVIDENCE_CAPTURE_MODE=${GOPRO_EVIDENCE_CAPTURE_MODE}
+GOPRO_EVIDENCE_RUNTIME_SCOPE=${GOPRO_EVIDENCE_RUNTIME_SCOPE}
 SF_VISION_TMUX_REQUIRED_CONTEXT=${SF_VISION_TMUX_REQUIRED_CONTEXT}
 SUMMARY
 }
@@ -330,6 +351,7 @@ run_enabled_preflights() {
   if is_truthy "${SF_VISION_GOPRO_ENABLED}"; then
     local py="${AI_SERVER_VENV_DIR}/bin/python"
     "${py}" "${ROOT_DIR}/scripts/vision/run_gopro_smart_roi_adapter.py" --check
+    "${py}" "${ROOT_DIR}/scripts/vision/run_gopro_evidence_capture_sidecar.py" --check >/dev/null
     "${py}" "${ROOT_DIR}/scripts/vision/start_gopro_webcam_stream.py" --help >/dev/null
   fi
   if is_truthy "${SF_VISION_WEBRTC_SIDECAR_ENABLED}"; then
@@ -370,7 +392,17 @@ start_gopro() {
   echo "[sf-vision] warming up GoPro stream for ${GOPRO_STREAM_WARMUP_SEC}s"
   sleep "${GOPRO_STREAM_WARMUP_SEC}"
 
-  local adapter_cmd=("${py}" scripts/vision/run_gopro_smart_roi_adapter.py --input "${GOPRO_INPUT}" --source "${GOPRO_SOURCE}" --roi-view "${GOPRO_ROI_VIEW}" --ai-server-url "${AI_SERVER_URL}" --target-fps "${GOPRO_TARGET_FPS}" --operation "${GOPRO_OPERATION}" --roi-kind "${GOPRO_ROI_KIND}")
+  local adapter_cmd=(
+    "${py}" scripts/vision/run_gopro_smart_roi_adapter.py
+    --input "${GOPRO_INPUT}"
+    --source "${GOPRO_SOURCE}"
+    --roi-view "${GOPRO_ROI_VIEW}"
+    --ai-server-url "${AI_SERVER_URL}"
+    --target-fps "${GOPRO_AI_MONITOR_FPS}"
+    --model-input-size "${GOPRO_AI_MONITOR_IMGSZ}"
+    --operation "${GOPRO_OPERATION}"
+    --roi-kind "${GOPRO_ROI_KIND}"
+  )
   if is_truthy "${GOPRO_BUFFERLESS}"; then
     adapter_cmd+=(--bufferless)
   else
