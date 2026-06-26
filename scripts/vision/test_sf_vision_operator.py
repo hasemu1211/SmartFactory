@@ -44,6 +44,10 @@ def test_lab_gopro_tb3_profile_prints_main_facing_urls_without_starting_processe
     assert "gopro_stream_adapter: true" in result.stdout
     assert "source1_enabled: true" in result.stdout
     assert "source2_enabled: false" in result.stdout
+    assert "stream_target_fps=30" in result.stdout
+    assert "ai_monitor_fps=5" in result.stdout
+    assert "evidence_imgsz=960" in result.stdout
+    assert "evidence_runtime_scope=plan_mock_no_hardware" in result.stdout
     assert "without sidecar templates" in result.stdout
 
 
@@ -65,6 +69,9 @@ def test_lab_gopro_tb3_webrtc_profile_prints_sidecar_urls_without_starting_proce
     assert "VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE=http://smartfactory-vision.local:8889/{source}_{view}" in result.stdout
     assert "sidecar_streams=global_cam_01/full,global_cam_01/lift_roi,tb3_1_picam/full,tb3_2_picam/full" in result.stdout
     assert "ai_server_sidecar_streams=global_cam_01/full,global_cam_01/lift_roi,tb3_1_picam/full,tb3_2_picam/full" in result.stdout
+    assert "stream_target_fps=30" in result.stdout
+    assert "ai_monitor_fps=5" in result.stdout
+    assert "ai_monitor_imgsz=640" in result.stdout
 
 
 def test_webrtc_sidecar_print_config_exposes_media_only_urls() -> None:
@@ -78,13 +85,48 @@ def test_webrtc_sidecar_print_config_exposes_media_only_urls() -> None:
             "PATH": "/usr/bin:/bin",
             "WEBRTC_SIDECAR_STREAMS": "global_cam_01/full,global_cam_01/lift_roi",
             "VISION_PUBLIC_HOST": "smartfactory-vision.local",
+            "MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS": "192.168.10.59",
         },
     )
 
     assert "path=global_cam_01_full" in result.stdout
-    assert "browser=http://smartfactory-vision.local:8889/global_cam_01_full" in result.stdout
+    assert "webrtc_additional_hosts: 192.168.10.59" in result.stdout
+    assert "gop: 15" in result.stdout
+    assert "input_probesize: 2048" in result.stdout
+    assert "input_analyzeduration: 0" in result.stdout
+    assert "avioflags_direct: false" in result.stdout
+    assert "output_muxdelay: 0" in result.stdout
+    assert "browser=http://smartfactory-vision.local:8889/global_cam_01_full/" in result.stdout
     assert "whep=http://smartfactory-vision.local:8889/global_cam_01_full/whep" in result.stdout
     assert "rtsp://127.0.0.1:18554/global_cam_01_lift_roi" in result.stdout
+
+
+def test_lab_gopro_tb3_webrtc_profile_exports_latency_knobs_to_sidecar_child() -> None:
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                "set -euo pipefail; "
+                f"cd {ROOT}; "
+                "set -a; "
+                "source config/vision/profiles/lab-gopro-tb3-webrtc.env; "
+                "set +a; "
+                "./scripts/vision/run_webrtc_sidecar_mediamtx.sh --print-config"
+            ),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert "target_fps: 30" in result.stdout
+    assert "x264_preset: ultrafast" in result.stdout
+    assert "gop: 15" in result.stdout
+    assert "bufsize: 500k" in result.stdout
+    assert "input_probesize: 2048" in result.stdout
+    assert "avioflags_direct: false" in result.stdout
 
 
 def test_webrtc_sidecar_check_reports_missing_mediamtx_actionably() -> None:

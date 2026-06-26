@@ -138,9 +138,10 @@ class VisionWorkerTickRequest(BaseModel):
 class WebRtcOfferRequest(BaseModel):
     """Media-only WebRTC offer probe request.
 
-    The current AI Server route is an additive broker/descriptor surface. It
-    never publishes ROS control, mutates evidence truth, or writes Main DB
-    state. A configured sidecar owns actual RTP/WebRTC media negotiation.
+    The AI Server route is an additive media-only broker. It never publishes
+    ROS control, mutates evidence truth, or writes Main DB state. When a WHEP
+    sidecar is configured, this endpoint proxies the browser SDP offer to that
+    sidecar and returns the SDP answer in the Main-facing contract.
     """
 
     sdp: str | None = None
@@ -720,6 +721,119 @@ def _webrtc_sidecar_path_runtime_health(sidecar: dict[str, Any]) -> str:
         return "offline"
     return "missing"
 
+
+@dataclass(frozen=True)
+class _WhepProxyResult:
+    ok: bool
+    reason: str
+    status_code: int | None = None
+    sdp: str | None = None
+    session_url: str | None = None
+    error: str | None = None
+
+
+def _whep_response_header(response: Any, name: str) -> str | None:
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        value = headers.get(name)
+        if not value:
+            value = headers.get(name.lower())
+        if value:
+            return str(value)
+    getheader = getattr(response, "getheader", None)
+    if callable(getheader):
+        value = getheader(name)
+        if value:
+            return str(value)
+    return None
+
+
+def _proxy_webrtc_offer_to_whep(
+    *,
+    sidecar: dict[str, Any],
+    sdp: str,
+    timeout_s: float,
+) -> _WhepProxyResult:
+    """Proxy a browser SDP offer to a MediaMTX WHEP endpoint.
+
+    MediaMTX's own reader performs `POST /path/whep` with
+    `Content-Type: application/sdp`, expects a 201 response containing the SDP
+    answer body, and exposes the WHEP session URL in the `Location` header.
+    """
+
+    whep_url = str(sidecar.get("whep_url") or "").strip()
+    if not whep_url:
+        return _WhepProxyResult(ok=False, reason="whep_url_missing")
+    if not sdp.strip():
+        return _WhepProxyResult(ok=False, reason="whep_offer_sdp_missing")
+    request = UrlRequest(
+        whep_url,
+        data=sdp.encode("utf-8"),
+        headers={
+            "Accept": "application/sdp",
+            "Content-Type": "application/sdp",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=timeout_s) as response:
+            status_code = int(getattr(response, "status", 200))
+            answer_sdp = response.read().decode("utf-8", errors="replace")
+            content_type = (_whep_response_header(response, "Content-Type") or "").lower()
+            if status_code != 201:
+                return _WhepProxyResult(
+                    ok=False,
+                    reason=f"whep_proxy_unexpected_status_{status_code}",
+                    status_code=status_code,
+                    error=answer_sdp[:500] or None,
+                )
+            if content_type and "application/sdp" not in content_type:
+                return _WhepProxyResult(
+                    ok=False,
+                    reason="whep_proxy_unexpected_content_type",
+                    status_code=status_code,
+                    error=content_type[:200],
+                )
+            if not answer_sdp.strip():
+                return _WhepProxyResult(
+                    ok=False,
+                    reason="whep_proxy_empty_answer",
+                    status_code=status_code,
+                )
+            if not answer_sdp.lstrip().startswith("v=0"):
+                return _WhepProxyResult(
+                    ok=False,
+                    reason="whep_proxy_invalid_answer",
+                    status_code=status_code,
+                    error=answer_sdp[:500],
+                )
+            return _WhepProxyResult(
+                ok=True,
+                reason="whep_answer_created",
+                status_code=status_code,
+                sdp=answer_sdp,
+                session_url=_whep_response_header(response, "Location"),
+            )
+    except HTTPError as exc:
+        error_body = ""
+        try:
+            error_body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            error_body = ""
+        return _WhepProxyResult(
+            ok=False,
+            reason=f"whep_proxy_http_{exc.code}",
+            status_code=exc.code,
+            error=error_body[:500] or str(exc),
+        )
+    except (OSError, TimeoutError, URLError) as exc:
+        return _WhepProxyResult(
+            ok=False,
+            reason="whep_proxy_unavailable",
+            error=str(exc),
+        )
+
+
 def vision_webrtc_offer(
     source: str,
     payload: WebRtcOfferRequest | None = None,
@@ -771,6 +885,24 @@ def vision_webrtc_offer(
         reason = "sidecar_not_configured"
         selected_transport = "mjpeg"
 
+    whep_result: _WhepProxyResult | None = None
+    if selected_transport == "webrtc" and request_payload.sdp:
+        whep_result = _proxy_webrtc_offer_to_whep(
+            sidecar=sidecar,
+            sdp=request_payload.sdp,
+            timeout_s=settings.vision_webrtc_sidecar_health_timeout_s,
+        )
+        if whep_result.ok:
+            sidecar["proxy_mode"] = "whep_proxy"
+            if whep_result.session_url:
+                sidecar["whep_session_url"] = whep_result.session_url
+        else:
+            status = "fallback_required"
+            reason = whep_result.reason
+            selected_transport = "mjpeg"
+            sidecar["proxy_mode"] = "whep_proxy_failed"
+            sidecar["whep_proxy_status_code"] = whep_result.status_code
+
     context = _runtime_context()
     context.metrics.record_webrtc_offer(source=source, status=status, reason=reason)
     context.metrics.record_webrtc_selected_transport(
@@ -810,6 +942,21 @@ def vision_webrtc_offer(
             "ros_topics_started_by_http_request": False,
         },
     }
+    if whep_result is not None:
+        response["whep_proxy"] = {
+            "ok": whep_result.ok,
+            "reason": whep_result.reason,
+            "status_code": whep_result.status_code,
+        }
+        if whep_result.ok:
+            response.update(
+                {
+                    "type": "answer",
+                    "sdp": whep_result.sdp,
+                }
+            )
+            if whep_result.session_url:
+                response["whep_proxy"]["session_url"] = whep_result.session_url
     structured_log(
         context.logger,
         "vision_webrtc_offer",

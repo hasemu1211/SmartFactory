@@ -71,6 +71,14 @@ Sidecar-only checks:
 ./scripts/vision/run_webrtc_sidecar_mediamtx.sh --status
 ```
 
+GoPro/global-camera media FPS and AI inference FPS are separate. The
+`lab-gopro-tb3-webrtc` intent is 30 FPS WebRTC/browser media when healthy,
+`GOPRO_AI_MONITOR_FPS=5` for continuous dropped-item/overlay inference, and
+`GOPRO_EVIDENCE_IMGSZ=960` for short transition-proof evaluation. If a 4 cm
+dropped item is below pixel budget, return
+`LOW_PIXEL_BUDGET`/`LOW_QUALITY_EVIDENCE` plus sparse alert-window metadata
+before increasing continuous AI load.
+
 Default WebRTC URLs:
 
 ```text

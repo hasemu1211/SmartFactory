@@ -89,6 +89,13 @@ Sidecar 단독 확인:
 ./scripts/vision/run_webrtc_sidecar_mediamtx.sh --status
 ```
 
+GoPro/global camera는 **미디어 스트리밍 FPS**와 **AI 추론 FPS**를 분리합니다.
+`lab-gopro-tb3-webrtc`의 기본 의도는 브라우저/WebRTC는 30 FPS target,
+낙하물/overlay AI는 `GOPRO_AI_MONITOR_FPS=5`, 전이 시점 증거는
+`GOPRO_EVIDENCE_IMGSZ=960`입니다. 4cm급 작은 낙하물이 픽셀 예산 부족이면
+연속 AI 부하를 바로 올리지 말고 `LOW_PIXEL_BUDGET`/`LOW_QUALITY_EVIDENCE`
+판정과 sparse alert-window metadata로 리뷰 대상으로 남깁니다.
+
 기본 WebRTC URL은 다음입니다.
 
 ```text

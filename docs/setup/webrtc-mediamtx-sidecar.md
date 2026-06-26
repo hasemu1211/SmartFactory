@@ -75,6 +75,13 @@ The runner reads the already-proven MJPEG overlay stream and republishes it to
 MediaMTX as low-latency H.264 RTSP via ffmpeg. Main/browser reads WebRTC from
 MediaMTX.
 
+For GoPro/global camera operation, the media and AI budgets are separate. The
+WebRTC profile may request `WEBRTC_SIDECAR_TARGET_FPS=30` for browser smoothness
+while the GoPro AI adapter stays at `GOPRO_AI_MONITOR_FPS=5`. Do not raise
+continuous AI FPS/imgsz just to improve media smoothness; use sparse
+`LOW_PIXEL_BUDGET`/`LOW_QUALITY_EVIDENCE` review metadata and short transition
+proof capture instead.
+
 ## Main-facing contract
 
 Main should discover stream transports from AI Server:

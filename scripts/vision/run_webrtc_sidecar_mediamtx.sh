@@ -22,20 +22,29 @@ MEDIAMTX_WEBRTC_PORT="${MEDIAMTX_WEBRTC_PORT:-8889}"
 MEDIAMTX_WEBRTC_ICE_UDP_PORT="${MEDIAMTX_WEBRTC_ICE_UDP_PORT:-8189}"
 MEDIAMTX_API_PORT="${MEDIAMTX_API_PORT:-19997}"
 MEDIAMTX_WEBRTC_ALLOW_ORIGINS="${MEDIAMTX_WEBRTC_ALLOW_ORIGINS:-http://smartfactory-main.local:8088,http://localhost:8088,http://127.0.0.1:8088}"
+MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS="${MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS:-}"
 WEBRTC_SIDECAR_PUBLIC_HOST="${WEBRTC_SIDECAR_PUBLIC_HOST:-${VISION_PUBLIC_HOST:-smartfactory-vision.local}}"
 WEBRTC_SIDECAR_STREAMS="${WEBRTC_SIDECAR_STREAMS:-global_cam_01/full,global_cam_01/lift_roi}"
 WEBRTC_SIDECAR_INPUT_MAX_FPS="${WEBRTC_SIDECAR_INPUT_MAX_FPS:-15}"
 WEBRTC_SIDECAR_TARGET_FPS="${WEBRTC_SIDECAR_TARGET_FPS:-15}"
 WEBRTC_SIDECAR_BITRATE="${WEBRTC_SIDECAR_BITRATE:-2500k}"
 WEBRTC_SIDECAR_BUFSIZE="${WEBRTC_SIDECAR_BUFSIZE:-5000k}"
+WEBRTC_SIDECAR_GOP="${WEBRTC_SIDECAR_GOP:-${WEBRTC_SIDECAR_TARGET_FPS}}"
 WEBRTC_SIDECAR_RESTART_SEC="${WEBRTC_SIDECAR_RESTART_SEC:-2}"
 WEBRTC_SIDECAR_VIDEO_FILTER="${WEBRTC_SIDECAR_VIDEO_FILTER:-scale=trunc(iw/2)*2:trunc(ih/2)*2}"
+WEBRTC_SIDECAR_INPUT_PROBESIZE="${WEBRTC_SIDECAR_INPUT_PROBESIZE:-2048}"
+WEBRTC_SIDECAR_INPUT_ANALYZEDURATION="${WEBRTC_SIDECAR_INPUT_ANALYZEDURATION:-0}"
+WEBRTC_SIDECAR_INPUT_MAX_DELAY="${WEBRTC_SIDECAR_INPUT_MAX_DELAY:-0}"
+WEBRTC_SIDECAR_AVIOFLAGS_DIRECT="${WEBRTC_SIDECAR_AVIOFLAGS_DIRECT:-false}"
+WEBRTC_SIDECAR_OUTPUT_MUXDELAY="${WEBRTC_SIDECAR_OUTPUT_MUXDELAY:-0}"
+WEBRTC_SIDECAR_OUTPUT_MUXPRELOAD="${WEBRTC_SIDECAR_OUTPUT_MUXPRELOAD:-0}"
 WEBRTC_SIDECAR_INPUT_URL_TEMPLATE="${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE:-}"
 if [ -z "${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE}" ]; then
   WEBRTC_SIDECAR_INPUT_URL_TEMPLATE="http://127.0.0.1:${VISION_STREAM_GATEWAY_PORT:-8090}/api/v1/vision/overlay/stream?source={source}&view={view}&max_fps={max_fps}"
 fi
 WEBRTC_SIDECAR_ENCODER="${WEBRTC_SIDECAR_ENCODER:-libx264}"
 WEBRTC_SIDECAR_X264_PRESET="${WEBRTC_SIDECAR_X264_PRESET:-veryfast}"
+WEBRTC_SIDECAR_X264_PARAMS="${WEBRTC_SIDECAR_X264_PARAMS:-keyint=${WEBRTC_SIDECAR_GOP}:min-keyint=${WEBRTC_SIDECAR_GOP}:scenecut=0}"
 SF_VISION_TMUX_GUARD_ENABLED="${SF_VISION_TMUX_GUARD_ENABLED:-true}"
 SF_VISION_TMUX_REQUIRED_CONTEXT="${SF_VISION_TMUX_REQUIRED_CONTEXT:-Smartfactory:3:Development}"
 
@@ -192,9 +201,32 @@ stream_paths_csv() {
   printf '%s' "${paths[*]}"
 }
 
+mediamtx_webrtc_additional_hosts_csv() {
+  if [ -n "${MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS}" ]; then
+    printf '%s' "${MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS}"
+    return 0
+  fi
+  if [ -z "${WEBRTC_SIDECAR_PUBLIC_HOST}" ]; then
+    return 0
+  fi
+  case "${WEBRTC_SIDECAR_PUBLIC_HOST}" in
+    *.local)
+      # MediaMTX is written in Go and resolves webrtcAdditionalHosts through
+      # regular DNS, not always through NSS/mDNS.  Keep the user-facing
+      # smartfactory-vision.local URLs, but advertise the LAN IP in ICE.
+      sf_lan_ip "${VISION_MAIN_HOST:-}" || true
+      ;;
+    *)
+      printf '%s' "${WEBRTC_SIDECAR_PUBLIC_HOST}"
+      ;;
+  esac
+}
+
 print_config() {
   local specs=() spec source view path input_url
   read_stream_specs specs
+  local additional_hosts
+  additional_hosts="$(mediamtx_webrtc_additional_hosts_csv)"
   cat <<CONFIG
 SmartFactory Vision WebRTC sidecar config
   run_dir: ${RUN_DIR}
@@ -208,8 +240,22 @@ SmartFactory Vision WebRTC sidecar config
   whep_url_template: http://${WEBRTC_SIDECAR_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/{source}_{view}/whep
   mediamtx_ports: rtsp=${MEDIAMTX_RTSP_PORT}/tcp, webrtc=${MEDIAMTX_WEBRTC_PORT}/tcp, ice=${MEDIAMTX_WEBRTC_ICE_UDP_PORT}/udp, api=127.0.0.1:${MEDIAMTX_API_PORT}/tcp
   webrtc_allow_origins: ${MEDIAMTX_WEBRTC_ALLOW_ORIGINS}
+  webrtc_additional_hosts: ${additional_hosts:-<auto-interface-only>}
   input_url_template: ${WEBRTC_SIDECAR_INPUT_URL_TEMPLATE}
   video_filter: ${WEBRTC_SIDECAR_VIDEO_FILTER}
+  encoder: ${WEBRTC_SIDECAR_ENCODER}
+  x264_preset: ${WEBRTC_SIDECAR_X264_PRESET}
+  x264_params: ${WEBRTC_SIDECAR_X264_PARAMS}
+  target_fps: ${WEBRTC_SIDECAR_TARGET_FPS}
+  gop: ${WEBRTC_SIDECAR_GOP}
+  bitrate: ${WEBRTC_SIDECAR_BITRATE}
+  bufsize: ${WEBRTC_SIDECAR_BUFSIZE}
+  input_probesize: ${WEBRTC_SIDECAR_INPUT_PROBESIZE}
+  input_analyzeduration: ${WEBRTC_SIDECAR_INPUT_ANALYZEDURATION}
+  input_max_delay: ${WEBRTC_SIDECAR_INPUT_MAX_DELAY}
+  avioflags_direct: ${WEBRTC_SIDECAR_AVIOFLAGS_DIRECT}
+  output_muxdelay: ${WEBRTC_SIDECAR_OUTPUT_MUXDELAY}
+  output_muxpreload: ${WEBRTC_SIDECAR_OUTPUT_MUXPRELOAD}
   streams:
 CONFIG
   for spec in "${specs[@]}"; do
@@ -221,7 +267,7 @@ CONFIG
     - spec=${spec} path=${path}
       input=${input_url}
       rtsp=rtsp://127.0.0.1:${MEDIAMTX_RTSP_PORT}/${path}
-      browser=http://${WEBRTC_SIDECAR_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/${path}
+      browser=http://${WEBRTC_SIDECAR_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/${path}/
       whep=http://${WEBRTC_SIDECAR_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/${path}/whep
 CONFIG
   done
@@ -328,11 +374,11 @@ write_config() {
   local specs=() spec path
   read_stream_specs specs
   local additional_hosts="[]"
+  local additional_hosts_csv
   local allow_origins
   allow_origins="$(csv_to_json_array "${MEDIAMTX_WEBRTC_ALLOW_ORIGINS}")"
-  if [ -n "${WEBRTC_SIDECAR_PUBLIC_HOST}" ]; then
-    additional_hosts="[\"${WEBRTC_SIDECAR_PUBLIC_HOST}\"]"
-  fi
+  additional_hosts_csv="$(mediamtx_webrtc_additional_hosts_csv)"
+  additional_hosts="$(csv_to_json_array "${additional_hosts_csv}")"
   cat > "${CONFIG_FILE}" <<YAML
 logLevel: info
 logDestinations: [stdout]
@@ -392,6 +438,7 @@ MEDIAMTX_WEBRTC_PORT=${MEDIAMTX_WEBRTC_PORT}
 MEDIAMTX_WEBRTC_ICE_UDP_PORT=${MEDIAMTX_WEBRTC_ICE_UDP_PORT}
 MEDIAMTX_API_PORT=${MEDIAMTX_API_PORT}
 WEBRTC_SIDECAR_PUBLIC_HOST=${WEBRTC_SIDECAR_PUBLIC_HOST}
+MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS=$(mediamtx_webrtc_additional_hosts_csv)
 CONFIG_FILE=${CONFIG_FILE}
 STATUS
 }
@@ -404,6 +451,14 @@ alive_pid() {
 publisher_loop() {
   local source="$1" view="$2" path="$3" input_url="$4" rtsp_url="$5"
   local restart_count=0
+  local encoder_extra_args=()
+  local input_extra_args=()
+  if [[ "${WEBRTC_SIDECAR_ENCODER}" == libx264* ]] && [ -n "${WEBRTC_SIDECAR_X264_PARAMS}" ]; then
+    encoder_extra_args=(-x264-params "${WEBRTC_SIDECAR_X264_PARAMS}")
+  fi
+  if is_truthy "${WEBRTC_SIDECAR_AVIOFLAGS_DIRECT}"; then
+    input_extra_args=(-avioflags direct)
+  fi
   while true; do
     restart_count=$((restart_count + 1))
     printf '[webrtc-sidecar] publisher path=%s source=%s view=%s start attempt=%s input=%s output=%s at %s\n' \
@@ -412,13 +467,19 @@ publisher_loop() {
     "${FFMPEG_BIN}" \
       -hide_banner -loglevel warning \
       -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 2 \
-      -fflags nobuffer -flags low_delay \
+      -analyzeduration "${WEBRTC_SIDECAR_INPUT_ANALYZEDURATION}" \
+      -probesize "${WEBRTC_SIDECAR_INPUT_PROBESIZE}" \
+      -max_delay "${WEBRTC_SIDECAR_INPUT_MAX_DELAY}" \
+      -fflags nobuffer -flags low_delay "${input_extra_args[@]}" \
+      -use_wallclock_as_timestamps 1 \
       -f mpjpeg -i "${input_url}" \
       -vf "${WEBRTC_SIDECAR_VIDEO_FILTER}" \
       -an -c:v "${WEBRTC_SIDECAR_ENCODER}" -preset "${WEBRTC_SIDECAR_X264_PRESET}" \
-      -tune zerolatency -pix_fmt yuv420p -r "${WEBRTC_SIDECAR_TARGET_FPS}" \
-      -g "$((WEBRTC_SIDECAR_TARGET_FPS * 2))" -bf 0 \
+      -tune zerolatency "${encoder_extra_args[@]}" -pix_fmt yuv420p -r "${WEBRTC_SIDECAR_TARGET_FPS}" \
+      -g "${WEBRTC_SIDECAR_GOP}" -bf 0 \
       -b:v "${WEBRTC_SIDECAR_BITRATE}" -maxrate "${WEBRTC_SIDECAR_BITRATE}" -bufsize "${WEBRTC_SIDECAR_BUFSIZE}" \
+      -muxdelay "${WEBRTC_SIDECAR_OUTPUT_MUXDELAY}" -muxpreload "${WEBRTC_SIDECAR_OUTPUT_MUXPRELOAD}" \
+      -flush_packets 1 \
       -f rtsp -rtsp_transport tcp "${rtsp_url}"
     local code=$?
     set -e
@@ -477,7 +538,7 @@ run_sidecar() {
     record_process "publisher-${path}" "${publisher_pid}" "${publisher_log}"
     log "publisher-${path} pid=${publisher_pid} log=${publisher_log}"
   done
-  log "running. Browser URL example: http://${WEBRTC_SIDECAR_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/$(stream_path_id "${specs[0]}")"
+  log "running. Browser URL example: http://${WEBRTC_SIDECAR_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/$(stream_path_id "${specs[0]}")/"
   trap cleanup INT TERM EXIT
   wait -n "${PIDS[@]}"
   local child_status=$?
@@ -486,7 +547,7 @@ run_sidecar() {
 }
 
 status_from_files() {
-  local configured=0 mediamtx_pid="" expected=0 paths="" web_port="${MEDIAMTX_WEBRTC_PORT}" rtsp_port="${MEDIAMTX_RTSP_PORT}" public_host="${WEBRTC_SIDECAR_PUBLIC_HOST}"
+  local configured=0 mediamtx_pid="" expected=0 paths="" web_port="${MEDIAMTX_WEBRTC_PORT}" rtsp_port="${MEDIAMTX_RTSP_PORT}" public_host="${WEBRTC_SIDECAR_PUBLIC_HOST}" additional_hosts="${MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS:-}"
   if [ -f "${STATUS_FILE}" ]; then
     configured=1
     # shellcheck disable=SC1090
@@ -497,6 +558,7 @@ status_from_files() {
     web_port="${MEDIAMTX_WEBRTC_PORT:-${web_port}}"
     rtsp_port="${MEDIAMTX_RTSP_PORT:-${rtsp_port}}"
     public_host="${WEBRTC_SIDECAR_PUBLIC_HOST:-${public_host}}"
+    additional_hosts="${MEDIAMTX_WEBRTC_ADDITIONAL_HOSTS:-${additional_hosts}}"
   elif [ -f "${CONFIG_FILE}" ]; then
     configured=1
   fi
@@ -550,12 +612,13 @@ SmartFactory Vision WebRTC sidecar status
   alive_publishers: ${alive_publishers}/${total_publishers}
   rtsp_port: ${rtsp_port}
   webrtc_port: ${web_port}
+  webrtc_additional_hosts: ${additional_hosts:-<auto-interface-only>}
   paths: ${paths:-<unknown>}
 STATUS
   if [ -n "${paths:-}" ]; then
     local IFS=',' path
     for path in ${paths}; do
-      printf '  browser: http://%s:%s/%s\n' "${public_host}" "${web_port}" "${path}"
+      printf '  browser: http://%s:%s/%s/\n' "${public_host}" "${web_port}" "${path}"
       printf '  whep: http://%s:%s/%s/whep\n' "${public_host}" "${web_port}" "${path}"
     done
   fi

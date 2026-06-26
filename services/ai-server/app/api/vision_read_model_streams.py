@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import json
 import re
 from typing import Any
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
+from urllib.request import Request as UrlRequest, urlopen
 
 from ..config import get_settings
 from ..evidence_cache import DEFAULT_VIEW_ID
@@ -141,6 +144,89 @@ def webrtc_sidecar_descriptor(source: str, view: str) -> dict[str, Any]:
     }
 
 
+def _webrtc_sidecar_runtime_health(sidecar: dict[str, Any]) -> str:
+    """Return live WebRTC sidecar HTTP health for discovery readiness."""
+
+    settings = get_settings()
+    if sidecar.get("status") != "configured":
+        return "not_configured"
+    health_url = sidecar.get("runtime_health_url")
+    if not health_url:
+        if settings.vision_webrtc_sidecar_assume_healthy_without_health_url:
+            return "assume_healthy"
+        return "unknown"
+    request = UrlRequest(str(health_url), method="GET")
+    try:
+        with urlopen(request, timeout=settings.vision_webrtc_sidecar_health_timeout_s) as response:
+            status = getattr(response, "status", 200)
+            return "healthy" if status < 500 else "unhealthy"
+    except HTTPError as exc:
+        return "healthy" if exc.code < 500 else "unhealthy"
+    except (OSError, TimeoutError, URLError):
+        return "unhealthy"
+
+
+def _webrtc_sidecar_path_runtime_health(sidecar: dict[str, Any]) -> str:
+    """Return whether the requested MediaMTX path is online."""
+
+    if sidecar.get("status") != "configured":
+        return "not_configured"
+    settings = get_settings()
+    paths_api_url = settings.vision_webrtc_sidecar_paths_api_url.strip()
+    if not paths_api_url:
+        return "not_checked"
+    path_id = str(sidecar.get("path_id") or "")
+    if not path_id:
+        return "missing_path_id"
+    request = UrlRequest(paths_api_url, method="GET")
+    try:
+        with urlopen(request, timeout=settings.vision_webrtc_sidecar_health_timeout_s) as response:
+            status = getattr(response, "status", 200)
+            if status >= 500:
+                return "api_unhealthy"
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        return "api_unhealthy" if exc.code >= 500 else "api_unavailable"
+    except (OSError, TimeoutError, URLError, ValueError, json.JSONDecodeError):
+        return "api_unavailable"
+
+    items = payload.get("items", []) if isinstance(payload, dict) else []
+    for item in items:
+        if not isinstance(item, dict) or item.get("name") != path_id:
+            continue
+        if bool(item.get("ready")) and bool(item.get("available")) and bool(item.get("online")):
+            return "online"
+        return "offline"
+    return "missing"
+
+
+def _webrtc_transport_status(sidecar: dict[str, Any]) -> dict[str, Any]:
+    """Compute Main-facing WebRTC discovery gates from live sidecar state."""
+
+    settings = get_settings()
+    answer_capable = bool(sidecar.get("whep_url"))
+    configured = bool(
+        settings.vision_webrtc_enabled
+        and sidecar.get("status") == "configured"
+        and answer_capable
+    )
+    runtime_health = _webrtc_sidecar_runtime_health(sidecar)
+    path_runtime_health = _webrtc_sidecar_path_runtime_health(sidecar)
+    runtime_ok = runtime_health in {"healthy", "assume_healthy"}
+    path_ok = path_runtime_health == "online"
+    ready = configured and runtime_ok and path_ok
+    sidecar["answer_capable"] = answer_capable
+    sidecar["runtime_health"] = runtime_health
+    sidecar["path_runtime_health"] = path_runtime_health
+    if ready:
+        sidecar["status"] = "healthy"
+    return {
+        "configured": configured,
+        "healthy": ready,
+        "status": "ready" if ready else ("candidate" if settings.vision_webrtc_enabled else "disabled"),
+    }
+
+
 def stream_transports_for_source(source: str) -> list[dict[str, Any]]:
     settings = get_settings()
     source_definition = settings.source_registry.get(source)
@@ -163,10 +249,14 @@ def stream_transports_for_source(source: str) -> list[dict[str, Any]]:
                 "control_topics_published": [],
             }
         )
+        sidecar = webrtc_sidecar_descriptor(source, view)
+        transport_status = _webrtc_transport_status(sidecar)
         transports.append(
             {
                 "kind": "webrtc",
-                "status": "candidate" if settings.vision_webrtc_enabled else "disabled",
+                "configured": transport_status["configured"],
+                "healthy": transport_status["healthy"],
+                "status": transport_status["status"],
                 "source": source,
                 "view": view,
                 "signaling": "http-post-offer-or-sidecar-whep",
@@ -175,7 +265,7 @@ def stream_transports_for_source(source: str) -> list[dict[str, Any]]:
                 "fallback_kind": "mjpeg",
                 "media_only": True,
                 "sidecar_required": True,
-                "sidecar": webrtc_sidecar_descriptor(source, view),
+                "sidecar": sidecar,
                 "db_writes": False,
                 "evidence_truth_mutation": False,
                 "motion_command_allowed": False,

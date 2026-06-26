@@ -175,6 +175,8 @@ def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
         },
         {
             "kind": "webrtc",
+            "configured": False,
+            "healthy": False,
             "status": "candidate",
             "source": "tb3_1_picam",
             "view": "full",
@@ -196,10 +198,12 @@ def test_vision_streams_can_filter_one_source_and_rejects_unknown_source():
                 "runtime_health_url": None,
                 "offer_url": None,
                 "whep_url": None,
-                "browser_url": None,
-                "owner": "media_sidecar",
-                "proxy_mode": "descriptor_only",
-            },
+                    "browser_url": None,
+                    "owner": "media_sidecar",
+                    "proxy_mode": "descriptor_only",
+                    "answer_capable": False,
+                    "path_runtime_health": "not_configured",
+                },
             "db_writes": False,
             "evidence_truth_mutation": False,
             "motion_command_allowed": False,
@@ -338,7 +342,20 @@ def test_webrtc_offer_endpoint_selects_webrtc_when_sidecar_descriptor_is_configu
         ]
     }
 
+    answer_sdp = "v=0\r\ns=answer\r\nt=0 0\r\n"
+
     def fake_urlopen(request, timeout):
+        url = getattr(request, "full_url", str(request))
+        if url.endswith("/whep"):
+            assert getattr(request, "data", b"") == b"v=0"
+            return _FakeUrlResponse(
+                answer_sdp.encode("utf-8"),
+                status=201,
+                headers={
+                    "Content-Type": "application/sdp",
+                    "Location": "/global_cam_01/full/whep/session/test",
+                },
+            )
         return _FakeUrlResponse(json.dumps(path_payload).encode("utf-8"))
 
     monkeypatch.setattr(vision_api, "urlopen", fake_urlopen)
@@ -354,9 +371,18 @@ def test_webrtc_offer_endpoint_selects_webrtc_when_sidecar_descriptor_is_configu
     assert body["status"] == "sidecar_configured"
     assert body["reason"] == "sidecar_path_online"
     assert body["selected_transport"] == "webrtc"
+    assert body["type"] == "answer"
+    assert body["sdp"] == answer_sdp
+    assert body["whep_proxy"] == {
+        "ok": True,
+        "reason": "whep_answer_created",
+        "status_code": 201,
+        "session_url": "/global_cam_01/full/whep/session/test",
+    }
     assert body["sidecar"]["status"] == "configured"
     assert body["sidecar"]["runtime_health"] == "assume_healthy"
     assert body["sidecar"]["path_runtime_health"] == "online"
+    assert body["sidecar"]["proxy_mode"] == "whep_proxy"
     assert body["sidecar"]["whep_url"] == (
         "http://media-sidecar.local/global_cam_01/full/whep"
     )
@@ -380,9 +406,15 @@ def test_webrtc_offer_endpoint_selects_webrtc_when_sidecar_descriptor_is_configu
 
 
 class _FakeUrlResponse:
-    def __init__(self, payload: bytes = b"ok", status: int = 200):
+    def __init__(
+        self,
+        payload: bytes = b"ok",
+        status: int = 200,
+        headers: dict[str, str] | None = None,
+    ):
         self._payload = payload
         self.status = status
+        self.headers = headers or {}
 
     def __enter__(self):
         return self
@@ -460,6 +492,209 @@ def test_webrtc_offer_checks_mediamtx_path_before_selecting_webrtc(monkeypatch):
     assert missing["sidecar"]["path_runtime_health"] == "missing"
 
 
+def test_webrtc_offer_falls_back_when_whep_proxy_rejects_offer(monkeypatch):
+    from urllib.error import HTTPError
+
+    from app.api import vision as vision_api
+
+    main_module.metrics.reset()
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_whep_url_template",
+        "http://media-sidecar.local/{source}_{view}/whep",
+    )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_browser_url_template",
+        "http://media-sidecar.local/{source}_{view}",
+    )
+    monkeypatch.setattr(settings, "vision_webrtc_sidecar_health_url", "http://media-sidecar.local/")
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_paths_api_url",
+        "http://media-sidecar.local/v3/paths/list",
+    )
+
+    path_payload = {
+        "items": [
+            {
+                "name": "global_cam_01_full",
+                "ready": True,
+                "available": True,
+                "online": True,
+            }
+        ]
+    }
+
+    def fake_urlopen(request, timeout):
+        url = getattr(request, "full_url", str(request))
+        if url.endswith("/v3/paths/list"):
+            return _FakeUrlResponse(json.dumps(path_payload).encode("utf-8"))
+        if url.endswith("/whep"):
+            raise HTTPError(url, 400, "invalid SDP", {}, None)
+        return _FakeUrlResponse()
+
+    monkeypatch.setattr(vision_api, "urlopen", fake_urlopen)
+
+    response = client.post(
+        "/api/v1/vision/streams/global_cam_01/webrtc/offer",
+        params={"view": "full"},
+        json={"type": "offer", "sdp": "not-a-valid-offer"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "fallback_required"
+    assert body["reason"] == "whep_proxy_http_400"
+    assert body["selected_transport"] == "mjpeg"
+    assert body["sidecar"]["proxy_mode"] == "whep_proxy_failed"
+    assert body["sidecar"]["whep_proxy_status_code"] == 400
+    assert "whep_proxy_error" not in body["sidecar"]
+    assert "sdp" not in body
+
+
+def test_webrtc_offer_falls_back_when_whep_returns_non_sdp_success(monkeypatch):
+    from app.api import vision as vision_api
+
+    main_module.metrics.reset()
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_whep_url_template",
+        "http://media-sidecar.local/{source}_{view}/whep",
+    )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_browser_url_template",
+        "http://media-sidecar.local/{source}_{view}",
+    )
+    monkeypatch.setattr(settings, "vision_webrtc_sidecar_health_url", "http://media-sidecar.local/")
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_paths_api_url",
+        "http://media-sidecar.local/v3/paths/list",
+    )
+
+    path_payload = {
+        "items": [
+            {
+                "name": "global_cam_01_full",
+                "ready": True,
+                "available": True,
+                "online": True,
+            }
+        ]
+    }
+
+    def fake_urlopen(request, timeout):
+        url = getattr(request, "full_url", str(request))
+        if url.endswith("/v3/paths/list"):
+            return _FakeUrlResponse(json.dumps(path_payload).encode("utf-8"))
+        if url.endswith("/whep"):
+            return _FakeUrlResponse(
+                b"<html>not sdp</html>",
+                status=200,
+                headers={"Content-Type": "text/html"},
+            )
+        return _FakeUrlResponse()
+
+    monkeypatch.setattr(vision_api, "urlopen", fake_urlopen)
+
+    response = client.post(
+        "/api/v1/vision/streams/global_cam_01/webrtc/offer",
+        params={"view": "full"},
+        json={"type": "offer", "sdp": "v=0"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "fallback_required"
+    assert body["reason"] == "whep_proxy_unexpected_status_200"
+    assert body["selected_transport"] == "mjpeg"
+    assert body["sidecar"]["proxy_mode"] == "whep_proxy_failed"
+    assert body["sidecar"]["whep_proxy_status_code"] == 200
+    assert "whep_proxy_error" not in body["sidecar"]
+    assert "sdp" not in body
+
+
+def test_webrtc_offer_falls_back_when_whep_returns_empty_or_invalid_sdp(monkeypatch):
+    from app.api import vision as vision_api
+
+    main_module.metrics.reset()
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_whep_url_template",
+        "http://media-sidecar.local/{source}_{view}/whep",
+    )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_browser_url_template",
+        "http://media-sidecar.local/{source}_{view}",
+    )
+    monkeypatch.setattr(settings, "vision_webrtc_sidecar_health_url", "http://media-sidecar.local/")
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_paths_api_url",
+        "http://media-sidecar.local/v3/paths/list",
+    )
+
+    path_payload = {
+        "items": [
+            {
+                "name": "global_cam_01_full",
+                "ready": True,
+                "available": True,
+                "online": True,
+            }
+        ]
+    }
+    whep_calls = 0
+
+    def fake_urlopen(request, timeout):
+        nonlocal whep_calls
+        url = getattr(request, "full_url", str(request))
+        if url.endswith("/v3/paths/list"):
+            return _FakeUrlResponse(json.dumps(path_payload).encode("utf-8"))
+        if url.endswith("/whep"):
+            whep_calls += 1
+            if whep_calls == 1:
+                return _FakeUrlResponse(
+                    b"",
+                    status=201,
+                    headers={"Content-Type": "application/sdp"},
+                )
+            return _FakeUrlResponse(
+                b"not sdp",
+                status=201,
+                headers={"Content-Type": "application/sdp"},
+            )
+        return _FakeUrlResponse()
+
+    monkeypatch.setattr(vision_api, "urlopen", fake_urlopen)
+
+    empty = client.post(
+        "/api/v1/vision/streams/global_cam_01/webrtc/offer",
+        params={"view": "full"},
+        json={"type": "offer", "sdp": "v=0"},
+    ).json()
+    invalid = client.post(
+        "/api/v1/vision/streams/global_cam_01/webrtc/offer",
+        params={"view": "full"},
+        json={"type": "offer", "sdp": "v=0"},
+    ).json()
+
+    assert empty["status"] == "fallback_required"
+    assert empty["reason"] == "whep_proxy_empty_answer"
+    assert "sdp" not in empty
+    assert "whep_proxy_error" not in empty["sidecar"]
+    assert invalid["status"] == "fallback_required"
+    assert invalid["reason"] == "whep_proxy_invalid_answer"
+    assert "sdp" not in invalid
+    assert "whep_proxy_error" not in invalid["sidecar"]
+
+
 def test_webrtc_offer_endpoint_falls_back_when_sidecar_health_is_unknown(monkeypatch):
     main_module.metrics.reset()
     settings = get_settings()
@@ -509,9 +744,128 @@ def test_stream_discovery_exposes_sidecar_browser_url_when_configured(monkeypatc
     assert webrtc["sidecar"]["status"] == "configured"
     assert webrtc["sidecar"]["whep_url"] == "http://media-sidecar.local/global_cam_01_full/whep"
     assert webrtc["sidecar"]["browser_url"] == "http://media-sidecar.local/global_cam_01_full"
+    assert webrtc["sidecar"]["answer_capable"] is True
     assert webrtc["media_only"] is True
     assert webrtc["motion_command_allowed"] is False
     assert webrtc["control_topics_published"] == []
+
+
+def test_stream_discovery_marks_webrtc_ready_when_sidecar_path_is_online(monkeypatch):
+    from app.api import vision_read_model_streams as streams_api
+
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_whep_url_template",
+        "http://media-sidecar.local/{source}_{view}/whep",
+    )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_browser_url_template",
+        "http://media-sidecar.local/{source}_{view}",
+    )
+    monkeypatch.setattr(settings, "vision_webrtc_sidecar_health_url", "http://media-sidecar.local/")
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_paths_api_url",
+        "http://media-sidecar.local/v3/paths/list",
+    )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_streams",
+        "global_cam_01/full",
+    )
+
+    path_payload = {
+        "items": [
+            {
+                "name": "global_cam_01_full",
+                "ready": True,
+                "available": True,
+                "online": True,
+            }
+        ]
+    }
+
+    def fake_urlopen(request, timeout):
+        url = getattr(request, "full_url", str(request))
+        if url.endswith("/v3/paths/list"):
+            return _FakeUrlResponse(json.dumps(path_payload).encode("utf-8"))
+        return _FakeUrlResponse()
+
+    monkeypatch.setattr(streams_api, "urlopen", fake_urlopen)
+
+    response = client.get(
+        "/api/v1/vision/streams",
+        params={"source": "global_cam_01", "view": "full"},
+    )
+
+    assert response.status_code == 200
+    webrtc = _transport(response.json()["sources"][0], kind="webrtc", view="full")
+    assert webrtc["configured"] is True
+    assert webrtc["healthy"] is True
+    assert webrtc["status"] == "ready"
+    assert webrtc["sidecar"]["status"] == "healthy"
+    assert webrtc["sidecar"]["answer_capable"] is True
+    assert webrtc["sidecar"]["runtime_health"] == "healthy"
+    assert webrtc["sidecar"]["path_runtime_health"] == "online"
+
+
+def test_stream_discovery_does_not_mark_browser_only_sidecar_ready(monkeypatch):
+    from app.api import vision_read_model_streams as streams_api
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "vision_webrtc_sidecar_whep_url_template", "")
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_browser_url_template",
+        "http://media-sidecar.local/{source}_{view}",
+    )
+    monkeypatch.setattr(settings, "vision_webrtc_sidecar_health_url", "http://media-sidecar.local/")
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_paths_api_url",
+        "http://media-sidecar.local/v3/paths/list",
+    )
+    monkeypatch.setattr(
+        settings,
+        "vision_webrtc_sidecar_streams",
+        "global_cam_01/full",
+    )
+
+    path_payload = {
+        "items": [
+            {
+                "name": "global_cam_01_full",
+                "ready": True,
+                "available": True,
+                "online": True,
+            }
+        ]
+    }
+
+    def fake_urlopen(request, timeout):
+        url = getattr(request, "full_url", str(request))
+        if url.endswith("/v3/paths/list"):
+            return _FakeUrlResponse(json.dumps(path_payload).encode("utf-8"))
+        return _FakeUrlResponse()
+
+    monkeypatch.setattr(streams_api, "urlopen", fake_urlopen)
+
+    response = client.get(
+        "/api/v1/vision/streams",
+        params={"source": "global_cam_01", "view": "full"},
+    )
+
+    assert response.status_code == 200
+    webrtc = _transport(response.json()["sources"][0], kind="webrtc", view="full")
+    assert webrtc["configured"] is False
+    assert webrtc["healthy"] is False
+    assert webrtc["status"] == "candidate"
+    assert webrtc["sidecar"]["status"] == "configured"
+    assert webrtc["sidecar"]["answer_capable"] is False
+    assert webrtc["sidecar"]["runtime_health"] == "healthy"
+    assert webrtc["sidecar"]["path_runtime_health"] == "online"
 
 
 def test_webrtc_demo_page_prefers_webrtc_and_contains_mjpeg_fallback_path():
