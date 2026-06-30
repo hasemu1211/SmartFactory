@@ -91,10 +91,7 @@ GOPRO_INPUT='udp://0.0.0.0:8554?overrun_nonfatal=1&fifo_size=50000000'
 ### 1) LIFT_UP -> DRIVE proof
 
 Run for a short burst at transition time after the hardware-gated live capture
-story is enabled. The current no-hardware implementation keeps the public API
-reuse-first: proof evaluation uses
-`/api/v1/lift-roi/evaluate-image` and `/api/v1/evidence/evaluate`; it does not
-add a new public `capture-lift-roi` endpoint.
+story is enabled. The current no-hardware implementation keeps implementation reuse-first: proof evaluation may reuse internal `/api/v1/lift-roi/evaluate-image` and `/api/v1/evidence/evaluate` seams. The Main-facing RALPLAN endpoint for one-shot pick/drop evidence is `POST /api/v1/vision/evidence/lift-load/evaluate`, with `PICK_UP`/`DROP_OFF` aliases normalized by AI Server before internal policy evaluation. It does not add a public `capture-lift-roi` endpoint.
 
 ```bash
 mkdir -p evidence/lift_up

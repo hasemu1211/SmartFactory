@@ -138,8 +138,10 @@ Main should call evidence APIs only when it needs a task/evidence decision, not 
 
 ```http
 POST {VISION_API_BASE_URL}/api/v1/evidence/evaluate
-POST {VISION_API_BASE_URL}/api/v1/lift-roi/evaluate
-POST {VISION_API_BASE_URL}/api/v1/lift-roi/evaluate-image
+POST {VISION_API_BASE_URL}/api/v1/vision/evidence/lift-load/evaluate
+# Internal/compat only when explicitly testing AI Server internals:
+# POST {VISION_API_BASE_URL}/api/v1/lift-roi/evaluate
+# POST {VISION_API_BASE_URL}/api/v1/lift-roi/evaluate-image
 ```
 
 The returned payload includes judgment fields such as PASS / FAIL / UNCERTAIN and reason fields suitable for DB storage. Main remains owner of task IDs, DB writes, inventory truth, and UI state transitions.

@@ -1,10 +1,23 @@
 # SmartFactory AI Server API Contract v1
 
 - Status: Draft/local implementation contract. The AI Server endpoints below reflect the 2026-06-16 local implementation, the 2026-06-18 Main/Nav/Vision contract v3 hostname-first endpoint alignment, and the 2026-06-29 lab WebRTC-primary implementation update. Live Confluence `API` page version 72 still documents MJPEG as the cross-team published primary stream; treat this local WebRTC-primary section as implementation-ready/pending-publish until that live API page is updated.
-- Date: 2026-06-29
+- Date: 2026-06-30
 - Goal: make AI Server, Main Server/WMS-lite, and GUI work mergeable by API contract before implementation.
 - Canonical payload schemas: `docs/contracts/vision-event.schema.json`, `docs/contracts/lift-roi-evidence.schema.json`
 - Generated OpenAPI snapshot: `docs/contracts/ai-server-openapi.json`
+
+
+## 2026-06-30 Main-facing AI API alignment
+
+Main-side endpoint names are treated as fixed. AI Server may keep older internal/compatibility endpoints for fixtures, synthetic tests, and implementation reuse, but the public Main-facing API surface for the three new AI functions is:
+
+| Function | Main-facing endpoint | Internal/compatibility note |
+| --- | --- | --- |
+| Person hazard latest | `GET /api/v1/vision/hazards/person/latest?robot_id={robot_id}&since_event_id={event_id}` | Existing person monitor/latest implementation should conform to this response shape. |
+| Dropped-item latest | `GET /api/v1/vision/hazards/dropped-item/latest?source=global_cam_01&robot_id={robot_id}&since_event_id={event_id}` | RALPLAN implementation target. |
+| Lift/load evidence | `POST /api/v1/vision/evidence/lift-load/evaluate` | May reuse the existing `/api/v1/lift-roi/evaluate*` internals, but Main should not be required to call those legacy paths. |
+
+Operation naming follows Main at the boundary: `PICK_UP` and `DROP_OFF`. If internal lift ROI code uses `PICKUP`/`DROPOFF`, AI Server must normalize the Main-facing aliases before policy evaluation. AI Server remains evidence/advisory only: it must not emit control decisions such as `HOLD`, `E_STOP`, or `BLOCKED` in Main-facing payloads.
 
 ## Contract decision v3 / non-lock-in note
 
@@ -131,8 +144,7 @@ Response `200`:
 
 `model_status` is retained as a backward-compatible marker/base-service status.
 Use `models.marker` and `models.lift_roi` for model-specific readiness.
-`models.lift_roi.status=disabled` means `/api/v1/lift-roi/evaluate-image` will
-fail closed with HTTP `503` until `VISION_MODEL_PATH` is configured.
+`models.lift_roi.status=disabled` means the internal `/api/v1/lift-roi/evaluate-image` path and any Main-facing lift-load wrapper that depends on it must fail closed with HTTP `503` until `VISION_MODEL_PATH` is configured.
 
 ### `GET /api/v1/sources`
 
@@ -374,12 +386,11 @@ event:
 `null`. For transport errors, timeouts, and non-2xx responses, `ok` is `false`
 and `error` contains a short diagnostic string.
 
-### `POST /api/v1/lift-roi/evaluate`
+### Compatibility/internal seam: `POST /api/v1/lift-roi/evaluate`
 
 Purpose: evaluate caller-provided detector/segmenter candidates against a
 configured lift or target-slot ROI and return a contract-valid
-`LiftRoiEvidence v1` payload. This endpoint is implemented as the stable seam
-for synthetic tests, offline fixtures, and future model providers.
+`LiftRoiEvidence v1` payload. This endpoint is kept as the stable internal/compatibility seam for synthetic tests, offline fixtures, and future model providers. Main-facing task evidence should use `POST /api/v1/vision/evidence/lift-load/evaluate`; that wrapper may reuse this implementation internally.
 
 Canonical response schema: `docs/contracts/lift-roi-evidence.schema.json`.
 
@@ -388,6 +399,8 @@ Contract v2 transition note: current `LiftRoiEvidence v1` accepts `task_id` as
 Vision may parse decimal-string values such as `"12"` before emitting to Main;
 non-decimal task identifiers are not canonical Main `task_id` values and require
 a future versioned `task_ref`/schema ADR.
+
+Operation naming note: this internal seam historically accepts `PICKUP`/`DROPOFF`; the Main-facing lift-load endpoint accepts `PICK_UP`/`DROP_OFF` and normalizes to the internal names.
 
 Request shape:
 
@@ -474,7 +487,7 @@ This contract allows either bbox-only detection or instance segmentation:
 - `evidence_type=instance_mask`: ROI overlap is computed from the instance mask;
   the contract stores only summary fields such as `mask_area_px`, not raw masks.
 
-### `POST /api/v1/lift-roi/evaluate-image`
+### Compatibility/internal seam: `POST /api/v1/lift-roi/evaluate-image`
 
 Purpose: evaluate lift ROI evidence from an uploaded image using the configured
 optional detector/segmenter runtime. Instance masks are preferred when the model
@@ -485,7 +498,7 @@ Request: `multipart/form-data`
 | Field | Required | Description |
 | --- | --- | --- |
 | `source` | yes | source ID to evaluate as |
-| `operation` | yes | `PICKUP`, `DROPOFF`, or `MONITOR` |
+| `operation` | yes | Internal names `PICKUP`, `DROPOFF`, or `MONITOR`. Main-facing aliases `PICK_UP`/`DROP_OFF` must be normalized before using this seam. |
 | `roi_json` | yes | JSON object with `roi_id`, `kind`, and `polygon_xy` |
 | `image` | yes | image file |
 | `task_id` | no | WMS task correlation ID or null |

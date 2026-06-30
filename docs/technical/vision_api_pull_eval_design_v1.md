@@ -42,11 +42,22 @@ Camera/WebRTC/ROS ingest
 3. **원시 bbox는 내부 판단용**으로만 쓰고, Main 반환값에는 기본적으로 넣지 않는다.
 4. monitor enable/disable은 AI Server에도 있어야 GPU/CPU 낭비를 줄일 수 있다. 단, cooldown은 Main 소유가 맞다.
 
-## 4) API 초안
+## 4) Main-facing API 계약 초안
+
+> 정합성 기준: Main 쪽 계획/API path는 바꾸지 않는다. AI Server가 기존 내부 endpoint나 구현체를 유지하더라도, Main이 호출하는 공개 계약은 아래 이름으로 맞춘다. 기존 `lift-roi/evaluate` 계열은 내부 구현/호환 wrapper로만 취급하고, Main-facing 계약에는 노출하지 않는다.
+
+### 4.0 Main-facing canonical endpoint
+
+| 기능 | Main-facing endpoint | 구현 상태/메모 |
+| --- | --- | --- |
+| monitor 상태 제어 | `PUT/GET /api/v1/vision/monitors/{monitor_id}/state` | `person_drive`, `drop_watch`, `lift_evidence` 공통 |
+| 사람 감지 최신 이벤트 | `GET /api/v1/vision/hazards/person/latest?robot_id={robot_id}&since_event_id={event_id}` | 현재 구현된 person latest 계열을 이 계약에 맞춤 |
+| 낙하물 감시 최신 이벤트 | `GET /api/v1/vision/hazards/dropped-item/latest?source=global_cam_01&robot_id={robot_id}&since_event_id={event_id}` | RALPLAN 구현 대상. Main path 고정 |
+| pick/drop 적재 증거 1회 평가 | `POST /api/v1/vision/evidence/lift-load/evaluate` | RALPLAN 구현 대상. 기존 `lift-roi` 내부 로직을 써도 Main-facing path는 이 이름 |
 
 ### 4.1 공통 monitor 상태 제어
 
-Main이 DRIVE/PICK/DROP/IDLE 상태 전환 시 호출한다.
+Main이 DRIVE/PICK/DROP/IDLE 상태 전환 시 호출한다. monitor state는 AI Server의 CPU/GPU 사용량을 줄이기 위한 runtime gate이고, cooldown/중복 suppress는 Main이 처리한다.
 
 `PUT /api/v1/vision/monitors/{monitor_id}/state`
 
@@ -57,17 +68,31 @@ Main이 DRIVE/PICK/DROP/IDLE 상태 전환 시 호출한다.
   "enabled": true,
   "robot_id": "tb3_1",
   "source": "tb3_1_picam",
-  "task_id": "task-123",
+  "task_id": 101,
   "operation_state": "DRIVE",
-  "target_fps": 3
+  "target_fps": 3,
+  "profile_id": "person_drive_picam_v1",
+  "threshold_set_id": "person_pretrained_nano_v1"
 }
 ```
 
-- AI Server 이점: 불필요한 추론을 꺼서 MX450/CPU 사용량을 줄인다.
-- Main 이점: 상태 전환 시 어떤 감시가 켜져 있는지 명확해진다.
-- cooldown/중복 suppress: 여전히 Main에서 처리한다.
+운영 상태명 정합성:
 
-### 4.2 사람 장애물 감시 최신 결과
+- DRIVE 감시: `operation_state=DRIVE`.
+- lift evidence monitor: 문서상 내부 정상형은 `PICKUP`/`DROPOFF`이지만, Main command naming이 `PICK_UP`/`DROP_OFF`이면 AI Server가 alias로 받아 내부 `PICKUP`/`DROPOFF`로 normalize해야 한다. Main 쪽 명칭 수정을 요구하지 않는다.
+
+### 4.2 공통 event payload 원칙
+
+3개 AI 기능은 모두 `vision-monitor-event.v1` 형태의 compact JSON을 반환한다. Main은 이 값을 `evidence_events`/`safety_stops` 등에 필요한 형태로 저장하거나 해석한다.
+
+필수 원칙:
+
+- `trusted=false` 고정. AI 판단은 advisory/evidence-only다.
+- `result`는 `ADVISORY`/`CANDIDATE`/`PASS`/`FAIL`/`UNCERTAIN`/`NO_DECISION`/`IGNORED` 중 하나다.
+- `severity`는 `INFO`/`LOW`/`MEDIUM`/`HIGH`/`CRITICAL` 중 하나다. `EMERGENCY` 같은 별도 값은 쓰지 않는다.
+- `bbox`, `bbox_xyxy`, `mask`, `polygon`, `raw_detections`, `HOLD`, `E_STOP`, `BLOCKED`는 Main-facing payload에 넣지 않는다.
+
+### 4.3 사람 장애물 감시 최신 결과
 
 `GET /api/v1/vision/hazards/person/latest?robot_id=tb3_1&since_event_id=...`
 
@@ -75,20 +100,37 @@ Main이 DRIVE/PICK/DROP/IDLE 상태 전환 시 호출한다.
 
 ```json
 {
+  "schema_version": "vision-person-hazard-latest.v1",
+  "monitor_id": "person_drive",
   "source": "tb3_1_picam",
   "robot_id": "tb3_1",
-  "event_type": "HUMAN_DETECTED",
   "result": "ADVISORY",
-  "severity": "EMERGENCY",
-  "confidence": 0.74,
-  "observed_at": "2026-06-30T...+09:00",
-  "reason_code": "PERSON_IN_ROBOT_CAMERA",
-  "trusted": false,
-  "event_id": "..."
+  "reason_code": "HUMAN_DETECTED",
+  "event": {
+    "schema_version": "vision-monitor-event.v1",
+    "event_type": "HUMAN_DETECTED",
+    "source": "tb3_1_picam",
+    "robot_id": "tb3_1",
+    "task_id": 101,
+    "command_id": null,
+    "result": "ADVISORY",
+    "severity": "CRITICAL",
+    "confidence": 0.74,
+    "reason_code": "HUMAN_DETECTED",
+    "trusted": false,
+    "image_url": null,
+    "profile_id": "person_drive_picam_v1",
+    "threshold_set_id": "person_pretrained_nano_v1",
+    "data_json": {
+      "assignment_status": "OWNED",
+      "related_robot_ids": [],
+      "task_id_ref": 101
+    }
+  }
 }
 ```
 
-### 4.3 낙하물 감시 최신 결과
+### 4.4 낙하물 감시 최신 결과
 
 `GET /api/v1/vision/hazards/dropped-item/latest?source=global_cam_01&robot_id=tb3_1&since_event_id=...`
 
@@ -96,27 +138,31 @@ Main이 DRIVE/PICK/DROP/IDLE 상태 전환 시 호출한다.
 
 ```json
 {
+  "schema_version": "vision-monitor-event.v1",
+  "event_type": "DROPPED_ITEM_CANDIDATE",
   "source": "global_cam_01",
   "robot_id": "tb3_1",
-  "task_id": "task-123",
-  "event_type": "DROPPED_ITEM_CANDIDATE",
-  "result": "ADVISORY",
-  "severity": "WARN",
+  "task_id": 202,
+  "command_id": null,
+  "result": "CANDIDATE",
+  "severity": "MEDIUM",
   "confidence": 0.68,
   "observed_at": "2026-06-30T...+09:00",
   "reason_code": "TARGET_ITEM_OUTSIDE_DYNAMIC_CARRIER_ROI",
   "trusted": false,
   "image_url": "/api/v1/evidence/images/...jpg",
-  "event_id": "...",
+  "profile_id": "drop_watch_global_v1",
+  "threshold_set_id": "drop_watch_mx450_v1",
   "data_json": {
-    "policy_version": "mvp2",
-    "stable_frames": 2,
+    "assignment_status": "OWNED",
+    "related_robot_ids": [],
+    "task_id_ref": 202,
     "carrier_roi_source": "robot_pose_homography"
   }
 }
 ```
 
-### 4.4 픽업/드롭 전후 적재 증거 평가
+### 4.5 픽업/드롭 전후 적재 증거 평가
 
 `POST /api/v1/vision/evidence/lift-load/evaluate`
 
@@ -126,33 +172,49 @@ Main이 DRIVE/PICK/DROP/IDLE 상태 전환 시 호출한다.
 {
   "source": "global_cam_01",
   "robot_id": "tb3_1",
-  "task_id": "task-123",
-  "operation": "PICKUP_BEFORE",
+  "task_id": 303,
+  "command_id": 3,
+  "operation": "PICK_UP",
   "expected_item_count": 1,
-  "capture_profile": "high_res_burst",
-  "external_call_count": 1
+  "capture_profile": "high_res_burst"
 }
 ```
+
+operation 정합성:
+
+- Main command naming: `PICK_UP`, `DROP_OFF`.
+- AI 내부 policy naming: `PICKUP`, `DROPOFF`.
+- AI Server가 Main-facing API에서 `PICK_UP`/`DROP_OFF`를 받아 내부 이름으로 normalize한다.
 
 응답 예:
 
 ```json
 {
+  "schema_version": "vision-monitor-event.v1",
+  "event_type": "ITEM_PICKED",
   "source": "global_cam_01",
   "robot_id": "tb3_1",
-  "task_id": "task-123",
-  "event_type": "LIFT_LOAD_EVIDENCE",
-  "verification_status": "PASS",
-  "result": "LOADED",
+  "task_id": 303,
+  "command_id": 3,
+  "result": "PASS",
+  "severity": "INFO",
   "confidence": 0.91,
   "observed_at": "2026-06-30T...+09:00",
-  "reason_code": "EXPECTED_ITEM_VISIBLE_IN_DYNAMIC_CARRIER_ROI",
+  "reason_code": "EXPECTED_ITEM_COUNT_MATCH_AND_STABLE",
   "trusted": false,
-  "image_url": "/api/v1/evidence/images/...jpg",
+  "image_url": "/api/v1/evidence/images/global_cam_01/lift_roi/2026-06-30/proof-303.jpg",
+  "profile_id": "lift_evidence_burst_v1",
+  "threshold_set_id": "lift_evidence_fixture_v1",
   "data_json": {
-    "policy_version": "mvp2",
-    "burst_frames": 5,
-    "accepted_frames": 4
+    "assignment_status": "OWNED",
+    "related_robot_ids": [],
+    "task_id_ref": 303,
+    "ai_judgement": {
+      "verification_status": "PASS",
+      "expected_count": 1,
+      "observed_count": 1,
+      "accepted_frames": 4
+    }
   }
 }
 ```

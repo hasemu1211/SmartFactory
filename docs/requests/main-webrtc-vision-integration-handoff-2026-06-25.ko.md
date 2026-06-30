@@ -153,8 +153,10 @@ task/evidence 판단이 필요할 때만 별도로 호출합니다. live video r
 
 ```http
 POST {VISION_API_BASE_URL}/api/v1/evidence/evaluate
-POST {VISION_API_BASE_URL}/api/v1/lift-roi/evaluate
-POST {VISION_API_BASE_URL}/api/v1/lift-roi/evaluate-image
+POST {VISION_API_BASE_URL}/api/v1/vision/evidence/lift-load/evaluate
+# Internal/compat only when explicitly testing AI Server internals:
+# POST {VISION_API_BASE_URL}/api/v1/lift-roi/evaluate
+# POST {VISION_API_BASE_URL}/api/v1/lift-roi/evaluate-image
 ```
 
 Main은 task id, DB 저장, inventory truth, UI 상태전이의 owner입니다. Vision은 판단 근거와 PASS/FAIL/UNCERTAIN 평가 payload를 제공합니다.
