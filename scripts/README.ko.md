@@ -12,7 +12,7 @@
 ## 가장 많이 쓰는 명령
 
 ```bash
-# 저부하 실행: GoPro full + tb3_1 PiCam WebRTC, lift_roi WebRTC/tb3_2 끔
+# 저부하 실행: GoPro full + tb3_1/tb3_2 PiCam WebRTC, lift_roi WebRTC 끔
 ./scripts/vision/sf_lab.sh low-load
 
 # 전체 실행: GoPro full+lift_roi + tb3_1/tb3_2 + AI Server + MJPEG fallback + mDNS
@@ -32,8 +32,8 @@
 
 | 하고 싶은 일 | 실행 명령 | 설명 |
 |---|---|---|
-| 저부하 lab vision 켜기 | `./scripts/vision/sf_lab.sh low-load` | 노트북/약한 PC 권장. GoPro full + tb3_1 PiCam만 WebRTC로 켜고, lift_roi WebRTC와 tb3_2는 끕니다. |
-| 전체 lab vision 켜기 | `./scripts/vision/sf_lab.sh all` | lift_roi WebRTC나 tb3_2까지 필요할 때. GoPro + PiCam + AI Server + WebRTC/MJPEG fallback을 켭니다. |
+| 저부하 lab vision 켜기 | `./scripts/vision/sf_lab.sh low-load` | 노트북/약한 PC 권장. GoPro full + tb3_1/tb3_2 PiCam WebRTC를 켜고, lift_roi WebRTC만 끕니다. |
+| 전체 lab vision 켜기 | `./scripts/vision/sf_lab.sh all` | lift_roi WebRTC까지 필요할 때. GoPro + PiCam + AI Server + WebRTC/MJPEG fallback을 켭니다. |
 | 상태 확인 | `./scripts/vision/sf_lab.sh status` | 살아있는 프로세스, WebRTC/MJPEG 상태, GoPro/PiCam 상태를 봅니다. |
 | URL 확인 | `./scripts/vision/sf_lab.sh urls low-load` | 선택한 profile 기준으로 활성 WebRTC URL과 fallback URL을 출력합니다. |
 | 종료 | `./scripts/vision/sf_lab.sh down` | Vision 관련 live 프로세스를 내립니다. |
@@ -119,7 +119,7 @@ make vision-lab-down
 
 | Profile | 언제 쓰나 |
 |---|---|
-| `lab-gopro-tb3-low-load` | 저부하 권장. GoPro full + tb3_1 PiCam만 WebRTC로 실행하고, lift_roi WebRTC와 tb3_2는 끕니다. |
+| `lab-gopro-tb3-low-load` | 저부하 권장. GoPro full + tb3_1/tb3_2 PiCam WebRTC를 실행하고, lift_roi WebRTC만 끕니다. |
 | `lab-gopro-tb3-ffmpeg-first` | 전체 WebRTC. GoPro full + lift ROI + tb3_1/tb3_2 WebRTC, MJPEG fallback으로 실행. |
 | `lab-gopro-tb3` | WebRTC보다 기존 MJPEG 안정 경로를 우선 확인할 때. |
 | `tb3-live-webrtc` | GoPro 없이 tb3_1 PiCam만 WebRTC로 확인할 때. |
@@ -130,13 +130,13 @@ make vision-lab-down
 ```text
 http://smartfactory-vision.local:8889/global_cam_01_full/
 http://smartfactory-vision.local:8889/tb3_1_picam_full/
+http://smartfactory-vision.local:8889/tb3_2_picam_full/
 ```
 
 ## 전체 WebRTC 추가 URL
 
 ```text
 http://smartfactory-vision.local:8889/global_cam_01_lift_roi/
-http://smartfactory-vision.local:8889/tb3_2_picam_full/
 ```
 
 ## 기본 MJPEG fallback URL

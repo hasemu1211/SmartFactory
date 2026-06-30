@@ -95,11 +95,10 @@ def test_sf_lab_urls_low_load_prints_only_active_low_load_webrtc_urls() -> None:
     assert "lab-gopro-tb3-low-load" in result.stdout
     assert "http://smartfactory-vision.local:8889/global_cam_01_full/" in result.stdout
     assert "http://smartfactory-vision.local:8889/tb3_1_picam_full/" in result.stdout
+    assert "http://smartfactory-vision.local:8889/tb3_2_picam_full/" in result.stdout
     assert "http://smartfactory-vision.local:8889/global_cam_01_lift_roi/" not in result.stdout
-    assert "http://smartfactory-vision.local:8889/tb3_2_picam_full/" not in result.stdout
     assert "Disabled WebRTC streams in this profile" in result.stdout
     assert "global_cam_01/lift_roi" in result.stdout
-    assert "tb3_2_picam/full" in result.stdout
     assert (
         "http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?"
         "source=global_cam_01&view=lift_roi&max_fps=30"

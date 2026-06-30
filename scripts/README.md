@@ -14,7 +14,7 @@ Detailed architecture notes live under `docs/`.
 ## Most-used commands
 
 ```bash
-# Low-load start: GoPro full + tb3_1 PiCam WebRTC, lift_roi WebRTC/tb3_2 off
+# Low-load start: GoPro full + tb3_1/tb3_2 PiCam WebRTC, lift_roi WebRTC off
 ./scripts/vision/sf_lab.sh low-load
 
 # Full start: GoPro full+lift_roi + tb3_1/tb3_2 + AI Server + MJPEG fallback + mDNS
@@ -34,8 +34,8 @@ Detailed architecture notes live under `docs/`.
 
 | Task | Command | What it does |
 |---|---|---|
-| Start the low-load lab Vision bundle | `./scripts/vision/sf_lab.sh low-load` | Recommended for laptops/weaker PCs. Starts GoPro full + tb3_1 PiCam WebRTC; leaves lift_roi WebRTC and tb3_2 off. |
-| Start the full lab Vision bundle | `./scripts/vision/sf_lab.sh all` | Use when lift_roi WebRTC or tb3_2 is needed. Starts GoPro, PiCam, AI Server, WebRTC, MJPEG fallback, and mDNS helper. |
+| Start the low-load lab Vision bundle | `./scripts/vision/sf_lab.sh low-load` | Recommended for laptops/weaker PCs. Starts GoPro full + tb3_1/tb3_2 PiCam WebRTC; leaves lift_roi WebRTC off. |
+| Start the full lab Vision bundle | `./scripts/vision/sf_lab.sh all` | Use when lift_roi WebRTC is needed. Starts GoPro, PiCam, AI Server, WebRTC, MJPEG fallback, and mDNS helper. |
 | Check runtime status | `./scripts/vision/sf_lab.sh status` | Shows live processes and stream health. |
 | Print URLs | `./scripts/vision/sf_lab.sh urls low-load` | Shows active WebRTC URLs for the selected profile plus fallback URLs. |
 | Stop Vision processes | `./scripts/vision/sf_lab.sh down` | Stops the Vision live bundle. |
@@ -121,7 +121,7 @@ make vision-lab-down
 
 | Profile | When to use |
 |---|---|
-| `lab-gopro-tb3-low-load` | Recommended low-load mode. Runs GoPro full + tb3_1 PiCam WebRTC; leaves lift_roi WebRTC and tb3_2 off. |
+| `lab-gopro-tb3-low-load` | Recommended low-load mode. Runs GoPro full + tb3_1/tb3_2 PiCam WebRTC; leaves lift_roi WebRTC off. |
 | `lab-gopro-tb3-ffmpeg-first` | Full WebRTC mode. Runs GoPro full + lift ROI + tb3_1/tb3_2 WebRTC, with MJPEG fallback. |
 | `lab-gopro-tb3` | Use when checking the older MJPEG-stable path. |
 | `tb3-live-webrtc` | Use when testing only tb3_1 PiCam WebRTC without GoPro. |
@@ -132,13 +132,13 @@ make vision-lab-down
 ```text
 http://smartfactory-vision.local:8889/global_cam_01_full/
 http://smartfactory-vision.local:8889/tb3_1_picam_full/
+http://smartfactory-vision.local:8889/tb3_2_picam_full/
 ```
 
 ## Full-mode extra WebRTC URLs
 
 ```text
 http://smartfactory-vision.local:8889/global_cam_01_lift_roi/
-http://smartfactory-vision.local:8889/tb3_2_picam_full/
 ```
 
 ## Default MJPEG fallback URLs
