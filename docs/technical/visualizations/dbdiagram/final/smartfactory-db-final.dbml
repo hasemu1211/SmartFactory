@@ -1,16 +1,17 @@
-Project SmartFactory_CurrentState_AppendOnlyLogs {
+Project SmartFactory_CurrentState_TaskQueue_RuntimeEvidence_FinalLogs {
   database_type: 'PostgreSQL'
   Note: '''
-  Discussion draft for the SmartFactory DB model.
+  SmartFactory MVP DB model — business 10 tables (PG aligned).
 
   Principle:
-  - Keep the main diagram close to the current Image #1 shape.
   - Current-state tables may be updated/deleted after task completion.
   - task_logs and item_change_logs are append-only and intentionally do not FK back to current-state rows.
   - commands is a static command definition table keyed by task_type + sequence_no.
   - Runtime command progress/status is derived from evidence_events while a task is active.
-  - evidence_events may be deleted after task completion once needed proof is copied into task_logs.
-  - No reservations table in this draft: active tasks themselves are the resource claims.
+  - evidence_events absorbs former compat events + movement_commands timelines.
+  - safety_stops is a mutable current-state latch for temporary HOLD/RESUME control.
+  - No reservations table: active tasks themselves are the resource claims.
+  - maps and cameras are standalone infra (no FK) and live outside this business model.
   '''
 }
 
@@ -33,12 +34,12 @@ Table robots {
 
 Table locations {
   id text [pk]
-  type text [not null]
+  type text [not null, note: 'inbound/outbound/storage/home/charge/dock/transit/scan']
   status text [not null]
   x float8
   y float8
   yaw float8
-  marker_id integer
+  marker_id integer [note: 'aruco; absorbs former waypoints.aruco_marker_id']
 }
 
 Table inventory {
@@ -152,22 +153,25 @@ Table evidence_events {
 }
 
 /*
-  Mutable current safety-stop state.
-  It only points to the evidence that caused the stop.
-  If an emergency-stop task is created, that creation is based on detected_evidence_id.
+  Mutable current safety-hold state.
+  It points only to the evidence that caused the hold.
+  Main Server can push a temporary ROS HOLD/zero-velocity gate while preserving the current navigation goal.
+  hold_until is optional: when set, the hold can be auto-closed/resumed after that timestamp if no new critical evidence exists.
 */
 Table safety_stops {
   id bigint [pk, increment]
 
   detected_evidence_id bigint [not null]
 
-  status text [not null]
+  status text [not null, note: 'OPEN/HOLDING/CLOSED']
   opened_at timestamptz [not null]
+  hold_until timestamptz [note: 'optional timed hold deadline for temporary ROS hold']
   closed_at timestamptz
 
   indexes {
     detected_evidence_id
     status
+    hold_until
     opened_at
   }
 }
@@ -183,7 +187,7 @@ Table item_change_logs {
   task_id bigint
   item_id text [not null]
   location_id text
-  floor int
+  floor integer
 
   event_type text [not null]
   quantity_change integer [not null]
@@ -276,8 +280,33 @@ Table task_logs {
 }
 
 /*
+  Standalone infra (no FK to/from business tables).
+  maps: single active map via config. cameras: asset/device registry, robot_id is a soft tag.
+*/
+Table maps {
+  map_id text [pk]
+  name text [not null]
+  image_url text
+  resolution float8
+  origin_x float8
+  origin_y float8
+  origin_yaw float8
+  width integer
+  height integer
+  frame_id text
+}
+
+Table cameras {
+  source_id text [pk]
+  label text [not null]
+  robot_id text [note: 'soft tag only, NOT a FK to robots']
+  status text [not null]
+  stream_url text
+}
+
+/*
   Current-state references only.
-  Log tables intentionally have no physical FK references.
+  Log tables and infra tables intentionally have no physical FK references.
 */
 
 Ref: inventory.item_id > items.id
@@ -291,4 +320,3 @@ Ref: tasks.to_location_id > locations.id
 Ref: evidence_events.command_id > commands.id
 
 Ref: safety_stops.detected_evidence_id > evidence_events.id
-
