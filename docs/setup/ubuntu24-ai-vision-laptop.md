@@ -17,6 +17,59 @@ SmartFactory Vision API/stream gateway.
   - Main/GUI points at `http://smartfactory-vision.local:8090` for streams and
     `http://smartfactory-vision.local:8100` for API.
 
+## Network model: WiFi is OK
+
+The AI/Vision laptop does **not** need a wired Ethernet cable for MVP/lab smoke.
+Using the same WiFi as the Main PC is acceptable when the network allows devices
+to talk to each other.
+
+Required WiFi conditions:
+
+- Main PC and AI/Vision laptop are on the same LAN/subnet or have routable paths.
+- The WiFi/router does not enable AP isolation, guest isolation, or client
+  isolation.
+- The laptop firewall allows the required ports.
+- The laptop keeps a stable enough WiFi connection for the stream test. If
+  WebRTC/video is unstable, first verify the API on `:8100`, then reduce stream
+  FPS/bitrate or move closer to the access point.
+
+Address rule:
+
+- `127.0.0.1` means **this laptop only**. Use it only from a terminal/browser on
+  the AI/Vision laptop itself.
+- Main PC must use the laptop's WiFi IP or a hostname that resolves to it:
+  - `http://<laptop_wifi_ip>:8100` for API.
+  - `http://<laptop_wifi_ip>:8090` for MJPEG fallback stream gateway.
+  - `http://smartfactory-vision.local:8100` / `:8090` or
+    `http://smartfactory-ai:8100` / `:8090` when DNS/mDNS/hosts is configured.
+
+Find the laptop WiFi IP:
+
+```bash
+hostname -I
+ip route get 1.1.1.1 | awk '{print $7; exit}'
+```
+
+The second command usually prints the active outbound WiFi/LAN IP. Use that as
+`<laptop_wifi_ip>` for Main-side smoke tests.
+
+If Ubuntu firewall is enabled, allow the MVP ports:
+
+```bash
+sudo ufw allow 8100/tcp   # AI Server API
+sudo ufw allow 8090/tcp   # public MJPEG fallback gateway
+sudo ufw allow 8889/tcp   # MediaMTX/WHEP
+sudo ufw allow 8189/udp   # WebRTC ICE UDP
+sudo ufw status
+```
+
+If hostname lookup is not ready, use IP first. For a temporary manual hostname
+mapping on the Main PC, add a hosts entry that points to the laptop WiFi IP:
+
+```text
+<laptop_wifi_ip> smartfactory-vision.local smartfactory-ai
+```
+
 ## Install
 
 If the repo is not cloned yet, bootstrap clone/pull + setup in one command. Replace `<handoff-git-ref>` with the branch or commit SHA recorded in the implementation handoff; do not rely on stale classroom branch names:
@@ -101,7 +154,9 @@ services/ai-server/.venv/bin/python -m pytest \
   -q
 ```
 
-Optional local API smoke in another terminal:
+Optional local-only API smoke in another terminal. This proves the laptop
+process is alive, but it does **not** prove Main can reach it because
+`127.0.0.1` is loopback-local to this laptop:
 
 ```bash
 AI_SERVER_HOST=127.0.0.1 \
@@ -121,11 +176,34 @@ no-hardware scaffold. Main should reassert the desired monitor state after every
 AI Server restart; the returned `revision` is a per-process monotonic smoke
 counter, not a durable DB version.
 
-For Main/LAN smoke on the target laptop, set `AI_SERVER_HOST=0.0.0.0` and use
-hostname-first endpoints such as `http://smartfactory-vision.local:8100` or an
-operator-managed `smartfactory-ai` alias. If the lab subnet changes to
-`192.168.30.x`, update only DNS/mDNS/hosts or explicit fallback envs; do not
-hard-code the new subnet in tracked defaults.
+For Main/WiFi-LAN smoke on the target laptop, set `AI_SERVER_HOST=0.0.0.0` so
+the API listens on the laptop WiFi interface, then test from both sides:
+
+```bash
+AI_SERVER_HOST=0.0.0.0 \
+VISION_MODEL_WORKER_ENABLED=false \
+./scripts/ai/run_ai_server.sh
+```
+
+Laptop-local check:
+
+```bash
+curl http://127.0.0.1:8100/api/v1/health
+```
+
+Main PC check, replacing `<laptop_wifi_ip>` with `hostname -I` / `ip route get`
+output from the laptop:
+
+```bash
+curl http://<laptop_wifi_ip>:8100/api/v1/health
+curl http://<laptop_wifi_ip>:8100/api/v1/vision/monitors
+```
+
+After hostname/DNS/mDNS/hosts is configured, the same Main-side check should work
+with hostname-first endpoints such as `http://smartfactory-vision.local:8100` or
+an operator-managed `http://smartfactory-ai:8100` alias. If the lab subnet
+changes to `192.168.30.x`, update only DNS/mDNS/hosts or explicit fallback envs;
+do not hard-code the new subnet in tracked defaults.
 
 ## Run
 
