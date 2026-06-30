@@ -64,6 +64,7 @@ def test_sf_lab_wrapper_is_valid_bash_and_has_operator_help() -> None:
     assert "sf_lab.sh all" in result.stdout
     assert "WebRTC global/Pi streams + AI Server API + MJPEG fallback" in result.stdout
     assert "api evaluate-quality" in result.stdout
+    assert "profile=lab-gopro-tb3-ffmpeg-first" in result.stdout
     assert "Robot Pi camera" in result.stdout
 
 
@@ -76,7 +77,14 @@ def test_sf_lab_urls_prints_main_api_webrtc_and_mjpeg_urls() -> None:
     assert "http://127.0.0.1:8100" in result.stdout
     assert "http://smartfactory-vision.local:8889/global_cam_01_full/" in result.stdout
     assert "http://smartfactory-vision.local:8889/tb3_1_picam_full/whep" in result.stdout
-    assert "http://smartfactory-vision.local:8090/streams/global_cam_01.mjpeg" in result.stdout
+    assert (
+        "http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?"
+        "source=global_cam_01&view=full&max_fps=30"
+    ) in result.stdout
+    assert (
+        "http://smartfactory-vision.local:8090/api/v1/vision/frame/stream?"
+        "source=tb3_1_picam&view=full&max_fps=30"
+    ) in result.stdout
 
 
 def test_sf_lab_api_evidence_plan_is_no_hardware_and_reuse_first() -> None:

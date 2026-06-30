@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime, timezone
 import json
 import re
+import time
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request as UrlRequest, urlopen
 
-from ..config import get_settings
+from ..config import REPO_ROOT, get_settings
 from ..evidence_cache import DEFAULT_VIEW_ID
 from ..runtime_state import RuntimeContext
 from .vision_read_model_ros import (
@@ -37,13 +39,43 @@ def overlay_stream_path(source: str, view: str, *, max_fps: int = 30) -> str:
     )
 
 
+def frame_stream_path(source: str, view: str, *, max_fps: int = 30) -> str:
+    """Main-facing public clean/latest-frame gateway path for one source/view."""
+
+    return "/api/v1/vision/frame/stream?" + urlencode(
+        {"source": source, "view": view, "max_fps": max_fps}
+    )
+
+
+def overlay_metadata_path(source: str, view: str, *, limit: int = 20) -> str:
+    """Diagnostic AI overlay metadata path.
+
+    Public streaming overlays are burned into the video.  This endpoint remains
+    useful for debugging and offline inspection, but Main does not need it to
+    draw streaming overlays.
+    """
+
+    return "/api/v1/vision/overlay/metadata?" + urlencode(
+        {"source": source, "view": view, "limit": limit}
+    )
+
+
 def vision_stream_base_url() -> str:
     settings = get_settings()
     return f"http://{settings.vision_public_host}:{settings.vision_stream_gateway_port}"
 
 
+def vision_api_base_url() -> str:
+    settings = get_settings()
+    return f"http://{settings.vision_public_host}:{settings.ai_server_port}"
+
+
 def vision_gateway_url(path: str) -> str:
     return f"{vision_stream_base_url()}{path}"
+
+
+def vision_api_url(path: str) -> str:
+    return f"{vision_api_base_url()}{path}"
 
 
 def webrtc_offer_path(source: str, view: str) -> str:
@@ -74,8 +106,8 @@ def _render_sidecar_url(template: str, *, source: str, view: str) -> str | None:
     )
 
 
-def _configured_sidecar_streams() -> set[tuple[str, str]]:
-    raw = get_settings().vision_webrtc_sidecar_streams.strip()
+def _parse_stream_specs(raw: str) -> set[tuple[str, str]]:
+    raw = raw.strip()
     if not raw:
         return set()
     streams: set[tuple[str, str]] = set()
@@ -94,14 +126,70 @@ def _configured_sidecar_streams() -> set[tuple[str, str]]:
     return streams
 
 
+def _configured_sidecar_streams() -> set[tuple[str, str]]:
+    return _parse_stream_specs(get_settings().vision_webrtc_sidecar_streams)
+
+
+def _configured_clean_video_streams() -> set[tuple[str, str]]:
+    return _parse_stream_specs(get_settings().vision_webrtc_clean_video_streams)
+
+
+def _configured_direct_media_streams() -> set[tuple[str, str]]:
+    return _parse_stream_specs(get_settings().vision_webrtc_direct_media_streams)
+
+
+def _configured_compositor_publisher_streams() -> set[tuple[str, str]]:
+    return _parse_stream_specs(get_settings().vision_webrtc_compositor_publisher_streams)
+
+
 def _sidecar_stream_is_allowed(source: str, view: str) -> bool:
     configured_streams = _configured_sidecar_streams()
     return not configured_streams or (source, view) in configured_streams
 
 
+def _stream_is_clean_video(source: str, view: str) -> bool:
+    return (source, view) in _configured_clean_video_streams()
+
+
+def _stream_is_direct_media(source: str, view: str) -> bool:
+    return (source, view) in _configured_direct_media_streams()
+
+
+def _webrtc_media_profile(source: str, view: str) -> dict[str, Any]:
+    clean_video_requested = _stream_is_clean_video(source, view)
+    direct_media_requested = _stream_is_direct_media(source, view)
+    return {
+        "transport_origin": "vision_pc_compositor_publisher",
+        "transport_class": "raw_frame_compositor_h264_webrtc",
+        "transport_rank": 1,
+        "video_composition": "burned_overlay_video",
+        "overlay_mode": "burned_in_video",
+        "preferred_until_direct_media_ready": False,
+        "legacy_clean_video_config_ignored": clean_video_requested,
+        "legacy_direct_media_config_ignored": direct_media_requested,
+    }
+
+
+def _compositor_required_for_stream(source: str, view: str) -> bool:
+    configured = _configured_compositor_publisher_streams()
+    if configured:
+        return (source, view) in configured
+    return _sidecar_stream_is_allowed(source, view)
+
+
+def _compositor_metrics_path(source: str, view: str) -> str:
+    settings = get_settings()
+    path_id = webrtc_sidecar_path_id(source, view)
+    metrics_dir = settings.vision_webrtc_compositor_metrics_dir.expanduser()
+    if not metrics_dir.is_absolute():
+        metrics_dir = REPO_ROOT / metrics_dir
+    return str(metrics_dir / f"{path_id}.json")
+
+
 def webrtc_sidecar_descriptor(source: str, view: str) -> dict[str, Any]:
     settings = get_settings()
     configured_streams = _configured_sidecar_streams()
+    compositor_streams = _configured_compositor_publisher_streams()
     stream_allowed = _sidecar_stream_is_allowed(source, view)
     offer_url = _render_sidecar_url(
         settings.vision_webrtc_sidecar_offer_url_template,
@@ -134,6 +222,12 @@ def webrtc_sidecar_descriptor(source: str, view: str) -> dict[str, Any]:
         "url_configured": bool(offer_url or whep_url or browser_url),
         "stream_configured": stream_allowed,
         "configured_streams": [f"{item[0]}/{item[1]}" for item in sorted(configured_streams)],
+        "compositor_required": _compositor_required_for_stream(source, view),
+        "compositor_configured_streams": [
+            f"{item[0]}/{item[1]}" for item in sorted(compositor_streams)
+        ],
+        "compositor_metrics_path": _compositor_metrics_path(source, view),
+        "compositor_heartbeat_max_age_s": settings.vision_webrtc_compositor_heartbeat_max_age_s,
         "runtime_health": runtime_health,
         "runtime_health_url": health_url,
         "offer_url": offer_url if configured else None,
@@ -142,6 +236,57 @@ def webrtc_sidecar_descriptor(source: str, view: str) -> dict[str, Any]:
         "owner": "media_sidecar",
         "proxy_mode": "descriptor_only",
     }
+
+
+def _parse_epoch_from_metrics(payload: dict[str, Any]) -> float | None:
+    for key in ("updated_at_epoch_s", "timestamp_epoch_s", "ts_epoch_s", "heartbeat_epoch_s"):
+        value = payload.get(key)
+        if isinstance(value, (int, float)):
+            return float(value)
+    for key in ("updated_at", "timestamp", "ts", "heartbeat_at"):
+        value = payload.get(key)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        raw = value.strip().replace("Z", "+00:00")
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            continue
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.timestamp()
+    return None
+
+
+def _webrtc_compositor_runtime_health(sidecar: dict[str, Any]) -> str:
+    if sidecar.get("status") != "configured":
+        return "not_configured"
+    if not sidecar.get("compositor_required"):
+        return "not_required"
+    metrics_path = str(sidecar.get("compositor_metrics_path") or "")
+    if not metrics_path:
+        return "missing_metrics_path"
+    try:
+        with open(metrics_path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except FileNotFoundError:
+        return "missing"
+    except (OSError, ValueError, json.JSONDecodeError):
+        return "unreadable"
+    if not isinstance(payload, dict):
+        return "invalid"
+    status = str(payload.get("status") or "running").lower()
+    if status in {"error", "failed", "stopped", "dead"}:
+        return status
+    epoch = _parse_epoch_from_metrics(payload)
+    if epoch is None:
+        return "missing_timestamp"
+    max_age = float(get_settings().vision_webrtc_compositor_heartbeat_max_age_s)
+    age = max(0.0, time.time() - epoch)
+    sidecar["compositor_heartbeat_age_s"] = round(age, 3)
+    if age > max_age:
+        return "stale"
+    return "alive"
 
 
 def _webrtc_sidecar_runtime_health(sidecar: dict[str, Any]) -> str:
@@ -167,7 +312,12 @@ def _webrtc_sidecar_runtime_health(sidecar: dict[str, Any]) -> str:
 
 
 def _webrtc_sidecar_path_runtime_health(sidecar: dict[str, Any]) -> str:
-    """Return whether the requested MediaMTX path is online."""
+    """Return whether the requested MediaMTX path is online.
+
+    MediaMTX versions do not all expose the same readiness field.  Treat any
+    explicit truthy path-readiness marker as enough to prefer WebRTC, matching
+    the sidecar/startup guard instead of requiring every marker simultaneously.
+    """
 
     if sidecar.get("status") != "configured":
         return "not_configured"
@@ -194,7 +344,10 @@ def _webrtc_sidecar_path_runtime_health(sidecar: dict[str, Any]) -> str:
     for item in items:
         if not isinstance(item, dict) or item.get("name") != path_id:
             continue
-        if bool(item.get("ready")) and bool(item.get("available")) and bool(item.get("online")):
+        if any(
+            bool(item.get(key))
+            for key in ("ready", "available", "online", "sourceReady")
+        ):
             return "online"
         return "offline"
     return "missing"
@@ -212,12 +365,15 @@ def _webrtc_transport_status(sidecar: dict[str, Any]) -> dict[str, Any]:
     )
     runtime_health = _webrtc_sidecar_runtime_health(sidecar)
     path_runtime_health = _webrtc_sidecar_path_runtime_health(sidecar)
+    compositor_runtime_health = _webrtc_compositor_runtime_health(sidecar)
     runtime_ok = runtime_health in {"healthy", "assume_healthy"}
     path_ok = path_runtime_health == "online"
-    ready = configured and runtime_ok and path_ok
+    compositor_ok = compositor_runtime_health in {"alive", "not_required"}
+    ready = configured and runtime_ok and path_ok and compositor_ok
     sidecar["answer_capable"] = answer_capable
     sidecar["runtime_health"] = runtime_health
     sidecar["path_runtime_health"] = path_runtime_health
+    sidecar["compositor_runtime_health"] = compositor_runtime_health
     if ready:
         sidecar["status"] = "healthy"
     return {
@@ -233,10 +389,13 @@ def stream_transports_for_source(source: str) -> list[dict[str, Any]]:
     transports: list[dict[str, Any]] = []
     for view in source_definition.view_ids:
         fallback_path = overlay_stream_path(source, view)
+        clean_path = frame_stream_path(source, view)
+        metadata_path = overlay_metadata_path(source, view)
+        media_profile = _webrtc_media_profile(source, view)
         transports.append(
             {
                 "kind": "mjpeg",
-                "status": "current_stable",
+                "status": "fallback_stable",
                 "source": source,
                 "view": view,
                 "url": vision_gateway_url(fallback_path),
@@ -244,7 +403,7 @@ def stream_transports_for_source(source: str) -> list[dict[str, Any]]:
                 "fallback_path": fallback_path,
                 "transport_origin": "http_mjpeg_gateway",
                 "transport_class": "http_mjpeg_gateway",
-                "transport_rank": 4,
+                "transport_rank": 2,
                 "transport_rank_order": "lower_is_preferred",
                 "production_compatible_fallback": True,
                 "media_only": True,
@@ -268,11 +427,34 @@ def stream_transports_for_source(source: str) -> list[dict[str, Any]]:
                 "offer_path": webrtc_offer_path(source, view),
                 "fallback_path": fallback_path,
                 "fallback_kind": "mjpeg",
-                "transport_origin": "mjpeg_overlay_gateway",
-                "transport_class": "mjpeg_overlay_h264_transcode_webrtc",
-                "transport_rank": 3,
+                "clean_video_path": clean_path,
+                "clean_video_url": vision_gateway_url(clean_path),
+                "clean_video_role": "diagnostic_latest_frame_only_not_main_streaming_overlay_contract",
+                "transport_origin": media_profile["transport_origin"],
+                "transport_class": media_profile["transport_class"],
+                "transport_rank": media_profile["transport_rank"],
                 "transport_rank_order": "lower_is_preferred",
-                "preferred_until_direct_media_ready": False,
+                "preferred_until_direct_media_ready": media_profile["preferred_until_direct_media_ready"],
+                "video_composition": media_profile["video_composition"],
+                "overlay_mode": media_profile["overlay_mode"],
+                "legacy_clean_video_config_ignored": media_profile[
+                    "legacy_clean_video_config_ignored"
+                ],
+                "legacy_direct_media_config_ignored": media_profile[
+                    "legacy_direct_media_config_ignored"
+                ],
+                "overlay_metadata": {
+                    "kind": "vision_event_canvas_layer_diagnostic",
+                    "path": metadata_path,
+                    "url": vision_api_url(metadata_path),
+                    "events_path": f"/api/v1/detections/latest?source={quote(source, safe='')}&limit=20",
+                    "events_url": vision_api_url(f"/api/v1/detections/latest?source={quote(source, safe='')}&limit=20"),
+                    "recommended_refresh_fps": get_settings().vision_webrtc_overlay_refresh_fps,
+                    "video_frame_reference": "latest_frame_seq",
+                    "client_rendering": "diagnostic_only_not_required_for_main_streaming",
+                    "recommended_for_main_streaming": False,
+                    "diagnostic_only": True,
+                },
                 "media_only": True,
                 "sidecar_required": True,
                 "sidecar": sidecar,
@@ -287,14 +469,18 @@ def stream_transports_for_source(source: str) -> list[dict[str, Any]]:
 
 def webrtc_transport_policy() -> dict[str, Any]:
     return {
-        "status": "candidate_additive",
-        "primary_until_parity": "mjpeg",
+        "status": "primary_with_mjpeg_fallback",
+        "primary_until_parity": "raw_frame_compositor_h264_webrtc",
         "production_compatible_fallback": "http_mjpeg_gateway",
         "preferred_order": [
+            "raw_frame_compositor_h264_webrtc",
+            "http_mjpeg_gateway",
+        ],
+        "legacy_or_internal_only": [
             "direct_clean_media_webrtc",
             "camera_input_h264_transcode_webrtc",
             "mjpeg_overlay_h264_transcode_webrtc",
-            "http_mjpeg_gateway",
+            "client_canvas_metadata_overlay",
         ],
         "transport_rank_order": "lower_is_preferred",
         "promotion_gate": {
@@ -303,9 +489,21 @@ def webrtc_transport_policy() -> dict[str, Any]:
             "requires_latency_or_quality_evidence": True,
             "must_keep_mjpeg_fallback": True,
         },
-        "current_webrtc_transport_origin": "mjpeg_overlay_gateway",
+        "current_webrtc_transport_origin": "vision_pc_compositor_publisher",
+        "target_webrtc_transport_origin": "vision_pc_compositor_publisher",
+        "target_webrtc_video_composition": "burned_overlay_video",
+        "overlay_strategy": {
+            "preferred": "burned_in_video",
+            "metadata_endpoint": "/api/v1/vision/overlay/metadata?source={source}&view={view}",
+            "metadata_endpoint_role": "diagnostic_only_not_required_for_main_streaming",
+            "ai_refresh_fps": get_settings().vision_webrtc_overlay_refresh_fps,
+            "video_refresh_fps_target": 30,
+            "fallback": "http_mjpeg_overlay",
+        },
         "browser_preference_order": ["webrtc", "mjpeg"],
         "fallback_kind": "mjpeg",
+        "primary_stream_plane": "webrtc",
+        "fallback_stream_plane": "http_mjpeg_gateway",
         "signaling_scope": "ephemeral_media_session_only",
         "media_only": True,
         "db_writes": False,
@@ -450,9 +648,11 @@ def build_vision_streams_payload(
     return {
         "generated_at": now_iso(),
         "requested_source": source,
-        "primary_stream_plane": "http_mjpeg_gateway",
+        "primary_stream_plane": "webrtc",
+        "fallback_stream_plane": "http_mjpeg_gateway",
         "candidate_stream_plane": "webrtc",
         "stream_base_url": vision_stream_base_url(),
+        "fallback_stream_base_url": vision_stream_base_url(),
         "debug_only": False,
         "motion_command_allowed": False,
         "internal_rosbridge": {

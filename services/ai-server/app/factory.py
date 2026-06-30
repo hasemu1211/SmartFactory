@@ -30,7 +30,7 @@ def create_app(runtime_context: RuntimeContext | None = None) -> FastAPI:
             CORSMiddleware,
             allow_origins=origins,
             allow_credentials=False,
-            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_methods=["GET", "POST", "PUT", "OPTIONS"],
             allow_headers=["*"],
         )
 

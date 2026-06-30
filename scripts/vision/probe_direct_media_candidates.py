@@ -30,7 +30,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 SCHEMA_VERSION = "smartfactory-direct-media-probe.v1"
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_PROFILE = "lab-gopro-tb3-webrtc"
+DEFAULT_PROFILE = "lab-gopro-tb3-ffmpeg-first"
 
 CANDIDATE_ORDER = [
     "direct_clean_media_webrtc",
@@ -768,7 +768,7 @@ def build_candidates(observations: Mapping[str, Any]) -> list[dict[str, Any]]:
                 "ffmpeg_present": ffmpeg_present,
                 "mediamtx_present": mediamtx_present,
             },
-            notes=["Second-best path: read camera/stream input once and encode low-latency H264 for WebRTC; overlay can stay metadata/canvas or MJPEG fallback."],
+            notes=["Legacy/diagnostic path: read camera/stream input once and encode low-latency H264 for WebRTC; current public streaming contract uses Vision-PC burned-overlay compositor or MJPEG fallback."],
         ),
         _candidate(
             "mjpeg_overlay_h264_transcode_webrtc",

@@ -19,12 +19,13 @@ SmartFactory Vision API/stream gateway.
 
 ## Install
 
-If the repo is not cloned yet, bootstrap clone/pull + setup in one command:
+If the repo is not cloned yet, bootstrap clone/pull + setup in one command. Replace `<handoff-git-ref>` with the branch or commit SHA recorded in the implementation handoff; do not rely on stale classroom branch names:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hasemu1211/SmartFactory/feature/ai-server-marker-detection/scripts/setup/bootstrap_ubuntu24_ai_vision_laptop.sh \
+curl -fsSL https://raw.githubusercontent.com/hasemu1211/SmartFactory/<handoff-git-ref>/scripts/setup/bootstrap_ubuntu24_ai_vision_laptop.sh \
   -o /tmp/bootstrap_smartfactory_ai_vision.sh
-bash /tmp/bootstrap_smartfactory_ai_vision.sh -- \
+bash /tmp/bootstrap_smartfactory_ai_vision.sh \
+  --git-ref <handoff-git-ref> -- \
   --with-gopro \
   --with-model
 ```
@@ -57,11 +58,11 @@ Notes:
   machines is not the primary path because paths and compiled wheels can be
   machine-specific. If an emergency same-OS transfer is needed, run
   `--pack-venv` to create a best-effort archive under `dist/`.
-- GTX 1650-class GPUs should start with conservative settings:
-  - `VISION_MODEL_IMGSZ=224` or `320`
-  - `GOPRO_AI_MONITOR_FPS=5` for continuous inference
-  - `GOPRO_STREAM_TARGET_FPS=30` only as a media/browser target when healthy
-  - enable only the needed ROI path first (`lift_roi`).
+- MX450/2GB-VRAM class laptops should start with conservative settings:
+  - `VISION_MODEL_IMGSZ=224` or `320` for continuous monitors.
+  - `GOPRO_AI_MONITOR_FPS=1~3` until thermal/VRAM measurements are known.
+  - `GOPRO_STREAM_TARGET_FPS=30` only as a media/browser target when healthy.
+  - enable only the needed ROI path first (`lift_roi`) and keep high-quality evidence capture burst-based.
 - Naming boundary: "GoPro webcam" in this document means OpenGoPro's USB
   webcam-mode transport. In SmartFactory source contracts the camera is still
   `global_cam_01` / global camera, not a generic webcam source.
@@ -74,9 +75,57 @@ Notes:
 - `LIFT_UP -> DRIVE`: full frame과 `lift_roi` crop을 짧게 저장하고 LiftRoiEvidence를 실행한다.
 - `DRIVE`: 모든 부품 검증을 계속 돌리지 않고, `DROPPED_ITEM`/이탈 후보만 `3~5fps`로 감시한다.
 - `DRIVE -> LIFT_DOWN`: lift-down 허용 직전에 full frame과 `lift_roi` crop을 다시 저장한다.
-- 주행 중 GoPro 결과는 `CANDIDATE/ALERT`로 취급하고, 최종 task 전이는 WMS/robot state가 authoritative하다.
+- 주행 중 GoPro 결과는 `ADVISORY/CANDIDATE`로 취급하고, 최종 task 전이/HOLD 여부는 Main/WMS/robot state가 authoritative하다.
 
 자세한 운영 명령은 `docs/setup/gopro-lift-transport-evidence-workflow.md`를 따른다.
+
+
+## No-hardware monitor/API smoke
+
+This smoke path needs no robot, no GoPro, and no model tuning. It validates the
+REST contract, monitor state API, person hazard read model, pure dropped-item
+policy, lift-load aggregation policy, and Main DB adapter shape tests.
+
+```bash
+cd /path/to/SmartFactory
+./scripts/ai/setup_ai_server_env.sh
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 \
+PYTHONPATH=services/ai-server \
+PYTHONNOUSERSITE=1 \
+services/ai-server/.venv/bin/python -m pytest \
+  services/ai-server/tests/test_vision_monitor_event_contract.py \
+  services/ai-server/tests/test_api_vision_monitors.py \
+  services/ai-server/tests/test_dropped_item_policy.py \
+  services/ai-server/tests/test_lift_load_evidence_policy.py \
+  services/ai-server/tests/test_main_db_adapter_shape.py \
+  -q
+```
+
+Optional local API smoke in another terminal:
+
+```bash
+AI_SERVER_HOST=127.0.0.1 \
+VISION_MODEL_WORKER_ENABLED=false \
+./scripts/ai/run_ai_server.sh
+
+curl http://127.0.0.1:8100/api/v1/health
+curl http://127.0.0.1:8100/api/v1/vision/monitors
+curl -X PUT http://127.0.0.1:8100/api/v1/vision/monitors/person_drive/state \
+  -H 'Content-Type: application/json' \
+  -d '{"enabled":true,"source":"tb3_1_picam","operation_state":"DRIVE","task_id":101}'
+curl 'http://127.0.0.1:8100/api/v1/vision/hazards/person/latest?robot_id=tb3_1'
+```
+
+The monitor state API is **process-local/ephemeral** by design in this
+no-hardware scaffold. Main should reassert the desired monitor state after every
+AI Server restart; the returned `revision` is a per-process monotonic smoke
+counter, not a durable DB version.
+
+For Main/LAN smoke on the target laptop, set `AI_SERVER_HOST=0.0.0.0` and use
+hostname-first endpoints such as `http://smartfactory-vision.local:8100` or an
+operator-managed `smartfactory-ai` alias. If the lab subnet changes to
+`192.168.30.x`, update only DNS/mDNS/hosts or explicit fallback envs; do not
+hard-code the new subnet in tracked defaults.
 
 ## Run
 

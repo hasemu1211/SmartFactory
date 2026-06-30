@@ -28,6 +28,7 @@ from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 AI_SERVER_DIR = ROOT_DIR / "services" / "ai-server"
+sys.path.insert(0, str(ROOT_DIR))
 sys.path.insert(0, str(AI_SERVER_DIR))
 
 try:
@@ -40,6 +41,17 @@ from app.smart_roi import (  # noqa: E402
     parse_normalized_bbox,
     select_smart_roi,
 )
+from scripts.vision.burned_overlay_compositor import (  # noqa: E402
+    CompositorMetrics,
+    MetricsWriter,
+    RawVideoRtspPublisher,
+    crop_frame,
+    events_for_crop,
+    letterbox_frame_and_events_bgr,
+    letterbox_frame_bgr,
+    render_burned_overlay_bgr,
+)
+from scripts.vision.stream_event_state import successful_events  # noqa: E402
 
 
 def _opencv_source(value: str) -> int | str:
@@ -55,6 +67,9 @@ def _normalize_video_capture_url(value: str) -> str:
         # OpenGoPro TS webcam streams need FFMPEG overrun tolerance for stable
         # long-running reads. This mirrors OpenGoPro's own CV2 demo reader.
         return stripped + "?overrun_nonfatal=1&fifo_size=50000000"
+    if stripped.startswith("rtsp://") and "rtsp_transport=" not in stripped:
+        separator = "&" if "?" in stripped else "?"
+        return stripped + f"{separator}rtsp_transport=tcp"
     return stripped
 
 
@@ -141,6 +156,207 @@ class LatestFrameCapture:
                 with self._lock:
                     self._failed_reads += 1
                 time.sleep(0.02)
+
+
+class SharedDetectionState:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self.events: list[dict[str, Any]] = []
+        self.selection = None
+        self.updated_at = 0.0
+
+    def update(self, *, events: list[dict[str, Any]], selection: Any) -> None:
+        with self._lock:
+            self.events = [dict(event) for event in events]
+            self.selection = selection
+            self.updated_at = time.monotonic()
+
+    def update_selection(self, *, selection: Any) -> None:
+        """Track the current ROI selection without refreshing AI-result freshness."""
+
+        with self._lock:
+            self.selection = selection
+
+    def snapshot(self) -> tuple[list[dict[str, Any]], Any, float]:
+        with self._lock:
+            return [dict(event) for event in self.events], self.selection, self.updated_at
+
+
+def _path_id(source: str, view: str) -> str:
+    return f"{source}_{view}".replace("/", "_").replace("-", "_")
+
+
+class GoProWebRtcCompositor:
+    """Publish GoPro full/lift_roi burned-overlay streams to MediaMTX."""
+
+    def __init__(
+        self,
+        *,
+        latest_capture: LatestFrameCapture,
+        detection_state: SharedDetectionState,
+        args: argparse.Namespace,
+        roi_hint: tuple[float, float, float, float] | None,
+    ) -> None:
+        self.latest_capture = latest_capture
+        self.detection_state = detection_state
+        self.args = args
+        self.roi_hint = roi_hint
+        self._running = False
+        self._thread: threading.Thread | None = None
+        self._full_publisher: RawVideoRtspPublisher | None = None
+        self._roi_publisher: RawVideoRtspPublisher | None = None
+        metrics_dir = Path(args.webrtc_metrics_dir)
+        self._full_metrics = CompositorMetrics(
+            source=args.source,
+            view="full",
+            path_id=_path_id(args.source, "full"),
+            target_fps=args.stream_target_fps,
+            ai_fps=args.target_fps,
+        )
+        self._roi_metrics = CompositorMetrics(
+            source=args.source,
+            view=args.roi_view,
+            path_id=_path_id(args.source, args.roi_view),
+            target_fps=args.stream_target_fps,
+            ai_fps=args.target_fps,
+        )
+        self._full_metrics_writer = MetricsWriter(metrics_dir / f"{self._full_metrics.path_id}.json")
+        self._roi_metrics_writer = MetricsWriter(metrics_dir / f"{self._roi_metrics.path_id}.json")
+
+    def start(self) -> None:
+        self._running = True
+        self._thread = threading.Thread(
+            target=self._loop,
+            name="gopro_burned_overlay_webrtc_compositor",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._running = False
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+        for publisher in (self._full_publisher, self._roi_publisher):
+            if publisher is not None:
+                publisher.close()
+
+    def _publisher(
+        self,
+        current: RawVideoRtspPublisher | None,
+        *,
+        rtsp_url: str,
+        frame,
+    ) -> RawVideoRtspPublisher:
+        height, width = frame.shape[:2]
+        if current is not None and (current.width != width or current.height != height):
+            current.close()
+            current = None
+        if current is None:
+            current = RawVideoRtspPublisher(
+                rtsp_url=rtsp_url,
+                width=width,
+                height=height,
+                fps=self.args.stream_target_fps,
+                bitrate=self.args.webrtc_bitrate,
+                bufsize=self.args.webrtc_bufsize,
+                gop=self.args.webrtc_gop,
+                encoder=self.args.webrtc_encoder,
+                preset=self.args.webrtc_preset,
+                ffmpeg_bin=self.args.ffmpeg_bin,
+            )
+        return current
+
+    def _loop(self) -> None:
+        interval_s = 1.0 / max(1.0, self.args.stream_target_fps)
+        last_seq: int | None = None
+        while self._running:
+            loop_start = time.monotonic()
+            sample = self.latest_capture.latest()
+            if sample is None:
+                self._full_metrics.stale_frames += 1
+                self._roi_metrics.stale_frames += 1
+                self._write_metrics()
+                time.sleep(0.05)
+                continue
+            capture_seq, _capture_timestamp, frame = sample
+            repeated = capture_seq == last_seq
+            last_seq = capture_seq
+            events, selection, updated_at = self.detection_state.snapshot()
+            stale = (
+                updated_at <= 0
+                or (time.monotonic() - updated_at) * 1000.0 > self.args.webrtc_stale_overlay_after_ms
+            )
+            if selection is None:
+                selection = select_smart_roi(
+                    frame,
+                    view_id=self.args.roi_view,
+                    roi_hint_normalized=self.roi_hint,
+                    model_input_size_px=(self.args.model_input_size, self.args.model_input_size),
+                )
+            try:
+                full_frame, full_events = letterbox_frame_and_events_bgr(
+                    frame,
+                    events,
+                    width=self.args.webrtc_full_output_width,
+                    height=self.args.webrtc_full_output_height,
+                )
+                full_overlay = render_burned_overlay_bgr(
+                    full_frame,
+                    source=self.args.source,
+                    view="full",
+                    frame_seq=capture_seq,
+                    events=full_events,
+                    stale=stale,
+                )
+                roi_crop = crop_frame(frame, selection.bbox_xyxy)
+                roi_overlay = render_burned_overlay_bgr(
+                    roi_crop,
+                    source=self.args.source,
+                    view=self.args.roi_view,
+                    frame_seq=capture_seq,
+                    events=events_for_crop(events, selection.bbox_xyxy),
+                    stale=stale,
+                )
+                roi_overlay = letterbox_frame_bgr(
+                    roi_overlay,
+                    width=self.args.webrtc_roi_output_width,
+                    height=self.args.webrtc_roi_output_height,
+                )
+                self._full_publisher = self._publisher(
+                    self._full_publisher,
+                    rtsp_url=self.args.webrtc_full_rtsp_url,
+                    frame=full_overlay,
+                )
+                self._roi_publisher = self._publisher(
+                    self._roi_publisher,
+                    rtsp_url=self.args.webrtc_roi_rtsp_url,
+                    frame=roi_overlay,
+                )
+                self._full_publisher.write(full_overlay)
+                self._roi_publisher.write(roi_overlay)
+                for metrics in (self._full_metrics, self._roi_metrics):
+                    metrics.output_frames += 1
+                    metrics.input_frames += 1
+                    if stale:
+                        metrics.stale_frames += 1
+                    if repeated:
+                        metrics.repeated_frames += 1
+                    metrics.last_error = None
+            except Exception as exc:  # noqa: BLE001 - keep live adapter running
+                for metrics in (self._full_metrics, self._roi_metrics):
+                    metrics.last_error = f"{exc.__class__.__name__}: {exc}"
+                    if "ffmpeg" in metrics.last_error.lower() or "publisher" in metrics.last_error.lower():
+                        metrics.ffmpeg_restarts += 1
+                print(f"WARN: WebRTC compositor publish failed: {exc}", file=sys.stderr)
+                time.sleep(0.2)
+            self._write_metrics()
+            elapsed = time.monotonic() - loop_start
+            if elapsed < interval_s:
+                time.sleep(interval_s - elapsed)
+
+    def _write_metrics(self) -> None:
+        self._full_metrics_writer.write(self._full_metrics)
+        self._roi_metrics_writer.write(self._roi_metrics)
 
 
 def _encode_jpeg(frame, *, quality: int) -> bytes:
@@ -269,6 +485,13 @@ def run(args: argparse.Namespace) -> int:
     roi_hint = parse_normalized_bbox(args.roi_hint_normalized)
     capture = None
     latest_capture: LatestFrameCapture | None = None
+    detection_state = SharedDetectionState()
+    webrtc_compositor: GoProWebRtcCompositor | None = None
+    mediamtx_rtsp_port = os.environ.get("MEDIAMTX_RTSP_PORT", "18554")
+    if not args.webrtc_full_rtsp_url:
+        args.webrtc_full_rtsp_url = f"rtsp://127.0.0.1:{mediamtx_rtsp_port}/{_path_id(args.source, 'full')}"
+    if not args.webrtc_roi_rtsp_url:
+        args.webrtc_roi_rtsp_url = f"rtsp://127.0.0.1:{mediamtx_rtsp_port}/{_path_id(args.source, args.roi_view)}"
     if args.bufferless:
         latest_capture = LatestFrameCapture(args.input)
         if not latest_capture.is_opened():
@@ -279,6 +502,9 @@ def run(args: argparse.Namespace) -> int:
         if args.capture_warmup_sec > 0:
             time.sleep(args.capture_warmup_sec)
     else:
+        if args.publish_webrtc:
+            print("ERROR: --publish-webrtc requires --bufferless latest-frame capture", file=sys.stderr)
+            return 2
         capture = _open_video_capture(args.input)
         if not capture.isOpened():
             print(f"ERROR: cannot open input: {args.input}", file=sys.stderr)
@@ -302,9 +528,25 @@ def run(args: argparse.Namespace) -> int:
         "GoPro smart ROI adapter running: "
         f"input={args.input!r}, source={args.source}, roi_view={args.roi_view}, "
         f"full_endpoint={full_endpoint}, target_fps={args.target_fps}, "
-        f"bufferless={args.bufferless}",
+        f"bufferless={args.bufferless}, publish_webrtc={args.publish_webrtc}, "
+        f"stream_target_fps={args.stream_target_fps}",
         flush=True,
     )
+    if args.publish_webrtc:
+        assert latest_capture is not None
+        webrtc_compositor = GoProWebRtcCompositor(
+            latest_capture=latest_capture,
+            detection_state=detection_state,
+            args=args,
+            roi_hint=roi_hint,
+        )
+        webrtc_compositor.start()
+        print(
+            "GoPro WebRTC compositor publishing: "
+            f"full={args.webrtc_full_rtsp_url}, roi={args.webrtc_roi_rtsp_url}, "
+            f"metrics_dir={args.webrtc_metrics_dir}",
+            flush=True,
+        )
 
     try:
         while args.max_frames <= 0 or processed < args.max_frames:
@@ -377,6 +619,13 @@ def run(args: argparse.Namespace) -> int:
                 summary.update(latest_capture.diagnostics())
             if error:
                 summary["full_error"] = error[:240]
+            events = successful_events(status, body, error)
+            if events is not None:
+                detection_state.update(events=events, selection=selection)
+                summary["full_event_state"] = "updated"
+            else:
+                detection_state.update_selection(selection=selection)
+                summary["full_event_state"] = "preserved_previous_until_stale"
 
             if save_full_dir is not None and (processed % max(1, args.save_full_every) == 0):
                 target = save_full_dir / _evidence_filename(args, processed, "full")
@@ -407,6 +656,8 @@ def run(args: argparse.Namespace) -> int:
 
             print(json.dumps(summary, ensure_ascii=False, sort_keys=True), flush=True)
     finally:
+        if webrtc_compositor is not None:
+            webrtc_compositor.stop()
         if latest_capture is not None:
             latest_capture.release()
         if capture is not None:
@@ -428,6 +679,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=float(
             os.environ.get("GOPRO_AI_MONITOR_FPS", os.environ.get("GOPRO_TARGET_FPS", "5"))
         ),
+    )
+    parser.add_argument(
+        "--stream-target-fps",
+        type=float,
+        default=float(os.environ.get("GOPRO_STREAM_TARGET_FPS", "30")),
+        help="WebRTC compositor output FPS; AI processing still uses --target-fps",
     )
     parser.add_argument("--bufferless", action=argparse.BooleanOptionalAction, default=os.environ.get("GOPRO_BUFFERLESS", "true").lower() not in {"0", "false", "no"}, help="capture in a background thread and process only the latest frame")
     parser.add_argument("--capture-warmup-sec", type=float, default=float(os.environ.get("GOPRO_CAPTURE_WARMUP_SEC", "1.0")), help="discard early auto-exposure/stream startup frames before processing")
@@ -455,6 +712,73 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--count-stable", action="store_true")
     parser.add_argument("--task-id")
     parser.add_argument("--policy-json", default='{"load_classes":["box","pallet"],"min_confidence":0.5,"min_overlap_ratio":0.6}')
+    parser.add_argument(
+        "--publish-webrtc",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("GOPRO_PUBLISH_WEBRTC", "false").lower()
+        in {"1", "true", "yes", "on"},
+        help="publish burned-overlay full/ROI H264 RTSP streams to MediaMTX",
+    )
+    parser.add_argument("--webrtc-full-rtsp-url", default=os.environ.get("GOPRO_WEBRTC_FULL_RTSP_URL", ""))
+    parser.add_argument("--webrtc-roi-rtsp-url", default=os.environ.get("GOPRO_WEBRTC_ROI_RTSP_URL", ""))
+    parser.add_argument(
+        "--webrtc-full-output-width",
+        type=int,
+        default=int(os.environ.get("GOPRO_WEBRTC_FULL_OUTPUT_WIDTH", "1280")),
+        help="fixed even width for the public full WebRTC stream",
+    )
+    parser.add_argument(
+        "--webrtc-full-output-height",
+        type=int,
+        default=int(os.environ.get("GOPRO_WEBRTC_FULL_OUTPUT_HEIGHT", "720")),
+        help="fixed even height for the public full WebRTC stream",
+    )
+    parser.add_argument(
+        "--webrtc-roi-output-width",
+        type=int,
+        default=int(os.environ.get("GOPRO_WEBRTC_ROI_OUTPUT_WIDTH", "640")),
+        help="fixed even width for the public lift ROI WebRTC stream",
+    )
+    parser.add_argument(
+        "--webrtc-roi-output-height",
+        type=int,
+        default=int(os.environ.get("GOPRO_WEBRTC_ROI_OUTPUT_HEIGHT", "480")),
+        help="fixed even height for the public lift ROI WebRTC stream",
+    )
+    parser.add_argument(
+        "--webrtc-metrics-dir",
+        default=os.environ.get(
+            "GOPRO_WEBRTC_METRICS_DIR",
+            os.environ.get("VISION_WEBRTC_COMPOSITOR_METRICS_DIR", ".run/vision/compositor-metrics"),
+        ),
+    )
+    parser.add_argument(
+        "--webrtc-stale-overlay-after-ms",
+        type=float,
+        default=float(os.environ.get("GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS", "1500")),
+    )
+    parser.add_argument(
+        "--webrtc-bitrate",
+        default=os.environ.get("GOPRO_WEBRTC_BITRATE", os.environ.get("WEBRTC_SIDECAR_BITRATE", "2500k")),
+    )
+    parser.add_argument(
+        "--webrtc-bufsize",
+        default=os.environ.get("GOPRO_WEBRTC_BUFSIZE", os.environ.get("WEBRTC_SIDECAR_BUFSIZE", "500k")),
+    )
+    parser.add_argument(
+        "--webrtc-gop",
+        type=int,
+        default=int(os.environ.get("GOPRO_WEBRTC_GOP", os.environ.get("WEBRTC_SIDECAR_GOP", "15"))),
+    )
+    parser.add_argument(
+        "--webrtc-encoder",
+        default=os.environ.get("GOPRO_WEBRTC_ENCODER", os.environ.get("WEBRTC_SIDECAR_ENCODER", "libx264")),
+    )
+    parser.add_argument(
+        "--webrtc-preset",
+        default=os.environ.get("GOPRO_WEBRTC_PRESET", os.environ.get("WEBRTC_SIDECAR_X264_PRESET", "ultrafast")),
+    )
+    parser.add_argument("--ffmpeg-bin", default=os.environ.get("FFMPEG_BIN", "ffmpeg"))
     return parser.parse_args(argv)
 
 

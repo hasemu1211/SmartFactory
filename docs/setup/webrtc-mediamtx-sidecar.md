@@ -12,16 +12,18 @@ Use the normal MJPEG-safe profile when WebRTC is not needed:
 ./scripts/vision/sf_vision.sh up lab-gopro-tb3
 ```
 
-Use the WebRTC sidecar profile when Main/browser should test WebRTC candidates
+Use the recommended burned-overlay compositor WebRTC profile when Main/browser should test WebRTC
 while keeping MJPEG fallback:
 
 ```bash
-./scripts/vision/sf_vision.sh check lab-gopro-tb3-webrtc
+./scripts/vision/sf_vision.sh check lab-gopro-tb3-ffmpeg-first
 # live runs are guarded to tmux Smartfactory:3:Development.
-./scripts/vision/sf_vision.sh up lab-gopro-tb3-webrtc
+./scripts/vision/sf_vision.sh up lab-gopro-tb3-ffmpeg-first
 ./scripts/vision/sf_vision.sh status
 ./scripts/vision/sf_vision.sh smoke
 ```
+
+`lab-gopro-tb3-webrtc` remains as a rollback/comparison profile.
 
 Stop all recorded processes:
 
@@ -71,20 +73,16 @@ Default profile streams:
 | `tb3_1_picam/full` | `tb3_1_picam_full` | `http://smartfactory-vision.local:8889/tb3_1_picam_full` | `http://smartfactory-vision.local:8889/tb3_1_picam_full/whep` |
 | `tb3_2_picam/full` | `tb3_2_picam_full` | `http://smartfactory-vision.local:8889/tb3_2_picam_full` | `http://smartfactory-vision.local:8889/tb3_2_picam_full/whep` |
 
-The sidecar now publishes each configured stream from an ordered candidate list:
+In the recommended lab profile, the sidecar is receiver-only for public paths.
+Each public WebRTC path is published by a Vision-PC compositor as H264/RTSP:
 
-1. `direct_clean_media_webrtc` — native clean media URL such as RTSP/UDP/TCP.
-2. `camera_input_h264_transcode_webrtc` — local camera/device input such as `/dev/video0`.
-3. `mjpeg_overlay_h264_transcode_webrtc` — compatibility fallback from the existing
-   `:8090` MJPEG/overlay gateway.
+1. `raw_frame_compositor_h264_webrtc` — current primary. The compositor burns AI overlay pixels into full/crop/PiCam frames, then publishes RTSP to MediaMTX.
+2. `http_mjpeg_gateway` — production-compatible fallback exposed separately through `:8090`.
+3. `mjpeg_overlay_h264_transcode_webrtc`, `direct_clean_media_webrtc`, and `camera_input_h264_transcode_webrtc` — legacy/diagnostic/rollback candidates, not the current streaming contract.
 
-This keeps the Main/browser WebRTC face stable while allowing the media path to
-move away from MJPEG-derived WebRTC when a better source is available. The
-existing `:8090` MJPEG gateway remains the production-compatible fallback until
-Main migration to direct WebRTC is explicitly complete.
+This keeps Main simple: if WebRTC is selected, the video already contains overlay pixels. Main does not need canvas metadata for streaming.
 
-Input selection is configured by environment variables and printed by
-`--print-config`:
+Legacy candidate input selection is still configurable and printed by `--print-config` for rollback/testing:
 
 ```bash
 WEBRTC_SIDECAR_INPUT_PRIORITY=direct,camera,mjpeg
@@ -97,8 +95,7 @@ Per-stream suffixes are supported, for example
 `WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE_TB3_1_PICAM_FULL` or
 `WEBRTC_SIDECAR_CAMERA_INPUT_URL_TEMPLATE_GLOBAL_CAM_01_FULL`. Supported URL
 template placeholders are `{source}`, `{view}`, `{path}`, and `{max_fps}`.
-Even if `WEBRTC_SIDECAR_INPUT_PRIORITY` omits `mjpeg`, the sidecar still appends
-the MJPEG/overlay candidate as the final safety fallback.
+Compositor publisher streams are configured by `WEBRTC_SIDECAR_COMPOSITOR_PUBLISHER_STREAMS`; for those paths, sidecar-internal ffmpeg publishers are skipped and readiness depends on compositor heartbeat metrics.
 
 Direct/camera URLs can contain credentials. Operator-facing config and logs
 redact URL userinfo and sensitive query keys; sidecar runtime directories and
@@ -114,8 +111,8 @@ direct/camera legacy URL variables so stale shell exports do not alter the
 PiCam-only path.
 
 For GoPro/global camera operation, the media and AI budgets are separate. The
-WebRTC profile may request `WEBRTC_SIDECAR_TARGET_FPS=30` for browser smoothness
-while the GoPro AI adapter stays at `GOPRO_AI_MONITOR_FPS=5`. Do not raise
+WebRTC compositor may publish at `GOPRO_WEBRTC_STREAM_TARGET_FPS=30` for browser smoothness
+while GoPro AI inference stays at `GOPRO_AI_MONITOR_FPS=5`. Do not raise
 continuous AI FPS/imgsz just to improve media smoothness; use sparse
 `LOW_PIXEL_BUDGET`/`LOW_QUALITY_EVIDENCE` review metadata and short transition
 proof capture instead.
@@ -128,7 +125,7 @@ Main should discover stream transports from AI Server:
 curl 'http://smartfactory-vision.local:8100/api/v1/vision/streams?source=global_cam_01'
 ```
 
-For `lab-gopro-tb3-webrtc`, the WebRTC transport descriptor includes URL and health metadata:
+For `lab-gopro-tb3-ffmpeg-first`, the WebRTC transport descriptor includes URL, MediaMTX path, and compositor heartbeat health metadata:
 
 ```json
 {
@@ -140,6 +137,7 @@ For `lab-gopro-tb3-webrtc`, the WebRTC transport descriptor includes URL and hea
     "url_configured": true,
     "runtime_health_url": "http://127.0.0.1:8889/",
     "path_runtime_health": "online",
+    "compositor_runtime_health": "alive",
     "path_id": "global_cam_01_full",
     "whep_url": "http://smartfactory-vision.local:8889/global_cam_01_full/whep",
     "browser_url": "http://smartfactory-vision.local:8889/global_cam_01_full"
@@ -147,7 +145,7 @@ For `lab-gopro-tb3-webrtc`, the WebRTC transport descriptor includes URL and hea
 }
 ```
 
-Main should call the offer endpoint and use `sidecar.whep_url` only when the offer response returns `selected_transport=webrtc`. Selection requires both the MediaMTX WebRTC listener to be healthy and the requested MediaMTX path to be online. If the listener is unhealthy or the requested path is missing/offline, the offer response selects MJPEG fallback. `sidecar.browser_url` is for iframe/operator demo playback.
+Main should call the offer endpoint and use `sidecar.whep_url` only when the offer response returns `selected_transport=webrtc`. Selection requires the MediaMTX WebRTC listener to be healthy, the requested MediaMTX path to be online, and the compositor heartbeat to be alive. If any gate fails, the offer response selects MJPEG fallback. `sidecar.browser_url` is for iframe/operator demo playback.
 
 ## Diagnostics
 

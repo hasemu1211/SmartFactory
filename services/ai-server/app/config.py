@@ -76,6 +76,14 @@ class Settings(BaseSettings):
     vision_webrtc_sidecar_paths_api_url: str = ""
     vision_webrtc_sidecar_health_timeout_s: float = 0.25
     vision_webrtc_sidecar_streams: str = ""
+    vision_webrtc_clean_video_streams: str = ""
+    vision_webrtc_direct_media_streams: str = ""
+    vision_webrtc_compositor_publisher_streams: str = ""
+    vision_webrtc_compositor_metrics_dir: Path = Field(
+        default=REPO_ROOT / ".run" / "vision" / "compositor-metrics"
+    )
+    vision_webrtc_compositor_heartbeat_max_age_s: float = 5.0
+    vision_webrtc_overlay_refresh_fps: float = 5.0
     vision_webrtc_sidecar_assume_healthy_without_health_url: bool = False
     aruco_pose_profiles_path: Path = Field(
         default=REPO_ROOT / "config" / "perception" / "aruco_pose_profiles.example.json"

@@ -94,6 +94,42 @@ def render_overlay(
     implies Main/WMS task success.
     """
 
+    image = render_overlay_bgr(frame, events=events, stale=stale, view=view)
+
+    ok, buffer = cv2.imencode(".jpg", image)
+    if not ok:
+        raise ValueError("failed to encode overlay JPEG")
+
+    evidence_timestamps = [event.get("timestamp") for event in events if isinstance(event.get("timestamp"), str)]
+    latencies = [event.get("metadata", {}).get("latency_ms") for event in events if isinstance(event.get("metadata"), dict)]
+    numeric_latencies = [float(value) for value in latencies if isinstance(value, int | float)]
+    return OverlayRenderResult(
+        source=frame.source,
+        view=normalize_view_id(view),
+        frame_seq=frame.frame_seq,
+        frame_timestamp=frame.timestamp,
+        evidence_timestamp=max(evidence_timestamps) if evidence_timestamps else None,
+        overlay_timestamp=_now_iso(),
+        latency_ms=max(numeric_latencies) if numeric_latencies else None,
+        event_count=len(events),
+        stale=stale,
+        image_width=frame.image_width,
+        image_height=frame.image_height,
+        jpeg=buffer.tobytes(),
+    )
+
+
+def render_overlay_bgr(
+    frame: StoredFrame,
+    *,
+    events: list[dict[str, Any]] | tuple[dict[str, Any], ...] = (),
+    stale: bool = False,
+    view: str | None = None,
+) -> np.ndarray:
+    """Render visual evidence overlay and return BGR pixels without JPEG encoding."""
+
+    _ = normalize_view_id(view)
+
     if frame.decoded_bgr is None:
         image_array = np.frombuffer(frame.encoded, dtype=np.uint8)
         image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
@@ -148,24 +184,4 @@ def render_overlay(
             banner = f"STALE {banner}"
     _draw_label(image, banner, 4, image.shape[0] - 6, (40, 40, 40))
 
-    ok, buffer = cv2.imencode(".jpg", image)
-    if not ok:
-        raise ValueError("failed to encode overlay JPEG")
-
-    evidence_timestamps = [event.get("timestamp") for event in events if isinstance(event.get("timestamp"), str)]
-    latencies = [event.get("metadata", {}).get("latency_ms") for event in events if isinstance(event.get("metadata"), dict)]
-    numeric_latencies = [float(value) for value in latencies if isinstance(value, int | float)]
-    return OverlayRenderResult(
-        source=frame.source,
-        view=normalize_view_id(view),
-        frame_seq=frame.frame_seq,
-        frame_timestamp=frame.timestamp,
-        evidence_timestamp=max(evidence_timestamps) if evidence_timestamps else None,
-        overlay_timestamp=_now_iso(),
-        latency_ms=max(numeric_latencies) if numeric_latencies else None,
-        event_count=len(events),
-        stale=stale,
-        image_width=frame.image_width,
-        image_height=frame.image_height,
-        jpeg=buffer.tobytes(),
-    )
+    return image

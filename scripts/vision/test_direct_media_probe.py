@@ -16,6 +16,10 @@ sys.modules[spec.name] = probe
 spec.loader.exec_module(probe)
 
 
+def test_probe_default_profile_tracks_recommended_gopro_webrtc_profile() -> None:
+    assert probe.DEFAULT_PROFILE == "lab-gopro-tb3-ffmpeg-first"
+
+
 class FakeRunner:
     def __init__(self, responses: dict[tuple[str, ...], Any] | None = None):
         self.responses = responses or {}
@@ -84,7 +88,9 @@ def test_probe_marks_gopro_usb_but_missing_clean_url_as_blocked(monkeypatch):
         }
     )
 
-    report = probe.build_probe_report(runtime_env={}, runner=runner, fetcher=FakeFetcher())
+    report = probe.build_probe_report(
+        profile="local-smoke", runtime_env={}, runner=runner, fetcher=FakeFetcher()
+    )
 
     direct = report["candidates"][0]
     assert direct["transport_class"] == "direct_clean_media_webrtc"
@@ -117,6 +123,7 @@ def test_probe_can_report_direct_clean_media_available(monkeypatch):
     )
 
     report = probe.build_probe_report(
+        profile="local-smoke",
         runtime_env={},
         runner=runner,
         fetcher=FakeFetcher(),
@@ -213,6 +220,7 @@ def test_probe_redacts_credentials_in_urls_and_command_observations(monkeypatch)
     )
 
     report = probe.build_probe_report(
+        profile="local-smoke",
         runtime_env={
             "WEBRTC_SIDECAR_STREAMS": "global_cam_01/full",
             "WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE": raw_url,
@@ -270,6 +278,7 @@ def test_probe_global_template_selects_later_available_stream(monkeypatch):
     )
 
     report = probe.build_probe_report(
+        profile="local-smoke",
         runtime_env={
             "WEBRTC_SIDECAR_STREAMS": "global_cam_01/full,tb3_1_picam/full",
             "WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE": "rtsp://127.0.0.1:8555/{path}",
@@ -314,6 +323,7 @@ def test_probe_rejects_empty_ffprobe_streams_for_direct_media(monkeypatch):
     )
 
     report = probe.build_probe_report(
+        profile="local-smoke",
         runtime_env={},
         runner=runner,
         fetcher=FakeFetcher(),
@@ -332,6 +342,7 @@ def test_probe_rejects_unsupported_media_url_without_invoking_ffprobe(monkeypatc
     runner = FakeRunner({("lsusb",): "", ("v4l2-ctl", "--list-devices"): ""})
 
     report = probe.build_probe_report(
+        profile="local-smoke",
         runtime_env={},
         runner=runner,
         fetcher=FakeFetcher(),
@@ -371,6 +382,7 @@ def test_probe_rejects_http_media_before_ffprobe(monkeypatch):
     runner = FakeRunner({("lsusb",): "", ("v4l2-ctl", "--list-devices"): ""})
 
     report = probe.build_probe_report(
+        profile="local-smoke",
         runtime_env={},
         runner=runner,
         fetcher=FakeFetcher(),

@@ -249,6 +249,14 @@
             "null"
           ],
           "minimum": 0
+        },
+        "frame_seq": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "Optional latest-frame sequence number used to bind canvas overlay metadata to the exact video frame that produced this event."
         }
       }
     }

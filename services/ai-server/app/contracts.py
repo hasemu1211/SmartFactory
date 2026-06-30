@@ -19,6 +19,31 @@ class ContractValidationError(ValueError):
 
 EVIDENCE_IMAGE_ROUTE_PREFIX = "/api/v1/evidence/images/"
 EVIDENCE_IMAGE_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+VISION_MONITOR_EVENT_SCHEMA_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "docs"
+    / "contracts"
+    / "vision-monitor-event.v1.schema.json"
+)
+VISION_MONITOR_FORBIDDEN_KEYS = {
+    "bbox",
+    "bbox_xyxy",
+    "mask",
+    "mask_rle",
+    "polygon",
+    "raw_detections",
+    "detections",
+    "E_STOP",
+    "HOLD",
+    "STOP_COMMAND",
+    "MOTION_CANCELLED",
+}
+VISION_MONITOR_FORBIDDEN_VALUES = {
+    "E_STOP",
+    "HOLD",
+    "STOP_COMMAND",
+    "MOTION_CANCELLED",
+}
 
 
 @lru_cache(maxsize=1)
@@ -54,6 +79,15 @@ def _evidence_evaluation_validator() -> jsonschema.Draft202012Validator:
     )
 
 
+@lru_cache(maxsize=1)
+def _vision_monitor_event_validator() -> jsonschema.Draft202012Validator:
+    schema = json.loads(VISION_MONITOR_EVENT_SCHEMA_PATH.read_text(encoding="utf-8"))
+    return jsonschema.Draft202012Validator(
+        schema,
+        format_checker=jsonschema.FormatChecker(),
+    )
+
+
 def validate_vision_event(event: dict[str, Any]) -> None:
     """Validate a VisionEvent against schema and MVP1 policy checks."""
 
@@ -77,6 +111,58 @@ def validate_vision_event(event: dict[str, Any]) -> None:
 
     if event.get("depth_median_m") is not None:
         raise ContractValidationError("depth_median_m must remain null in MVP1")
+
+
+def _assert_no_vision_monitor_forbidden_payload(value: Any, *, path: str = "$") -> None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in VISION_MONITOR_FORBIDDEN_KEYS:
+                raise ContractValidationError(
+                    f"vision monitor event must not include raw/control key {path}.{key}"
+                )
+            _assert_no_vision_monitor_forbidden_payload(child, path=f"{path}.{key}")
+        return
+    if isinstance(value, list):
+        for index, child in enumerate(value):
+            _assert_no_vision_monitor_forbidden_payload(child, path=f"{path}[{index}]")
+        return
+    if isinstance(value, str) and value in VISION_MONITOR_FORBIDDEN_VALUES:
+        raise ContractValidationError(
+            f"vision monitor event must not include control-action value {value!r}"
+        )
+
+
+def validate_vision_monitor_event(payload: dict[str, Any]) -> None:
+    """Validate VisionMonitorEvent against schema and advisory-only policy."""
+
+    _vision_monitor_event_validator().validate(payload)
+
+    if payload.get("trusted") is not False:
+        raise ContractValidationError("vision monitor event trusted must remain false")
+
+    _assert_no_vision_monitor_forbidden_payload(payload)
+
+    source = payload.get("source")
+    robot_id = payload.get("robot_id")
+    expected_robot = {
+        "global_cam_01": None,
+        "tb3_1_picam": "tb3_1",
+        "tb3_2_picam": "tb3_2",
+    }.get(source)
+    if expected_robot is not None and robot_id != expected_robot:
+        raise ContractValidationError(f"source {source!r} requires robot_id {expected_robot!r}")
+
+    data_json = payload.get("data_json", {})
+    for field in ("result", "reason_code", "policy_version", "profile_id", "threshold_set_id"):
+        if data_json.get(field) != payload.get(field):
+            raise ContractValidationError(f"data_json.{field} must match top-level {field}")
+
+    event_type = payload.get("event_type")
+    result = payload.get("result")
+    if event_type in {"ITEM_PICKED", "ITEM_PLACED"} and result != "PASS":
+        raise ContractValidationError("command-satisfying lift evidence must use result PASS")
+    if result == "UNCERTAIN" and event_type in {"ITEM_PICKED", "ITEM_PLACED"}:
+        raise ContractValidationError("UNCERTAIN lift evidence must not satisfy command progress")
 
 
 def _validate_bbox_order(bbox: list[Any]) -> None:

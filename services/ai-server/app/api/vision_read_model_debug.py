@@ -178,8 +178,10 @@ def build_vision_debug_sources_payload(
     return {
         "generated_at": now_iso(),
         "requested_source": source,
-        "primary_stream_plane": "http_mjpeg_gateway",
+        "primary_stream_plane": "webrtc",
+        "fallback_stream_plane": "http_mjpeg_gateway",
         "stream_base_url": "http://<vision-host>:8090",
+        "fallback_stream_base_url": "http://<vision-host>:8090",
         "debug_only": True,
         "summary": debug_sources_summary(source_entries),
         "topic_exposure_policy": _ros_topic_exposure_policy(),

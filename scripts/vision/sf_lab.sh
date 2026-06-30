@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-DEFAULT_PROFILE="lab-gopro-tb3-webrtc"
+DEFAULT_PROFILE="lab-gopro-tb3-ffmpeg-first"
 DEFAULT_AI_SERVER_URL="http://127.0.0.1:8100"
 DEFAULT_PUBLIC_HOST="smartfactory-vision.local"
 DEFAULT_AI_SERVER_PORT="8100"
@@ -173,10 +173,10 @@ Local API helper target:
   ${AI_SERVER_URL%/}
 
 WebRTC browser URLs:
-  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/global_cam_01_full/
-  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/global_cam_01_lift_roi/
-  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/tb3_1_picam_full/
-  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/tb3_2_picam_full/
+  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/global_cam_01_full/      # burned-overlay full video
+  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/global_cam_01_lift_roi/  # burned-overlay lift ROI crop
+  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/tb3_1_picam_full/        # burned-overlay PiCam full
+  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/tb3_2_picam_full/        # burned-overlay PiCam full
 
 WebRTC WHEP URLs:
   http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/global_cam_01_full/whep
@@ -185,10 +185,19 @@ WebRTC WHEP URLs:
   http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/tb3_2_picam_full/whep
 
 MJPEG fallback URLs:
-  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/streams/global_cam_01.mjpeg
-  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/streams/global_cam_01/lift_roi.mjpeg
-  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/streams/tb3_1_picam.mjpeg
-  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/streams/tb3_2_picam.mjpeg
+  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=global_cam_01&view=full&max_fps=30
+  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=global_cam_01&view=lift_roi&max_fps=30
+  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=tb3_1_picam&view=full&max_fps=30
+  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=tb3_2_picam&view=full&max_fps=30
+
+Latest-frame MJPEG diagnostic URLs (no Main streaming overlay contract):
+  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=global_cam_01&view=full&max_fps=30
+  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=tb3_1_picam&view=full&max_fps=30
+  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=tb3_2_picam&view=full&max_fps=30
+
+AI overlay metadata diagnostic URLs (not required for Main streaming overlay):
+  ${VISION_API_BASE_URL%/}/api/v1/vision/overlay/metadata?source=global_cam_01&view=full&limit=20
+  ${VISION_API_BASE_URL%/}/api/v1/vision/overlay/metadata?source=tb3_1_picam&view=full&limit=20
 
 Operator commands:
   ./scripts/vision/sf_lab.sh all

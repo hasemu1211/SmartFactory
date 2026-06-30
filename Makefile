@@ -47,7 +47,7 @@ vision-up:
 	./scripts/vision/sf_vision.sh up $${PROFILE:-lab-gopro-tb3}
 
 vision-up-webrtc:
-	./scripts/vision/sf_vision.sh up lab-gopro-tb3-webrtc
+	./scripts/vision/sf_vision.sh up lab-gopro-tb3-ffmpeg-first
 
 vision-down:
 	./scripts/vision/sf_vision.sh down

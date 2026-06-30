@@ -44,7 +44,10 @@ Typical demo:
   ./scripts/vision/sf_vision.sh smoke
   ./scripts/vision/sf_vision.sh down
 
-WebRTC sidecar demo:
+Recommended lab WebRTC demo:
+  ./scripts/vision/sf_vision.sh up lab-gopro-tb3-ffmpeg-first
+
+Rollback/comparison WebRTC demo:
   ./scripts/vision/sf_vision.sh up lab-gopro-tb3-webrtc
 
 Safety boundary: this script does not start robot motion, Nav2, teleop,
@@ -111,6 +114,7 @@ load_profile() {
   export GOPRO_TEST_READ="${GOPRO_TEST_READ:-true}"
   export GOPRO_STREAM_WARMUP_SEC="${GOPRO_STREAM_WARMUP_SEC:-8}"
   export GOPRO_INPUT="${GOPRO_INPUT:-udp://0.0.0.0:${GOPRO_PORT}?overrun_nonfatal=1&fifo_size=50000000}"
+  export GOPRO_ADAPTER_INPUT="${GOPRO_ADAPTER_INPUT:-${GOPRO_INPUT}}"
   export GOPRO_SOURCE="${GOPRO_SOURCE:-global_cam_01}"
   export GOPRO_ROI_VIEW="${GOPRO_ROI_VIEW:-lift_roi}"
   export GOPRO_TARGET_FPS="${GOPRO_TARGET_FPS:-5}"
@@ -119,22 +123,44 @@ load_profile() {
   export GOPRO_AI_MONITOR_IMGSZ="${GOPRO_AI_MONITOR_IMGSZ:-${VISION_MODEL_IMGSZ:-640}}"
   export GOPRO_EVIDENCE_IMGSZ="${GOPRO_EVIDENCE_IMGSZ:-960}"
   export GOPRO_DROPPED_ITEM_CONF="${GOPRO_DROPPED_ITEM_CONF:-0.25}"
+  export GOPRO_PUBLISH_WEBRTC="${GOPRO_PUBLISH_WEBRTC:-false}"
+  export GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS="${GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS:-1500}"
+  export GOPRO_WEBRTC_METRICS_DIR="${GOPRO_WEBRTC_METRICS_DIR:-${VISION_WEBRTC_COMPOSITOR_METRICS_DIR:-${SMARTFACTORY_VISION_RUN_DIR:-.run/vision}/compositor-metrics}}"
   export GOPRO_EVIDENCE_CAPTURE_MODE="${GOPRO_EVIDENCE_CAPTURE_MODE:-parallel_then_pause_then_stream_frame}"
   export GOPRO_EVIDENCE_RUNTIME_SCOPE="${GOPRO_EVIDENCE_RUNTIME_SCOPE:-plan_mock_no_hardware}"
   export GOPRO_BUFFERLESS="${GOPRO_BUFFERLESS:-true}"
   export GOPRO_EVALUATE_LIFT_ROI="${GOPRO_EVALUATE_LIFT_ROI:-false}"
   export GOPRO_OPERATION="${GOPRO_OPERATION:-MONITOR}"
   export GOPRO_ROI_KIND="${GOPRO_ROI_KIND:-DROPPED_ITEM}"
+  export SF_VISION_GOPRO_ADAPTER_AFTER_WEBRTC_SIDECAR="${SF_VISION_GOPRO_ADAPTER_AFTER_WEBRTC_SIDECAR:-false}"
+  export SF_VISION_GOPRO_MEDIAMTX_READY_PATH="${SF_VISION_GOPRO_MEDIAMTX_READY_PATH-${GOPRO_SOURCE}_full}"
+  export SF_VISION_GOPRO_MEDIAMTX_READY_TIMEOUT_SEC="${SF_VISION_GOPRO_MEDIAMTX_READY_TIMEOUT_SEC:-30}"
+  export FFPROBE_TIMEOUT_SEC="${FFPROBE_TIMEOUT_SEC:-3}"
+  export FFPROBE_TIMEOUT_US="${FFPROBE_TIMEOUT_US:-3000000}"
+  export VISION_SOURCE_1_ENABLED="${VISION_SOURCE_1_ENABLED:-true}"
+  export VISION_SOURCE_1_ID="${VISION_SOURCE_1_ID:-tb3_1_picam}"
+  export VISION_SOURCE_2_ENABLED="${VISION_SOURCE_2_ENABLED:-true}"
+  export VISION_SOURCE_2_ID="${VISION_SOURCE_2_ID:-tb3_2_picam}"
+  export PICAM_PUBLISH_WEBRTC="${PICAM_PUBLISH_WEBRTC:-false}"
+  export PICAM_WEBRTC_TARGET_FPS="${PICAM_WEBRTC_TARGET_FPS:-30}"
+  export PICAM_WEBRTC_AI_FPS="${PICAM_WEBRTC_AI_FPS:-5}"
+  export PICAM_WEBRTC_METRICS_DIR="${PICAM_WEBRTC_METRICS_DIR:-${VISION_WEBRTC_COMPOSITOR_METRICS_DIR:-${SMARTFACTORY_VISION_RUN_DIR:-.run/vision}/compositor-metrics}}"
   export SF_VISION_WEBRTC_SIDECAR_ENABLED="${SF_VISION_WEBRTC_SIDECAR_ENABLED:-false}"
   export SF_VISION_SWEEP_STALE_WEBRTC="${SF_VISION_SWEEP_STALE_WEBRTC:-true}"
   export MEDIAMTX_RTSP_PORT="${MEDIAMTX_RTSP_PORT:-18554}"
   export MEDIAMTX_WEBRTC_PORT="${MEDIAMTX_WEBRTC_PORT:-8889}"
   export MEDIAMTX_WEBRTC_ICE_UDP_PORT="${MEDIAMTX_WEBRTC_ICE_UDP_PORT:-8189}"
   export MEDIAMTX_API_PORT="${MEDIAMTX_API_PORT:-19997}"
+  export FFPROBE_BIN="${FFPROBE_BIN:-ffprobe}"
   export MEDIAMTX_WEBRTC_ALLOW_ORIGINS="${MEDIAMTX_WEBRTC_ALLOW_ORIGINS:-http://smartfactory-main.local:8088,http://localhost:8088,http://127.0.0.1:8088}"
   export WEBRTC_SIDECAR_PUBLIC_HOST="${WEBRTC_SIDECAR_PUBLIC_HOST:-${VISION_PUBLIC_HOST}}"
   export WEBRTC_SIDECAR_STREAMS="${WEBRTC_SIDECAR_STREAMS:-${GOPRO_SOURCE}/full,${GOPRO_SOURCE}/${GOPRO_ROI_VIEW}}"
   export VISION_WEBRTC_SIDECAR_STREAMS="${VISION_WEBRTC_SIDECAR_STREAMS:-${WEBRTC_SIDECAR_STREAMS}}"
+  export WEBRTC_SIDECAR_COMPOSITOR_PUBLISHER_STREAMS="${WEBRTC_SIDECAR_COMPOSITOR_PUBLISHER_STREAMS:-${VISION_WEBRTC_COMPOSITOR_PUBLISHER_STREAMS:-}}"
+  export VISION_WEBRTC_COMPOSITOR_PUBLISHER_STREAMS="${VISION_WEBRTC_COMPOSITOR_PUBLISHER_STREAMS:-${WEBRTC_SIDECAR_COMPOSITOR_PUBLISHER_STREAMS}}"
+  export VISION_WEBRTC_COMPOSITOR_METRICS_DIR="${VISION_WEBRTC_COMPOSITOR_METRICS_DIR:-${SMARTFACTORY_VISION_RUN_DIR:-.run/vision}/compositor-metrics}"
+  export WEBRTC_SIDECAR_COMPOSITOR_METRICS_DIR="${WEBRTC_SIDECAR_COMPOSITOR_METRICS_DIR:-${VISION_WEBRTC_COMPOSITOR_METRICS_DIR}}"
+  export VISION_WEBRTC_COMPOSITOR_HEARTBEAT_MAX_AGE_S="${VISION_WEBRTC_COMPOSITOR_HEARTBEAT_MAX_AGE_S:-5}"
   export WEBRTC_SIDECAR_INPUT_MAX_FPS="${WEBRTC_SIDECAR_INPUT_MAX_FPS:-15}"
   export WEBRTC_SIDECAR_TARGET_FPS="${WEBRTC_SIDECAR_TARGET_FPS:-15}"
   export SF_VISION_TMUX_GUARD_ENABLED="${SF_VISION_TMUX_GUARD_ENABLED:-true}"
@@ -189,6 +215,7 @@ Processes selected by profile:
   gopro_stream_adapter: ${SF_VISION_GOPRO_ENABLED}
   source1_enabled: ${VISION_SOURCE_1_ENABLED:-true} (${VISION_SOURCE_1_ID:-tb3_1_picam}, domain=${VISION_SOURCE_1_DOMAIN:-2})
   source2_enabled: ${VISION_SOURCE_2_ENABLED:-true} (${VISION_SOURCE_2_ID:-tb3_2_picam}, domain=${VISION_SOURCE_2_DOMAIN:-5})
+  picam_publish_webrtc: ${PICAM_PUBLISH_WEBRTC}
 
 Main-facing URLs:
   VISION_API_BASE_URL=$(api_base_url)
@@ -205,6 +232,9 @@ WebRTC status:
   VISION_WEBRTC_SIDECAR_HEALTH_URL=${VISION_WEBRTC_SIDECAR_HEALTH_URL:-<empty>}
   sidecar_streams=${WEBRTC_SIDECAR_STREAMS:-<empty>}
   ai_server_sidecar_streams=${VISION_WEBRTC_SIDECAR_STREAMS:-<empty>}
+  compositor_publisher_streams=${WEBRTC_SIDECAR_COMPOSITOR_PUBLISHER_STREAMS:-<empty>}
+  compositor_metrics_dir=${VISION_WEBRTC_COMPOSITOR_METRICS_DIR:-<empty>}
+  compositor_heartbeat_max_age_s=${VISION_WEBRTC_COMPOSITOR_HEARTBEAT_MAX_AGE_S:-<empty>}
   sidecar_ports=rtsp:${MEDIAMTX_RTSP_PORT:-18554}/tcp,webrtc:${MEDIAMTX_WEBRTC_PORT:-8889}/tcp,ice:${MEDIAMTX_WEBRTC_ICE_UDP_PORT:-8189}/udp
   tmux_guard=${SF_VISION_TMUX_GUARD_ENABLED} required=${SF_VISION_TMUX_REQUIRED_CONTEXT}
   note: without sidecar templates, WebRTC offer intentionally selects MJPEG fallback.
@@ -213,12 +243,20 @@ GoPro:
   enabled=${SF_VISION_GOPRO_ENABLED}
   protocol/resolution/fov/port=${GOPRO_PROTOCOL}/${GOPRO_RESOLUTION}/${GOPRO_FOV}/${GOPRO_PORT}
   input=${GOPRO_INPUT}
+  adapter_input=${GOPRO_ADAPTER_INPUT}
+  adapter_after_webrtc_sidecar=${SF_VISION_GOPRO_ADAPTER_AFTER_WEBRTC_SIDECAR}
+  mediamtx_ready_path=${SF_VISION_GOPRO_MEDIAMTX_READY_PATH}
   source/view=${GOPRO_SOURCE}/${GOPRO_ROI_VIEW}
   stream_target_fps=${GOPRO_STREAM_TARGET_FPS}
   ai_monitor_fps=${GOPRO_AI_MONITOR_FPS}
   ai_monitor_imgsz=${GOPRO_AI_MONITOR_IMGSZ}
   evidence_imgsz=${GOPRO_EVIDENCE_IMGSZ}
   dropped_item_conf=${GOPRO_DROPPED_ITEM_CONF}
+  publish_webrtc=${GOPRO_PUBLISH_WEBRTC}
+  webrtc_metrics_dir=${GOPRO_WEBRTC_METRICS_DIR}
+  webrtc_stale_overlay_after_ms=${GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS}
+  webrtc_full_output=${GOPRO_WEBRTC_FULL_OUTPUT_WIDTH:-1280}x${GOPRO_WEBRTC_FULL_OUTPUT_HEIGHT:-720}
+  webrtc_roi_output=${GOPRO_WEBRTC_ROI_OUTPUT_WIDTH:-640}x${GOPRO_WEBRTC_ROI_OUTPUT_HEIGHT:-480}
   evidence_capture_mode=${GOPRO_EVIDENCE_CAPTURE_MODE}
   evidence_runtime_scope=${GOPRO_EVIDENCE_RUNTIME_SCOPE}
   legacy_target_fps_alias=${GOPRO_TARGET_FPS}
@@ -271,7 +309,7 @@ process_is_ffmpeg() {
   esac
   args="$(process_cmd "${pid}")"
   first="${args%% *}"
-  case "$(basename "${first}")" in
+  case "$(basename -- "${first}")" in
     ffmpeg) return 0 ;;
   esac
   return 1
@@ -386,14 +424,29 @@ VISION_WEBRTC_SIDECAR_BROWSER_URL_TEMPLATE=${VISION_WEBRTC_SIDECAR_BROWSER_URL_T
 VISION_WEBRTC_SIDECAR_HEALTH_URL=${VISION_WEBRTC_SIDECAR_HEALTH_URL:-}
 VISION_WEBRTC_SIDECAR_PATHS_API_URL=${VISION_WEBRTC_SIDECAR_PATHS_API_URL:-}
 VISION_WEBRTC_SIDECAR_STREAMS=${VISION_WEBRTC_SIDECAR_STREAMS:-}
+VISION_WEBRTC_COMPOSITOR_PUBLISHER_STREAMS=${VISION_WEBRTC_COMPOSITOR_PUBLISHER_STREAMS:-}
+VISION_WEBRTC_COMPOSITOR_METRICS_DIR=${VISION_WEBRTC_COMPOSITOR_METRICS_DIR:-}
+VISION_WEBRTC_COMPOSITOR_HEARTBEAT_MAX_AGE_S=${VISION_WEBRTC_COMPOSITOR_HEARTBEAT_MAX_AGE_S:-}
+WEBRTC_SIDECAR_COMPOSITOR_PUBLISHER_STREAMS=${WEBRTC_SIDECAR_COMPOSITOR_PUBLISHER_STREAMS:-}
+WEBRTC_SIDECAR_COMPOSITOR_METRICS_DIR=${WEBRTC_SIDECAR_COMPOSITOR_METRICS_DIR:-}
 GOPRO_STREAM_TARGET_FPS=${GOPRO_STREAM_TARGET_FPS}
+GOPRO_ADAPTER_INPUT=${GOPRO_ADAPTER_INPUT}
 GOPRO_AI_MONITOR_FPS=${GOPRO_AI_MONITOR_FPS}
 GOPRO_AI_MONITOR_IMGSZ=${GOPRO_AI_MONITOR_IMGSZ}
+GOPRO_PUBLISH_WEBRTC=${GOPRO_PUBLISH_WEBRTC}
+GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS=${GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS}
+GOPRO_WEBRTC_METRICS_DIR=${GOPRO_WEBRTC_METRICS_DIR}
 GOPRO_EVIDENCE_IMGSZ=${GOPRO_EVIDENCE_IMGSZ}
 GOPRO_DROPPED_ITEM_CONF=${GOPRO_DROPPED_ITEM_CONF}
 GOPRO_EVIDENCE_CAPTURE_MODE=${GOPRO_EVIDENCE_CAPTURE_MODE}
 GOPRO_EVIDENCE_RUNTIME_SCOPE=${GOPRO_EVIDENCE_RUNTIME_SCOPE}
+PICAM_PUBLISH_WEBRTC=${PICAM_PUBLISH_WEBRTC}
+PICAM_WEBRTC_TARGET_FPS=${PICAM_WEBRTC_TARGET_FPS}
+PICAM_WEBRTC_AI_FPS=${PICAM_WEBRTC_AI_FPS}
+PICAM_WEBRTC_METRICS_DIR=${PICAM_WEBRTC_METRICS_DIR}
 SF_VISION_TMUX_REQUIRED_CONTEXT=${SF_VISION_TMUX_REQUIRED_CONTEXT}
+SF_VISION_GOPRO_ADAPTER_AFTER_WEBRTC_SIDECAR=${SF_VISION_GOPRO_ADAPTER_AFTER_WEBRTC_SIDECAR}
+SF_VISION_GOPRO_MEDIAMTX_READY_PATH=${SF_VISION_GOPRO_MEDIAMTX_READY_PATH}
 SUMMARY
 }
 
@@ -503,6 +556,14 @@ start_gopro() {
   if ! is_truthy "${SF_VISION_GOPRO_ENABLED}"; then
     return 0
   fi
+  start_gopro_stream
+  start_gopro_adapter
+}
+
+start_gopro_stream() {
+  if ! is_truthy "${SF_VISION_GOPRO_ENABLED}"; then
+    return 0
+  fi
   local py="${AI_SERVER_VENV_DIR}/bin/python"
   if [ ! -x "${py}" ]; then
     echo "ERROR: AI Server python not found: ${py}" >&2
@@ -517,14 +578,25 @@ start_gopro() {
 
   echo "[sf-vision] warming up GoPro stream for ${GOPRO_STREAM_WARMUP_SEC}s"
   sleep "${GOPRO_STREAM_WARMUP_SEC}"
+}
 
+start_gopro_adapter() {
+  if ! is_truthy "${SF_VISION_GOPRO_ENABLED}"; then
+    return 0
+  fi
+  local py="${AI_SERVER_VENV_DIR}/bin/python"
+  if [ ! -x "${py}" ]; then
+    echo "ERROR: AI Server python not found: ${py}" >&2
+    return 1
+  fi
   local adapter_cmd=(
     "${py}" scripts/vision/run_gopro_smart_roi_adapter.py
-    --input "${GOPRO_INPUT}"
+    --input "${GOPRO_ADAPTER_INPUT}"
     --source "${GOPRO_SOURCE}"
     --roi-view "${GOPRO_ROI_VIEW}"
     --ai-server-url "${AI_SERVER_URL}"
     --target-fps "${GOPRO_AI_MONITOR_FPS}"
+    --stream-target-fps "${GOPRO_STREAM_TARGET_FPS}"
     --model-input-size "${GOPRO_AI_MONITOR_IMGSZ}"
     --operation "${GOPRO_OPERATION}"
     --roi-kind "${GOPRO_ROI_KIND}"
@@ -534,10 +606,53 @@ start_gopro() {
   else
     adapter_cmd+=(--no-bufferless)
   fi
+  if is_truthy "${GOPRO_PUBLISH_WEBRTC}"; then
+    adapter_cmd+=(--publish-webrtc)
+  else
+    adapter_cmd+=(--no-publish-webrtc)
+  fi
+  adapter_cmd+=(--webrtc-metrics-dir "${GOPRO_WEBRTC_METRICS_DIR}")
+  adapter_cmd+=(--webrtc-stale-overlay-after-ms "${GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS}")
   if is_truthy "${GOPRO_EVALUATE_LIFT_ROI}"; then
     adapter_cmd+=(--evaluate-lift-roi)
   fi
   start_logged gopro-adapter "${adapter_cmd[@]}"
+}
+
+start_picam_compositor() {
+  local source_id="$1"
+  if ! is_truthy "${PICAM_PUBLISH_WEBRTC}"; then
+    return 0
+  fi
+  [ -n "${source_id}" ] || return 0
+  local py="${AI_SERVER_VENV_DIR}/bin/python"
+  if [ ! -x "${py}" ]; then
+    echo "ERROR: AI Server python not found for PiCam compositor: ${py}" >&2
+    return 1
+  fi
+  local cmd=(
+    "${py}" scripts/vision/run_latest_frame_compositor.py
+    --source "${source_id}"
+    --view full
+    --ai-server-url "${AI_SERVER_URL}"
+    --target-fps "${PICAM_WEBRTC_TARGET_FPS}"
+    --ai-fps "${PICAM_WEBRTC_AI_FPS}"
+    --metrics-dir "${PICAM_WEBRTC_METRICS_DIR}"
+    --mediamtx-rtsp-port "${MEDIAMTX_RTSP_PORT}"
+  )
+  start_logged "picam-compositor-${source_id}" "${cmd[@]}"
+}
+
+start_picam_compositors() {
+  if ! is_truthy "${SF_VISION_WEBRTC_SIDECAR_ENABLED}"; then
+    return 0
+  fi
+  if is_truthy "${VISION_SOURCE_1_ENABLED:-true}"; then
+    start_picam_compositor "${VISION_SOURCE_1_ID:-tb3_1_picam}"
+  fi
+  if is_truthy "${VISION_SOURCE_2_ENABLED:-true}"; then
+    start_picam_compositor "${VISION_SOURCE_2_ID:-tb3_2_picam}"
+  fi
 }
 
 start_webrtc_sidecar() {
@@ -546,6 +661,139 @@ start_webrtc_sidecar() {
   fi
   "${ROOT_DIR}/scripts/vision/run_webrtc_sidecar_mediamtx.sh" --check
   start_logged webrtc-sidecar ./scripts/vision/run_webrtc_sidecar_mediamtx.sh
+}
+
+mediamtx_path_ready() {
+  local path="$1"
+  if ! command -v curl >/dev/null 2>&1; then
+    return 1
+  fi
+  local body
+  body="$(curl -fsS --max-time 1 "http://127.0.0.1:${MEDIAMTX_API_PORT}/v3/paths/list" 2>/dev/null || true)"
+  [ -n "${body}" ] || return 1
+  python3 - "${path}" "${body}" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    payload = json.loads(sys.argv[2])
+except Exception:
+    raise SystemExit(1)
+for item in payload.get("items", []):
+    if not isinstance(item, dict):
+        continue
+    name = item.get("name") or item.get("path")
+    if name != path:
+        continue
+    if any(item.get(key) is True for key in ("ready", "available", "online", "sourceReady")):
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+rtsp_stream_readable() {
+  local url="$1"
+  if ! command -v "${FFPROBE_BIN}" >/dev/null 2>&1; then
+    return 1
+  fi
+  local body
+  local ffprobe_cmd=(
+    "${FFPROBE_BIN}"
+    -v error
+    -rtsp_transport tcp
+    -timeout "${FFPROBE_TIMEOUT_US}"
+    -rw_timeout "${FFPROBE_TIMEOUT_US}"
+    -select_streams v:0
+    -show_entries stream=codec_name,width,height,r_frame_rate,avg_frame_rate
+    -of json
+    "${url}"
+  )
+  if command -v timeout >/dev/null 2>&1; then
+    body="$(timeout "${FFPROBE_TIMEOUT_SEC}" "${ffprobe_cmd[@]}" 2>/dev/null || true)"
+  else
+    body="$("${ffprobe_cmd[@]}" 2>/dev/null || true)"
+  fi
+  [ -n "${body}" ] || return 1
+  python3 - "${body}" <<'PY'
+import json
+import sys
+
+try:
+    payload = json.loads(sys.argv[1])
+except Exception:
+    raise SystemExit(1)
+streams = payload.get("streams") or []
+raise SystemExit(0 if streams else 1)
+PY
+}
+
+wait_for_rtsp_stream() {
+  local label="$1" url="$2" timeout_s="${3:-30}"
+  local start now
+  start="$(date +%s)"
+  echo "[sf-vision] waiting for ${label} RTSP stream: ${url}"
+  while true; do
+    if rtsp_stream_readable "${url}"; then
+      echo "[sf-vision] ${label} RTSP stream: ok"
+      return 0
+    fi
+    now="$(date +%s)"
+    if [ $((now - start)) -ge "${timeout_s}" ]; then
+      echo "ERROR: timeout waiting for ${label} RTSP stream: ${url}" >&2
+      return 1
+    fi
+    sleep 0.5
+  done
+}
+
+wait_for_mediamtx_path() {
+  local path="$1" timeout_s="${2:-30}"
+  local start now
+  start="$(date +%s)"
+  echo "[sf-vision] waiting for MediaMTX path ${path} via api :${MEDIAMTX_API_PORT}"
+  while true; do
+    if mediamtx_path_ready "${path}"; then
+      echo "[sf-vision] MediaMTX path ${path}: ok"
+      return 0
+    fi
+    now="$(date +%s)"
+    if [ $((now - start)) -ge "${timeout_s}" ]; then
+      echo "ERROR: timeout waiting for MediaMTX path ${path}" >&2
+      return 1
+    fi
+    sleep 0.5
+  done
+}
+
+start_gopro_mediamtx_first() {
+  if ! is_truthy "${SF_VISION_GOPRO_ENABLED}"; then
+    start_webrtc_sidecar
+    start_picam_compositors
+    return 0
+  fi
+  start_gopro_stream
+  start_webrtc_sidecar
+  start_picam_compositors
+  if is_truthy "${SF_VISION_WEBRTC_SIDECAR_ENABLED}"; then
+    if [ -n "${SF_VISION_GOPRO_MEDIAMTX_READY_PATH}" ]; then
+      if ! wait_for_mediamtx_path "${SF_VISION_GOPRO_MEDIAMTX_READY_PATH}" "${SF_VISION_GOPRO_MEDIAMTX_READY_TIMEOUT_SEC}"; then
+        echo "WARN: GoPro MediaMTX raw path '${SF_VISION_GOPRO_MEDIAMTX_READY_PATH}' did not become ready; keeping AI Server/gateway/sidecar alive and skipping GoPro adapter so MJPEG/Pi fallback remains available" >&2
+        return 0
+      fi
+    else
+      echo "[sf-vision] MediaMTX receiver mode: starting GoPro compositor publisher before path readiness wait"
+    fi
+    case "${GOPRO_ADAPTER_INPUT}" in
+      rtsp://*)
+        if ! wait_for_rtsp_stream "GoPro adapter input" "${GOPRO_ADAPTER_INPUT}" "${SF_VISION_GOPRO_MEDIAMTX_READY_TIMEOUT_SEC}"; then
+          echo "WARN: GoPro adapter RTSP input is not readable; keeping AI Server/gateway/sidecar alive and skipping GoPro adapter so MJPEG/Pi fallback remains available" >&2
+          return 0
+        fi
+        ;;
+    esac
+  fi
+  start_gopro_adapter
 }
 
 cleanup() {
@@ -580,8 +828,13 @@ run_up() {
   trap cleanup INT TERM EXIT
   start_mdns
   start_bundle
-  start_gopro
-  start_webrtc_sidecar
+  if is_truthy "${SF_VISION_GOPRO_ADAPTER_AFTER_WEBRTC_SIDECAR}"; then
+    start_gopro_mediamtx_first
+  else
+    start_gopro
+    start_webrtc_sidecar
+    start_picam_compositors
+  fi
   echo "[sf-vision] running. Ctrl-C or ./scripts/vision/sf_vision.sh down stops all child processes."
   set +e
   wait -n "${PIDS[@]}"

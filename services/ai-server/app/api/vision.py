@@ -19,7 +19,11 @@ from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..config import get_settings
-from ..contracts import ContractValidationError, validate_vision_event
+from ..contracts import (
+    ContractValidationError,
+    validate_vision_event,
+    validate_vision_monitor_event,
+)
 from ..detectors import MarkerDetection, decode_image, detect_markers, generate_synthetic_aruco_frame
 from ..docking import CameraIntrinsics, MarkerPose, estimate_marker_pose
 from ..evidence_cache import DEFAULT_VIEW_ID, normalize_view_id, source_view_key
@@ -37,8 +41,12 @@ from ..openapi_schemas import (
     _json_response_openapi,
     _latest_frame_response_schema,
     _lift_roi_openapi_schema,
+    _overlay_canvas_metadata_response_schema,
+    _person_hazard_latest_response_schema,
     _ros_handoff_response_schema,
     _synthetic_frame_response_schema,
+    _vision_monitor_state_response_schema,
+    _vision_monitor_states_response_schema,
     _vision_streams_response_schema,
     _worker_status_response_schema,
 )
@@ -54,6 +62,12 @@ from ..smart_roi import (
     translate_detector_result_from_roi_to_full,
 )
 from ..vision_interfaces import DetectorResult
+from ..vision_monitor_profiles import (
+    PERSON_DRIVE_PROFILE_ID,
+    PERSON_DRIVE_THRESHOLD_SET_ID,
+    POLICY_VERSION as VISION_MONITOR_POLICY_VERSION,
+)
+from ..vision_monitor_state import VisionMonitorStateError
 from ..wms_client import emit_vision_events as default_emit_vision_events
 from .dependencies import ContextGetter
 from .vision_detection_endpoints import (
@@ -80,10 +94,12 @@ from .vision_read_models import (
     build_vision_streams_payload,
     build_vision_worker_status_payload,
     frame_overlay_sync_status,
+    overlay_metadata_path,
     overlay_stream_path,
     overlay_publish_payload_preview_for_source,
     vision_gateway_url,
     webrtc_offer_path,
+    _webrtc_compositor_runtime_health,
     webrtc_sidecar_descriptor,
     _frame_id_for_source,
     _robot_id_for_source,
@@ -133,6 +149,24 @@ class VisionWorkerTickRequest(BaseModel):
     force: bool = False
     stale: bool = False
     max_frame_age_s: float | None = Field(default=None, ge=0)
+
+
+class VisionMonitorStateRequest(BaseModel):
+    """No-hardware monitor enable/disable/update request.
+
+    This stores advisory monitor intent only. It does not start motion, issue
+    HOLD/E-stop commands, write Main DB rows, or run model inference.
+    """
+
+    enabled: bool = True
+    source: str | None = Field(default=None, json_schema_extra=SOURCE_ID_OPENAPI_EXTRA)
+    robot_id: str | None = None
+    task_id: int | str | None = None
+    operation_state: str = "UNKNOWN"
+    target_fps: float | None = Field(default=None, gt=0)
+    profile_id: str | None = None
+    policy_version: str = VISION_MONITOR_POLICY_VERSION
+    threshold_set_id: str | None = None
 
 
 class WebRtcOfferRequest(BaseModel):
@@ -321,10 +355,31 @@ def _pose_confidence(pose: MarkerPose) -> float:
 def _pose_estimate_payload(pose: MarkerPose) -> dict[str, Any]:
     return {'method': 'ARUCO_POSE', 'x': pose.lateral_m, 'y': pose.distance_m, 'yaw': pose.yaw_rad, 'confidence': _pose_confidence(pose)}
 
-def build_marker_event(*, source: str, detection: MarkerDetection, image_width: int, image_height: int, latency_ms: float | None=None, pose: MarkerPose | None=None) -> dict[str, Any]:
+def _event_metadata(
+    *,
+    model: str | None,
+    image_width: int,
+    image_height: int,
+    latency_ms: float | None,
+    frame_seq: int | None = None,
+) -> dict[str, Any]:
+    metadata: dict[str, Any] = {
+        'n_frame_count': 1,
+        'policy_version': get_settings().policy_version,
+        'model': model,
+        'image_width': image_width,
+        'image_height': image_height,
+        'latency_ms': latency_ms,
+    }
+    if frame_seq is not None:
+        metadata['frame_seq'] = int(frame_seq)
+    return metadata
+
+
+def build_marker_event(*, source: str, detection: MarkerDetection, image_width: int, image_height: int, latency_ms: float | None=None, pose: MarkerPose | None=None, frame_seq: int | None=None) -> dict[str, Any]:
     """Build a schema-valid VisionEvent from a deterministic marker detection."""
     settings = get_settings()
-    event: dict[str, Any] = {'schema_version': settings.vision_event_schema_version, 'event_id': str(uuid4()), 'timestamp': _now_iso(), 'source': source, 'robot_id': _robot_id_for_source(source), 'frame_id': _frame_id_for_source(source), 'event_kind': 'CONFIRMED', 'class_name': detection.class_name, 'confidence': detection.confidence, 'bbox_xyxy': detection.bbox_xyxy, 'marker_id': detection.marker_id, 'zone': None, 'roi_id': None, 'track_id': None, 'pose_estimate': _pose_estimate_payload(pose) if pose is not None else None, 'depth_median_m': None, 'wms_hint': 'TAG_DETECTED', 'metadata': {'n_frame_count': 1, 'policy_version': settings.policy_version, 'model': detection.detector, 'image_width': image_width, 'image_height': image_height, 'latency_ms': latency_ms}}
+    event: dict[str, Any] = {'schema_version': settings.vision_event_schema_version, 'event_id': str(uuid4()), 'timestamp': _now_iso(), 'source': source, 'robot_id': _robot_id_for_source(source), 'frame_id': _frame_id_for_source(source), 'event_kind': 'CONFIRMED', 'class_name': detection.class_name, 'confidence': detection.confidence, 'bbox_xyxy': detection.bbox_xyxy, 'marker_id': detection.marker_id, 'zone': None, 'roi_id': None, 'track_id': None, 'pose_estimate': _pose_estimate_payload(pose) if pose is not None else None, 'depth_median_m': None, 'wms_hint': 'TAG_DETECTED', 'metadata': _event_metadata(model=detection.detector, image_width=image_width, image_height=image_height, latency_ms=latency_ms, frame_seq=frame_seq)}
     validate_vision_event(event)
     return event
 
@@ -348,11 +403,11 @@ def _bbox_payload(result: DetectorResult) -> list[float]:
     bbox = getattr(result, 'bbox_xyxy')
     return [float(value) for value in bbox]
 
-def build_model_event(*, source: str, result: DetectorResult, image_width: int, image_height: int, latency_ms: float | None=None) -> dict[str, Any]:
+def build_model_event(*, source: str, result: DetectorResult, image_width: int, image_height: int, latency_ms: float | None=None, frame_seq: int | None=None) -> dict[str, Any]:
     """Build a candidate VisionEvent from optional model output for ROS overlay streaming."""
     settings = get_settings()
     class_name = _normalize_public_model_class(str(getattr(result, 'class_name', 'unknown')))
-    event: dict[str, Any] = {'schema_version': settings.vision_event_schema_version, 'event_id': str(uuid4()), 'timestamp': _now_iso(), 'source': source, 'robot_id': _robot_id_for_source(source), 'frame_id': _frame_id_for_source(source), 'event_kind': 'CANDIDATE', 'class_name': class_name, 'confidence': float(getattr(result, 'confidence', 0.0)), 'bbox_xyxy': _bbox_payload(result), 'marker_id': None, 'zone': None, 'roi_id': None, 'track_id': getattr(result, 'track_id', None), 'pose_estimate': None, 'depth_median_m': None, 'wms_hint': _model_wms_hint(class_name), 'metadata': {'n_frame_count': 1, 'policy_version': settings.policy_version, 'model': getattr(result, 'detector', None), 'image_width': image_width, 'image_height': image_height, 'latency_ms': latency_ms}}
+    event: dict[str, Any] = {'schema_version': settings.vision_event_schema_version, 'event_id': str(uuid4()), 'timestamp': _now_iso(), 'source': source, 'robot_id': _robot_id_for_source(source), 'frame_id': _frame_id_for_source(source), 'event_kind': 'CANDIDATE', 'class_name': class_name, 'confidence': float(getattr(result, 'confidence', 0.0)), 'bbox_xyxy': _bbox_payload(result), 'marker_id': None, 'zone': None, 'roi_id': None, 'track_id': getattr(result, 'track_id', None), 'pose_estimate': None, 'depth_median_m': None, 'wms_hint': _model_wms_hint(class_name), 'metadata': _event_metadata(model=getattr(result, 'detector', None), image_width=image_width, image_height=image_height, latency_ms=latency_ms, frame_seq=frame_seq)}
     validate_vision_event(event)
     return event
 
@@ -481,6 +536,7 @@ def _prepare_roi_view_overlays(
                 image_width=crop_width,
                 image_height=crop_height,
                 latency_ms=crop_latency_ms,
+                frame_seq=frame.frame_seq,
                 roi_selection=selection,
                 map_roi_to_full_frame=False,
             )
@@ -491,6 +547,7 @@ def _prepare_roi_view_overlays(
                     image_width=full_image_width,
                     image_height=full_image_height,
                     latency_ms=crop_latency_ms,
+                    frame_seq=frame.frame_seq,
                     roi_selection=selection,
                     map_roi_to_full_frame=True,
                 )
@@ -528,8 +585,8 @@ def _detect_and_overlay_frame_snapshot(*, frame: StoredFrame, pose_request: Pose
     started = perf_counter()
     detections = detect_markers(decoded_image)
     latency_ms = round((perf_counter() - started) * 1000.0, 3)
-    events = [build_marker_event(source=frame.source, detection=detection, image_width=image_width, image_height=image_height, latency_ms=latency_ms, pose=_estimate_detection_pose(source=frame.source, detection=detection, pose_request=pose_request)) for detection in detections]
-    events.extend(_detect_model_events(source=frame.source, decoded_image=decoded_image, image_width=image_width, image_height=image_height))
+    events = [build_marker_event(source=frame.source, detection=detection, image_width=image_width, image_height=image_height, latency_ms=latency_ms, pose=_estimate_detection_pose(source=frame.source, detection=detection, pose_request=pose_request), frame_seq=frame.frame_seq) for detection in detections]
+    events.extend(_detect_model_events(source=frame.source, decoded_image=decoded_image, image_width=image_width, image_height=image_height, frame_seq=frame.frame_seq))
     roi_events, roi_overlays = _prepare_roi_view_overlays(
         source=frame.source,
         frame=frame,
@@ -610,6 +667,7 @@ def _events_from_model_results(
     image_width: int,
     image_height: int,
     latency_ms: float | None,
+    frame_seq: int | None = None,
     roi_selection: SmartRoiSelection | None = None,
     map_roi_to_full_frame: bool = False,
 ) -> list[dict[str, Any]]:
@@ -623,7 +681,7 @@ def _events_from_model_results(
                 if roi_selection is not None and map_roi_to_full_frame
                 else result
             )
-            event = build_model_event(source=source, result=event_result, image_width=image_width, image_height=image_height, latency_ms=latency_ms)
+            event = build_model_event(source=source, result=event_result, image_width=image_width, image_height=image_height, latency_ms=latency_ms, frame_seq=frame_seq)
             if roi_selection is not None:
                 event["roi_id"] = roi_selection.view_id
                 validate_vision_event(event)
@@ -632,7 +690,7 @@ def _events_from_model_results(
             continue
     return model_events
 
-def _detect_model_events(*, source: str, decoded_image, image_width: int, image_height: int) -> list[dict[str, Any]]:
+def _detect_model_events(*, source: str, decoded_image, image_width: int, image_height: int, frame_seq: int | None=None) -> list[dict[str, Any]]:
     detector_results, latency_ms = _detect_model_results(source=source, decoded_image=decoded_image)
     return _events_from_model_results(
         source=source,
@@ -640,14 +698,16 @@ def _detect_model_events(*, source: str, decoded_image, image_width: int, image_
         image_width=image_width,
         image_height=image_height,
         latency_ms=latency_ms,
+        frame_seq=frame_seq,
     )
 
 def vision_streams(source: str | None=Query(default=None, json_schema_extra=SOURCE_ID_OPENAPI_EXTRA)) -> dict[str, Any]:
     """Describe Vision Gateway stream surfaces.
 
-    Main-facing production browser video uses the source-selected HTTP/MJPEG
-    Vision Stream Gateway on :8090. ROS/rosbridge is internal allowlisted
-    operator/prototype infrastructure unless a future ADR promotes it.
+    Main-facing production browser video uses burned-overlay WebRTC as the
+    primary plane with the source-selected HTTP/MJPEG Vision Stream Gateway on
+    :8090 as fallback. ROS/rosbridge is internal allowlisted
+    operator/prototype infrastructure only.
     """
     if source is not None:
         _ensure_known_source(source)
@@ -688,7 +748,11 @@ def _webrtc_sidecar_path_runtime_health(sidecar: dict[str, Any]) -> str:
 
     The root WebRTC HTTP listener can be healthy while a specific camera path is
     missing/offline. Main should only prefer WebRTC for paths that MediaMTX
-    reports as ready/available/online; otherwise MJPEG remains the safe fallback.
+    reports as ready/available/online/sourceReady; otherwise MJPEG remains the
+    safe fallback.  MediaMTX versions do not all expose the same readiness
+    field, so this intentionally mirrors the runtime startup check and accepts
+    any explicit truthy path-readiness marker rather than requiring every
+    possible marker at once.
     """
 
     if sidecar.get("status") != "configured":
@@ -716,7 +780,10 @@ def _webrtc_sidecar_path_runtime_health(sidecar: dict[str, Any]) -> str:
     for item in items:
         if not isinstance(item, dict) or item.get("name") != path_id:
             continue
-        if bool(item.get("ready")) and bool(item.get("available")) and bool(item.get("online")):
+        if any(
+            bool(item.get(key))
+            for key in ("ready", "available", "online", "sourceReady")
+        ):
             return "online"
         return "offline"
     return "missing"
@@ -854,9 +921,12 @@ def vision_webrtc_offer(
     sidecar["runtime_health"] = runtime_health
     path_runtime_health = _webrtc_sidecar_path_runtime_health(sidecar)
     sidecar["path_runtime_health"] = path_runtime_health
+    compositor_runtime_health = _webrtc_compositor_runtime_health(sidecar)
+    sidecar["compositor_runtime_health"] = compositor_runtime_health
     settings = get_settings()
     runtime_ok = runtime_health in {"healthy", "assume_healthy"}
     path_ok = path_runtime_health == "online"
+    compositor_ok = compositor_runtime_health in {"alive", "not_required"}
     if not settings.vision_webrtc_enabled:
         status = "fallback_required"
         reason = "webrtc_disabled"
@@ -865,9 +935,11 @@ def vision_webrtc_offer(
         status = "fallback_required"
         reason = "forced_fallback"
         selected_transport = "mjpeg"
-    elif sidecar["status"] == "configured" and runtime_ok and path_ok:
+    elif sidecar["status"] == "configured" and runtime_ok and path_ok and compositor_ok:
         status = "sidecar_configured"
-        if path_runtime_health == "online":
+        if compositor_runtime_health == "alive":
+            reason = "sidecar_path_online_compositor_alive"
+        elif path_runtime_health == "online":
             reason = "sidecar_path_online"
         else:
             reason = "sidecar_runtime_healthy" if runtime_health == "healthy" else "sidecar_assume_healthy"
@@ -878,7 +950,10 @@ def vision_webrtc_offer(
         selected_transport = "mjpeg"
     elif sidecar["status"] == "configured":
         status = "fallback_required"
-        reason = f"sidecar_path_{path_runtime_health}"
+        if path_ok and not compositor_ok:
+            reason = f"sidecar_compositor_{compositor_runtime_health}"
+        else:
+            reason = f"sidecar_path_{path_runtime_health}"
         selected_transport = "mjpeg"
     else:
         status = "fallback_required"
@@ -974,29 +1049,44 @@ def vision_webrtc_demo(
     view: str=Query(default=DEFAULT_VIEW_ID),
     force_fallback: bool=Query(default=False),
 ) -> HTMLResponse:
-    """Standalone browser smoke page: prefer WebRTC, fall back to MJPEG."""
+    """Standalone browser smoke page: prefer burned-overlay WebRTC, fall back to MJPEG."""
     view_id = _ensure_known_source_view(source, view)
     offer_path = webrtc_offer_path(source, view_id)
     fallback_path = overlay_stream_path(source, view_id)
+    metadata_path = overlay_metadata_path(source, view_id)
     html = f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>SmartFactory Vision WebRTC candidate</title>
+  <title>SmartFactory Vision burned-overlay WebRTC</title>
   <style>
     body {{ font-family: system-ui, sans-serif; margin: 24px; }}
     code, pre {{ background: #f5f5f5; padding: 2px 4px; }}
-    img, iframe {{ max-width: 100%; border: 1px solid #ddd; }}
+    img, iframe, video {{ max-width: 100%; border: 1px solid #ddd; }}
     iframe {{ width: min(100%, 1280px); height: 720px; }}
+    .media-wrap {{ position: relative; width: min(100%, 1280px); }}
+    #webrtcVideo {{ width: 100%; height: auto; display: block; }}
+    #overlayCanvas {{
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      border: 1px solid transparent;
+    }}
   </style>
 </head>
 <body>
   <h1>Vision transport smoke test</h1>
   <p>source=<code id="source"></code>, view=<code id="view"></code></p>
   <p>selected transport: <strong id="selected">checking</strong></p>
+  <p>Public WebRTC streams already contain burned-in AI overlay pixels. Canvas metadata is diagnostic-only and is not required for Main streaming.</p>
   <iframe id="sidecarFrame" title="WebRTC sidecar browser player" allow="autoplay; fullscreen" hidden></iframe>
   <p id="sidecarLinkRow" hidden>Sidecar browser URL: <a id="sidecarLink" target="_blank" rel="noreferrer"></a></p>
-  <video id="webrtcVideo" autoplay playsinline muted controls hidden></video>
+  <div class="media-wrap" id="webrtcWrap" hidden>
+    <video id="webrtcVideo" autoplay playsinline muted controls></video>
+    <canvas id="overlayCanvas"></canvas>
+  </div>
   <img id="mjpegFallback" alt="MJPEG fallback overlay" hidden>
   <pre id="status"></pre>
   <script>
@@ -1005,24 +1095,113 @@ def vision_webrtc_demo(
     const forceFallback = {json.dumps(force_fallback)};
     const offerPath = {json.dumps(offer_path)};
     const fallbackPath = {json.dumps(fallback_path)};
+    const metadataPath = {json.dumps(metadata_path)};
+    const debugCanvasMetadata = false;
     document.getElementById('source').textContent = source;
     document.getElementById('view').textContent = view;
     const selected = document.getElementById('selected');
     const status = document.getElementById('status');
     const img = document.getElementById('mjpegFallback');
+    const webrtcWrap = document.getElementById('webrtcWrap');
     const video = document.getElementById('webrtcVideo');
+    const overlayCanvas = document.getElementById('overlayCanvas');
+    const overlayCtx = overlayCanvas.getContext('2d');
     const sidecarFrame = document.getElementById('sidecarFrame');
     const sidecarLinkRow = document.getElementById('sidecarLinkRow');
     const sidecarLink = document.getElementById('sidecarLink');
+    let overlayTimer = null;
+    let overlayRefreshFps = {json.dumps(float(get_settings().vision_webrtc_overlay_refresh_fps))};
+    let metadataFailures = 0;
 
     function useMjpeg(reason) {{
       selected.textContent = 'mjpeg';
       img.src = fallbackPath;
       img.hidden = false;
-      video.hidden = true;
+      webrtcWrap.hidden = true;
       sidecarFrame.hidden = true;
       sidecarLinkRow.hidden = true;
+      if (overlayTimer) {{
+        clearInterval(overlayTimer);
+        overlayTimer = null;
+      }}
       status.textContent = 'MJPEG fallback: ' + reason + '\\n' + fallbackPath;
+    }}
+
+    function resizeCanvas(imageWidth, imageHeight) {{
+      const width = video.videoWidth || imageWidth || 1920;
+      const height = video.videoHeight || imageHeight || 1080;
+      if (overlayCanvas.width !== width) overlayCanvas.width = width;
+      if (overlayCanvas.height !== height) overlayCanvas.height = height;
+    }}
+
+    function drawOverlay(payload) {{
+      const image = payload.overlay && payload.overlay.image ? payload.overlay.image : {{}};
+      resizeCanvas(image.width, image.height);
+      overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+      const events = Array.isArray(payload.events) ? payload.events : [];
+      overlayCtx.lineWidth = Math.max(2, overlayCanvas.width / 640);
+      overlayCtx.font = `${{Math.max(14, overlayCanvas.width / 80)}}px system-ui, sans-serif`;
+      overlayCtx.textBaseline = 'top';
+      for (const event of events) {{
+        const box = event.bbox_xyxy || [];
+        if (box.length !== 4) continue;
+        const [x1, y1, x2, y2] = box.map(Number);
+        const label = `${{event.class_name || 'object'}} ${{event.confidence == null ? '' : Number(event.confidence).toFixed(2)}}`;
+        overlayCtx.strokeStyle = event.class_name === 'person' ? '#ff3b30' : '#00e676';
+        overlayCtx.fillStyle = overlayCtx.strokeStyle;
+        overlayCtx.strokeRect(x1, y1, Math.max(1, x2 - x1), Math.max(1, y2 - y1));
+        const labelY = Math.max(0, y1 - 24);
+        const textWidth = overlayCtx.measureText(label).width + 10;
+        overlayCtx.globalAlpha = 0.78;
+        overlayCtx.fillRect(x1, labelY, textWidth, 22);
+        overlayCtx.globalAlpha = 1;
+        overlayCtx.fillStyle = '#111';
+        overlayCtx.fillText(label, x1 + 5, labelY + 3);
+      }}
+    }}
+
+    async function refreshOverlay() {{
+      try {{
+        const response = await fetch(metadataPath, {{ cache: 'no-store' }});
+        if (!response.ok) {{
+          metadataFailures += 1;
+          status.textContent =
+            `WebRTC burned-overlay video is playing; diagnostic metadata is not ready\\n` +
+            `metadata: ${{metadataPath}}\\n` +
+            `metadata_http_status: ${{response.status}}, consecutive_failures: ${{metadataFailures}}`;
+          return;
+        }}
+        const payload = await response.json();
+        metadataFailures = 0;
+        drawOverlay(payload);
+        const plane = payload.metadata_plane || {{}};
+        const nextFps = Number(plane.refresh_fps || overlayRefreshFps || 5);
+        if (Number.isFinite(nextFps) && Math.abs(nextFps - overlayRefreshFps) > 0.1) {{
+          overlayRefreshFps = nextFps;
+          startOverlayLoop(overlayRefreshFps);
+          return;
+        }}
+        const count = Array.isArray(payload.events) ? payload.events.length : 0;
+        status.textContent =
+          `WebRTC burned-overlay video; diagnostic canvas metadata available\\n` +
+          `metadata: ${{metadataPath}}\\n` +
+          `refresh_fps: ${{plane.refresh_fps || 'n/a'}}, events: ${{count}}\\n` +
+          `sync: ${{JSON.stringify(payload.sync || {{}})}}`;
+      }} catch (error) {{
+        metadataFailures += 1;
+        status.textContent =
+          `WebRTC burned-overlay video is playing; diagnostic metadata polling failed\\n` +
+          `metadata: ${{metadataPath}}\\n` +
+          `error: ${{error.message}}, consecutive_failures: ${{metadataFailures}}`;
+      }}
+    }}
+
+    function startOverlayLoop(refreshFps) {{
+      if (overlayTimer) clearInterval(overlayTimer);
+      const fps = Math.max(1, Math.min(Number(refreshFps || 5), 10));
+      overlayRefreshFps = fps;
+      refreshOverlay();
+      overlayTimer = setInterval(refreshOverlay, Math.round(1000 / fps));
     }}
 
     async function chooseTransport() {{
@@ -1032,6 +1211,9 @@ def vision_webrtc_demo(
       }}
       try {{
         const pc = new RTCPeerConnection();
+        pc.ontrack = (event) => {{
+          video.srcObject = event.streams[0];
+        }};
         pc.addTransceiver('video', {{ direction: 'recvonly' }});
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
@@ -1047,15 +1229,31 @@ def vision_webrtc_demo(
         const descriptor = await response.json();
         status.textContent = JSON.stringify(descriptor, null, 2);
         if (response.ok && descriptor.selected_transport === 'webrtc') {{
+          if (descriptor.type === 'answer' && descriptor.sdp) {{
+            await pc.setRemoteDescription({{ type: descriptor.type, sdp: descriptor.sdp }});
+            selected.textContent = 'webrtc-burned-overlay';
+            webrtcWrap.hidden = false;
+            sidecarFrame.hidden = true;
+            sidecarLinkRow.hidden = true;
+            img.hidden = true;
+            if (debugCanvasMetadata) {{
+              startOverlayLoop(overlayRefreshFps);
+            }} else {{
+              overlayCanvas.hidden = true;
+              status.textContent = 'WebRTC burned-overlay video playing\\n' +
+                'diagnostic metadata: ' + metadataPath;
+            }}
+            return;
+          }}
           const browserUrl = descriptor.sidecar && descriptor.sidecar.browser_url;
           if (browserUrl) {{
-            selected.textContent = 'webrtc-sidecar';
+            selected.textContent = 'webrtc-sidecar-burned-overlay';
             sidecarFrame.src = browserUrl;
             sidecarFrame.hidden = false;
             sidecarLink.href = browserUrl;
             sidecarLink.textContent = browserUrl;
             sidecarLinkRow.hidden = false;
-            video.hidden = true;
+            webrtcWrap.hidden = true;
             img.hidden = true;
             return;
           }}
@@ -1228,8 +1426,9 @@ def latest_frame_image(source: str=Query(..., json_schema_extra=SOURCE_ID_OPENAP
 
     This is a debug/fallback image endpoint for comparing raw frame evidence
     against rendered overlays. Main-facing production browser streaming uses the
-    source-selected HTTP/MJPEG Vision Stream Gateway on :8090; rosbridge is
-    internal allowlisted operator/prototype infrastructure only.
+    burned-overlay WebRTC primary plane with the source-selected HTTP/MJPEG
+    Vision Stream Gateway on :8090 as fallback; rosbridge is internal
+    allowlisted operator/prototype infrastructure only.
     """
     _ensure_known_source(source)
     return build_latest_frame_image_response(
@@ -1250,6 +1449,59 @@ def latest_overlay(
         frame_overlay_sync_status=frame_overlay_sync_status,
         now_iso=_now_iso,
     )
+
+def latest_overlay_metadata(
+    source: str=Query(..., json_schema_extra=SOURCE_ID_OPENAPI_EXTRA),
+    view: str=Query(default=DEFAULT_VIEW_ID),
+    limit: int=Query(default=20, ge=1, le=50),
+) -> dict[str, Any]:
+    """Return diagnostic client-renderable AI overlay metadata.
+
+    Public Main-facing WebRTC streams carry burned-in overlay pixels.  This
+    endpoint remains available for debugging canvas math and event/frame sync;
+    it does not return image bytes and has no control or DB side effects.
+    """
+    view_id = _ensure_known_source_view(source, view)
+    response = build_latest_overlay_response(
+        source=source,
+        view=view_id,
+        runtime_context=_runtime_context(),
+        frame_overlay_sync_status=frame_overlay_sync_status,
+        now_iso=_now_iso,
+    )
+    overlay_frame_seq = response.get("overlay", {}).get("frame_seq")
+    overlay_image = response.get("overlay", {}).get("image", {})
+    overlay_width = overlay_image.get("width") if isinstance(overlay_image, dict) else None
+    overlay_height = overlay_image.get("height") if isinstance(overlay_image, dict) else None
+    candidate_events = _runtime_context().store.latest(source=source, limit=_runtime_context().store.maxlen)
+    events = [
+        event
+        for event in candidate_events
+        if isinstance(event.get("metadata"), dict)
+        and event["metadata"].get("frame_seq") == overlay_frame_seq
+        and (
+            view_id == DEFAULT_VIEW_ID
+            or (
+                event.get("roi_id") == view_id
+                and event["metadata"].get("image_width") == overlay_width
+                and event["metadata"].get("image_height") == overlay_height
+            )
+        )
+    ][:limit]
+    return {
+        **response,
+        "metadata_plane": {
+            "kind": "vision_event_canvas_layer_diagnostic",
+            "render_target": "diagnostic_canvas_only_public_stream_is_burned_overlay",
+            "refresh_fps": get_settings().vision_webrtc_overlay_refresh_fps,
+            "client_rendering": "diagnostic_only_not_required_for_main_streaming",
+            "recommended_for_main_streaming": False,
+            "motion_command_allowed": False,
+            "db_writes": False,
+            "evidence_truth_mutation": False,
+        },
+        "events": events,
+    }
 
 def latest_overlay_image(
     source: str=Query(..., json_schema_extra=SOURCE_ID_OPENAPI_EXTRA),
@@ -1287,10 +1539,9 @@ def debug_overlay_mjpeg_stream(
 ) -> StreamingResponse:
     """Debug/fallback MJPEG stream of latest overlays.
 
-    This stream is served behind the Main-facing :8090 HTTP/MJPEG gateway when
-    exposed through the source-selected public gateway. ROS/rosbridge remains
-    internal allowlisted operator/prototype infrastructure unless a future ADR
-    promotes it.
+    This stream feeds the MJPEG fallback/diagnostic gateway. Main-facing public
+    WebRTC carries burned-in overlay pixels when the compositor path is healthy;
+    ROS/rosbridge remains internal allowlisted operator/prototype infrastructure.
     """
     view_id = _ensure_known_source_view(source, view)
     context = _runtime_context()
@@ -1310,6 +1561,191 @@ def metrics_snapshot(source: str | None=Query(default=None, json_schema_extra=SO
         runtime_context=_runtime_context(),
         now_iso=_now_iso,
     )
+
+
+def vision_monitor_states() -> dict[str, Any]:
+    states = [
+        state.as_dict()
+        for state in _runtime_context().monitor_states.list()
+    ]
+    return {
+        "schema_version": "vision-monitor-state-list.v1",
+        "monitors": states,
+    }
+
+
+def vision_monitor_state(monitor_id: str) -> dict[str, Any]:
+    try:
+        state = _runtime_context().monitor_states.get(monitor_id)
+    except VisionMonitorStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "schema_version": "vision-monitor-state.v1",
+        "monitor": state.as_dict(),
+    }
+
+
+def update_vision_monitor_state(
+    monitor_id: str,
+    payload: VisionMonitorStateRequest,
+) -> dict[str, Any]:
+    try:
+        state = _runtime_context().monitor_states.update(
+            monitor_id,
+            payload.model_dump(),
+            source_registry=get_settings().source_registry,
+            updated_at=_now_iso(),
+        )
+    except VisionMonitorStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        "schema_version": "vision-monitor-state.v1",
+        "monitor": state.as_dict(),
+    }
+
+
+def _source_for_robot_id(robot_id: str) -> str:
+    source_by_robot = {
+        "tb3_1": "tb3_1_picam",
+        "tb3_2": "tb3_2_picam",
+    }
+    try:
+        return source_by_robot[robot_id]
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=f"unknown robot_id: {robot_id}") from exc
+
+
+def _person_confidence(raw_event: dict[str, Any]) -> float | None:
+    for key in ("confidence", "score", "conf"):
+        value = raw_event.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return max(0.0, min(1.0, float(value)))
+    return None
+
+
+def _is_person_event(raw_event: dict[str, Any]) -> bool:
+    return str(raw_event.get("class_name") or raw_event.get("label") or "").lower() == "person"
+
+
+def _person_hazard_monitor_event(
+    *,
+    source: str,
+    robot_id: str,
+    task_id: int | str | None,
+    raw_event: dict[str, Any],
+) -> dict[str, Any]:
+    source_event_id = raw_event.get("event_id")
+    confidence = _person_confidence(raw_event)
+    observed_at = str(raw_event.get("timestamp") or raw_event.get("observed_at") or _now_iso())
+    payload = {
+        "schema_version": "vision-monitor-event.v1",
+        "event_id": str(uuid4()),
+        "event_type": "HUMAN_DETECTED",
+        "source": source,
+        "robot_id": robot_id,
+        "task_id": task_id,
+        "command_id": None,
+        "result": "ADVISORY",
+        "severity": "CRITICAL",
+        "confidence": confidence,
+        "reason_code": "HUMAN_DETECTED",
+        "trusted": False,
+        "observed_at": observed_at,
+        "image_url": None,
+        "policy_version": VISION_MONITOR_POLICY_VERSION,
+        "profile_id": PERSON_DRIVE_PROFILE_ID,
+        "threshold_set_id": PERSON_DRIVE_THRESHOLD_SET_ID,
+        "data_json": {
+            "result": "ADVISORY",
+            "reason_code": "HUMAN_DETECTED",
+            "policy_version": VISION_MONITOR_POLICY_VERSION,
+            "profile_id": PERSON_DRIVE_PROFILE_ID,
+            "threshold_set_id": PERSON_DRIVE_THRESHOLD_SET_ID,
+            "assignment_status": "OWNED",
+            "related_robot_ids": [],
+            "task_id_ref": task_id,
+            "source_event_id": source_event_id,
+        },
+    }
+    validate_vision_monitor_event(payload)
+    return payload
+
+
+def person_hazard_latest(
+    robot_id: str | None = Query(default=None),
+    source: str | None = Query(default=None, json_schema_extra=SOURCE_ID_OPENAPI_EXTRA),
+    limit: int = Query(default=20, ge=1, le=200),
+) -> dict[str, Any]:
+    if robot_id is not None:
+        expected_source = _source_for_robot_id(robot_id)
+        if source is not None and source != expected_source:
+            raise HTTPException(
+                status_code=400,
+                detail=f"robot_id {robot_id} requires source {expected_source}",
+            )
+        source = expected_source
+    if source is None:
+        source = _runtime_context().monitor_states.get("person_drive").source
+    if source is None:
+        return {
+            "schema_version": "vision-person-hazard-latest.v1",
+            "monitor_id": "person_drive",
+            "source": None,
+            "robot_id": robot_id,
+            "result": "NO_ACTIVE_MONITOR",
+            "reason_code": "NO_ACTIVE_MONITOR",
+            "event": None,
+        }
+    _ensure_known_source(source)
+    resolved_robot_id = robot_id or _robot_id_for_source(source)
+    state = _runtime_context().monitor_states.get("person_drive")
+    active = (
+        state.enabled
+        and state.operation_state == "DRIVE"
+        and state.source == source
+        and resolved_robot_id is not None
+        and state.robot_id == resolved_robot_id
+    )
+    if not active:
+        return {
+            "schema_version": "vision-person-hazard-latest.v1",
+            "monitor_id": "person_drive",
+            "source": source,
+            "robot_id": resolved_robot_id,
+            "result": "NO_ACTIVE_MONITOR",
+            "reason_code": "NO_ACTIVE_MONITOR",
+            "event": None,
+        }
+
+    for raw_event in _runtime_context().store.latest(source=source, limit=limit):
+        if not _is_person_event(raw_event):
+            continue
+        event = _person_hazard_monitor_event(
+            source=source,
+            robot_id=resolved_robot_id,
+            task_id=state.task_id,
+            raw_event=raw_event,
+        )
+        return {
+            "schema_version": "vision-person-hazard-latest.v1",
+            "monitor_id": "person_drive",
+            "source": source,
+            "robot_id": resolved_robot_id,
+            "result": event["result"],
+            "reason_code": event["reason_code"],
+            "event": event,
+        }
+
+    return {
+        "schema_version": "vision-person-hazard-latest.v1",
+        "monitor_id": "person_drive",
+        "source": source,
+        "robot_id": resolved_robot_id,
+        "result": "NO_RELEVANT_DETECTION",
+        "reason_code": "NO_RELEVANT_DETECTION",
+        "event": None,
+    }
+
 
 async def ingest_synthetic_frame(payload: SyntheticFrameRequest) -> dict[str, Any]:
     """Generate and ingest a synthetic ArUco frame for robot-free Lane B validation.
@@ -1447,12 +1883,17 @@ def register_vision_routes(
     app.get('/api/v1/vision/ros/topics', responses={200: _json_response_openapi('Lane B ROS2/domain-bridge handoff topic matrix', _ros_handoff_response_schema())})(route(vision_ros_topics))
     app.get('/api/v1/vision/worker/status', responses={200: _json_response_openapi('Lane B read-only worker readiness snapshot', _worker_status_response_schema()), 400: ERROR_RESPONSE_OPENAPI, 422: ERROR_RESPONSE_OPENAPI})(route(vision_worker_status))
     app.post('/api/v1/vision/worker/tick', responses={400: ERROR_RESPONSE_OPENAPI, 422: ERROR_RESPONSE_OPENAPI, 500: ERROR_RESPONSE_OPENAPI})(route(vision_worker_tick))
+    app.get('/api/v1/vision/monitors', responses={200: _json_response_openapi("Vision monitor state list", _vision_monitor_states_response_schema()), 400: ERROR_RESPONSE_OPENAPI})(route(vision_monitor_states))
+    app.get('/api/v1/vision/monitors/{monitor_id}/state', responses={200: _json_response_openapi("Vision monitor state", _vision_monitor_state_response_schema()), 400: ERROR_RESPONSE_OPENAPI})(route(vision_monitor_state))
+    app.put('/api/v1/vision/monitors/{monitor_id}/state', responses={200: _json_response_openapi("Vision monitor state", _vision_monitor_state_response_schema()), 400: ERROR_RESPONSE_OPENAPI, 422: ERROR_RESPONSE_OPENAPI})(route(update_vision_monitor_state))
+    app.get('/api/v1/vision/hazards/person/latest', responses={200: _json_response_openapi("Latest advisory person hazard monitor event", _person_hazard_latest_response_schema()), 400: ERROR_RESPONSE_OPENAPI})(route(person_hazard_latest))
     app.get('/api/v1/vision/debug/sources', responses={200: _json_response_openapi('Lane B source/frame/overlay debug snapshot', _debug_sources_response_schema()), 400: ERROR_RESPONSE_OPENAPI})(route(vision_debug_sources))
     app.post('/api/v1/vision/frame', responses={200: _json_response_openapi('Latest-frame ingest debug response', _frame_ingest_response_schema()), 400: ERROR_RESPONSE_OPENAPI, 422: ERROR_RESPONSE_OPENAPI})(route(ingest_frame))
     app.post('/api/v1/vision/frame/process', responses={200: _json_response_openapi('Latest-frame ingest plus immediate overlay processing response', _frame_process_response_schema()), 400: ERROR_RESPONSE_OPENAPI, 422: ERROR_RESPONSE_OPENAPI})(route(ingest_and_process_frame))
     app.get('/api/v1/vision/frame/latest', responses={200: _json_response_openapi('Latest raw frame debug metadata', _latest_frame_response_schema()), 400: ERROR_RESPONSE_OPENAPI, 404: ERROR_RESPONSE_OPENAPI})(route(latest_frame))
     app.get('/api/v1/vision/frame/latest/image', responses={400: ERROR_RESPONSE_OPENAPI, 404: ERROR_RESPONSE_OPENAPI})(route(latest_frame_image))
     app.get('/api/v1/vision/overlay/latest', responses={400: ERROR_RESPONSE_OPENAPI, 404: ERROR_RESPONSE_OPENAPI})(route(latest_overlay))
+    app.get('/api/v1/vision/overlay/metadata', responses={200: _json_response_openapi('Diagnostic client-renderable AI overlay metadata; public streams are burned overlay', _overlay_canvas_metadata_response_schema()), 400: ERROR_RESPONSE_OPENAPI, 404: ERROR_RESPONSE_OPENAPI})(route(latest_overlay_metadata))
     app.get('/api/v1/vision/overlay/latest/image', responses={400: ERROR_RESPONSE_OPENAPI, 404: ERROR_RESPONSE_OPENAPI})(route(latest_overlay_image))
     app.get('/api/v1/vision/stream/{source}.mjpeg', responses={400: ERROR_RESPONSE_OPENAPI, 404: ERROR_RESPONSE_OPENAPI})(route(debug_overlay_mjpeg_stream))
     app.get('/api/v1/metrics', responses={200: METRICS_RESPONSE_OPENAPI, 400: ERROR_RESPONSE_OPENAPI})(route(metrics_snapshot))

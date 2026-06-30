@@ -11,6 +11,7 @@ from .frame_store import LatestFrameStore
 from .observability import InMemoryMetrics
 from .overlay import OverlayRenderResult
 from .source_health import InMemorySourceHealthTracker
+from .vision_monitor_state import VisionMonitorStateStore
 
 
 @dataclass(slots=True)
@@ -38,6 +39,7 @@ class RuntimeContext:
     )
     overlay_images: dict[str | SourceViewKey, OverlayRenderResult] = field(default_factory=dict)
     overlay_images_lock: Lock = field(default_factory=Lock)
+    monitor_states: VisionMonitorStateStore = field(default_factory=VisionMonitorStateStore)
 
 
 def create_runtime_context() -> RuntimeContext:
@@ -58,6 +60,7 @@ frame_store = default_runtime_context.frame_store
 overlay_cache = default_runtime_context.overlay_cache
 _overlay_images = default_runtime_context.overlay_images
 _overlay_images_lock = default_runtime_context.overlay_images_lock
+monitor_states = default_runtime_context.monitor_states
 
 __all__ = [
     "RuntimeContext",
@@ -68,6 +71,7 @@ __all__ = [
     "frame_store",
     "logger",
     "metrics",
+    "monitor_states",
     "overlay_cache",
     "source_health",
     "store",

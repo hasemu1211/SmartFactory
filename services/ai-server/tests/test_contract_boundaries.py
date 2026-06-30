@@ -353,10 +353,42 @@ def test_openapi_exposes_lane_b_overlay_debug_surfaces():
     assert "/api/v1/vision/streams" in schema["paths"]
     assert "/api/v1/vision/streams/{source}/webrtc/offer" in schema["paths"]
     assert "/api/v1/vision/webrtc/demo" in schema["paths"]
+    assert "/api/v1/vision/overlay/metadata" in schema["paths"]
+    overlay_metadata_schema = schema["paths"]["/api/v1/vision/overlay/metadata"]["get"][
+        "responses"
+    ]["200"]["content"]["application/json"]["schema"]
+    assert overlay_metadata_schema["required"] == [
+        "generated_at",
+        "requested_source",
+        "requested_view",
+        "sync",
+        "overlay",
+        "metadata_plane",
+        "events",
+    ]
+    assert overlay_metadata_schema["properties"]["metadata_plane"]["properties"][
+        "render_target"
+    ] == {
+        "const": "diagnostic_canvas_only_public_stream_is_burned_overlay",
+        "type": "string",
+    }
+    assert overlay_metadata_schema["properties"]["metadata_plane"]["properties"][
+        "client_rendering"
+    ] == {
+        "const": "diagnostic_only_not_required_for_main_streaming",
+        "type": "string",
+    }
+    assert overlay_metadata_schema["properties"]["events"]["items"]["properties"][
+        "metadata"
+    ]["properties"]["frame_seq"]["minimum"] == 1
     stream_schema = schema["paths"]["/api/v1/vision/streams"]["get"]["responses"]["200"][
         "content"
     ]["application/json"]["schema"]
     assert stream_schema["properties"]["primary_stream_plane"] == {
+        "const": "webrtc",
+        "type": "string",
+    }
+    assert stream_schema["properties"]["fallback_stream_plane"] == {
         "const": "http_mjpeg_gateway",
         "type": "string",
     }

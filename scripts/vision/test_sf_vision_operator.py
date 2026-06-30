@@ -4,6 +4,8 @@ import os
 import subprocess
 import tempfile
 import time
+import importlib.util
+import sys
 from pathlib import Path
 
 
@@ -11,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "vision" / "sf_vision.sh"
 SIDECAR_SCRIPT = ROOT / "scripts" / "vision" / "run_webrtc_sidecar_mediamtx.sh"
 PROFILE_DIR = ROOT / "config" / "vision" / "profiles"
+GOPRO_ADAPTER_SCRIPT = ROOT / "scripts" / "vision" / "run_gopro_smart_roi_adapter.py"
 
 
 def run(*args: str) -> subprocess.CompletedProcess[str]:
@@ -23,9 +26,131 @@ def run(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def test_gopro_adapter_normalizes_rtsp_inputs_to_tcp_transport() -> None:
+    spec = importlib.util.spec_from_file_location("run_gopro_smart_roi_adapter_for_test", GOPRO_ADAPTER_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    assert module._normalize_video_capture_url("rtsp://127.0.0.1:18554/global_cam_01_full") == (
+        "rtsp://127.0.0.1:18554/global_cam_01_full?rtsp_transport=tcp"
+    )
+    assert module._normalize_video_capture_url("rtsp://camera/path?x=1") == "rtsp://camera/path?x=1&rtsp_transport=tcp"
+    assert module._normalize_video_capture_url("rtsp://camera/path?rtsp_transport=udp") == "rtsp://camera/path?rtsp_transport=udp"
+
+
+def test_gopro_adapter_preserves_previous_events_when_ai_post_fails() -> None:
+    spec = importlib.util.spec_from_file_location("run_gopro_smart_roi_adapter_for_state_test", GOPRO_ADAPTER_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    state = module.SharedDetectionState()
+    state.update(events=[{"class_name": "box", "bbox_xyxy": [1, 2, 3, 4]}], selection="old")
+    before_events, _, before_updated_at = state.snapshot()
+
+    assert module.successful_events(500, None, "server down") is None
+    state.update_selection(selection="new")
+
+    after_events, after_selection, after_updated_at = state.snapshot()
+    assert after_events == before_events
+    assert after_selection == "new"
+    assert after_updated_at == before_updated_at
+
+
+def test_gopro_adapter_rejects_malformed_ai_event_lists() -> None:
+    spec = importlib.util.spec_from_file_location(
+        "run_gopro_smart_roi_adapter_for_malformed_events_test",
+        GOPRO_ADAPTER_SCRIPT,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    assert module.successful_events(200, {"events": [1]}, None) is None
+    assert module.successful_events(200, {"events": [{"not_a_valid_event": True}]}, None) is None
+    assert module.successful_events(
+        200,
+        {"events": [{"class_name": "box", "bbox_xyxy": [1, 2, 3, 4]}, "bad"]},
+        None,
+    ) is None
+    assert module.successful_events(
+        200,
+        {"events": [{"class_name": "box", "bbox_xyxy": [1, 2, 3, 4]}]},
+        None,
+    ) == [{"class_name": "box", "bbox_xyxy": [1, 2, 3, 4]}]
+
+
+def test_gopro_adapter_rejects_malformed_bboxes_as_not_fresh() -> None:
+    spec = importlib.util.spec_from_file_location(
+        "run_gopro_smart_roi_adapter_for_malformed_bbox_test",
+        GOPRO_ADAPTER_SCRIPT,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    bad_bboxes = [
+        [],
+        [1, 2, 3],
+        ["x", 2, 3, 4],
+        [4, 2, 1, 5],
+        [1, 5, 4, 2],
+        [0, 0, float("inf"), 1],
+        [0, 0, 1, float("-inf")],
+        [0, 0, float("nan"), 1],
+        [0, 0, "Infinity", 1],
+        [False, False, True, True],
+        ["1", "2", "3", "4"],
+    ]
+
+    for bbox in bad_bboxes:
+        assert module.successful_events(
+            200,
+            {"events": [{"class_name": "box", "bbox_xyxy": bbox}]},
+            None,
+        ) is None
+
+
+def test_gopro_adapter_default_public_full_webrtc_output_is_720p() -> None:
+    spec = importlib.util.spec_from_file_location("run_gopro_smart_roi_adapter_for_args_test", GOPRO_ADAPTER_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    args = module.parse_args([])
+
+    assert args.webrtc_full_output_width == 1280
+    assert args.webrtc_full_output_height == 720
+
+
 def test_operator_script_is_valid_bash() -> None:
     subprocess.run(["bash", "-n", str(SCRIPT)], cwd=ROOT, check=True)
     subprocess.run(["bash", "-n", str(SIDECAR_SCRIPT)], cwd=ROOT, check=True)
+
+
+def test_mediamtx_first_adapter_probe_is_bounded_and_non_fatal_to_fallbacks() -> None:
+    body = SCRIPT.read_text()
+
+    assert '-timeout "${FFPROBE_TIMEOUT_US}"' in body
+    assert '-rw_timeout "${FFPROBE_TIMEOUT_US}"' in body
+    assert 'timeout "${FFPROBE_TIMEOUT_SEC}" "${ffprobe_cmd[@]}"' in body
+    assert "keeping AI Server/gateway/sidecar alive and skipping GoPro adapter" in body
+    assert "return 0" in body[body.index("start_gopro_mediamtx_first()") :]
+
+
+def test_operator_mediamtx_readiness_accepts_mediamtx_source_ready_field() -> None:
+    operator_body = SCRIPT.read_text()
+    sidecar_body = SIDECAR_SCRIPT.read_text()
+
+    assert '"ready", "available", "online", "sourceReady"' in operator_body
+    assert '"ready", "available", "online", "sourceReady"' in sidecar_body
+    assert '"(ready|available|online|sourceReady)":true' in sidecar_body
 
 
 def test_operator_profiles_are_discoverable() -> None:
@@ -37,6 +162,8 @@ def test_operator_profiles_are_discoverable() -> None:
     assert "gopro-segment" in result.stdout
     assert "lab-gopro-tb3" in result.stdout
     assert "lab-gopro-tb3-webrtc" in result.stdout
+    assert "lab-gopro-tb3-mediamtx-first" in result.stdout
+    assert "lab-gopro-tb3-ffmpeg-first" in result.stdout
 
 
 def test_lab_gopro_tb3_profile_prints_main_facing_urls_without_starting_processes() -> None:
@@ -117,6 +244,102 @@ def test_lab_gopro_tb3_webrtc_profile_prints_sidecar_urls_without_starting_proce
     assert "stream_target_fps=30" in result.stdout
     assert "ai_monitor_fps=5" in result.stdout
     assert "ai_monitor_imgsz=640" in result.stdout
+
+
+def test_lab_gopro_tb3_mediamtx_first_profile_freezes_direct_ingest_contract() -> None:
+    result = run("print-config", "lab-gopro-tb3-mediamtx-first")
+
+    assert "profile: lab-gopro-tb3-mediamtx-first" in result.stdout
+    assert "SF_VISION_WEBRTC_SIDECAR_ENABLED=true" in result.stdout
+    assert "adapter_after_webrtc_sidecar=true" in result.stdout
+    assert "mediamtx_ready_path=global_cam_01_full" in result.stdout
+    assert "input=rtsp://127.0.0.1:18554/global_cam_01_full" in result.stdout
+    assert "adapter_input=rtsp://127.0.0.1:18554/global_cam_01_full" in result.stdout
+    assert "sidecar_streams=global_cam_01/full,global_cam_01/lift_roi,tb3_1_picam/full,tb3_2_picam/full" in result.stdout
+    assert "stream_target_fps=30" in result.stdout
+    assert "ai_monitor_fps=5" in result.stdout
+
+
+def test_lab_gopro_tb3_mediamtx_first_sidecar_marks_global_full_as_direct_source() -> None:
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                "set -euo pipefail; "
+                f"cd {ROOT}; "
+                "set -a; "
+                "source config/vision/profiles/lab-gopro-tb3-mediamtx-first.env; "
+                "set +a; "
+                "./scripts/vision/run_webrtc_sidecar_mediamtx.sh --print-config"
+            ),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert "path=global_cam_01_full" in result.stdout
+    assert "transport_origin=direct_mediamtx_source" in result.stdout
+    assert "mediamtx_source=udp+mpegts://0.0.0.0:8554" in result.stdout
+    assert "- transport=direct_mediamtx_source format=mediamtx_source url=udp+mpegts://0.0.0.0:8554" in result.stdout
+    assert "path=global_cam_01_lift_roi" in result.stdout
+    assert "transport_origin=publisher" in result.stdout
+    assert "- transport=mjpeg_overlay_h264_transcode_webrtc" in result.stdout
+
+
+def test_lab_gopro_tb3_ffmpeg_first_profile_exposes_compositor_receiver_paths() -> None:
+    result = run("print-config", "lab-gopro-tb3-ffmpeg-first")
+
+    assert "profile: lab-gopro-tb3-ffmpeg-first" in result.stdout
+    assert "adapter_after_webrtc_sidecar=true" in result.stdout
+    assert "mediamtx_ready_path=" in result.stdout
+    assert "adapter_input=udp://0.0.0.0:8554" in result.stdout
+    assert "sidecar_streams=global_cam_01/full,global_cam_01/lift_roi,tb3_1_picam/full,tb3_2_picam/full" in result.stdout
+    assert "ai_server_sidecar_streams=global_cam_01/full,global_cam_01/lift_roi,tb3_1_picam/full,tb3_2_picam/full" in result.stdout
+    assert "compositor_publisher_streams=global_cam_01/full,global_cam_01/lift_roi,tb3_1_picam/full,tb3_2_picam/full" in result.stdout
+    assert "publish_webrtc=true" in result.stdout
+    assert "webrtc_full_output=1280x720" in result.stdout
+    assert "webrtc_roi_output=640x480" in result.stdout
+    assert "picam_publish_webrtc: true" in result.stdout
+    assert "global_cam_01/raw" not in result.stdout
+
+
+def test_lab_gopro_tb3_ffmpeg_first_sidecar_uses_compositor_publishers_without_raw_or_mjpeg_primary() -> None:
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                "set -euo pipefail; "
+                f"cd {ROOT}; "
+                "set -a; "
+                "source config/vision/profiles/lab-gopro-tb3-ffmpeg-first.env; "
+                "set +a; "
+                "./scripts/vision/run_webrtc_sidecar_mediamtx.sh --print-config"
+            ),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert "path=global_cam_01_raw" not in result.stdout
+    for path in [
+        "global_cam_01_full",
+        "global_cam_01_lift_roi",
+        "tb3_1_picam_full",
+        "tb3_2_picam_full",
+    ]:
+        assert f"path={path}" in result.stdout
+        assert f"input=rtsp://127.0.0.1:18554/{path}" in result.stdout
+        assert "transport_origin=vision_pc_compositor_publisher" in result.stdout
+        assert f"metrics=.run/vision/compositor-metrics/{path}.json" in result.stdout
+    assert "direct_clean_media_webrtc" not in result.stdout
+    assert "camera_input_h264_transcode_webrtc" not in result.stdout
+    assert "- transport=mjpeg_overlay_h264_transcode_webrtc" not in result.stdout
 
 
 def test_webrtc_sidecar_print_config_exposes_media_only_urls() -> None:
@@ -317,6 +540,258 @@ def test_webrtc_sidecar_candidate_start_timeout_reaches_mjpeg_fallback() -> None
     assert "did not become ready within 1s; trying next candidate" in publisher_text
     assert candidate_file_mode == 0o600
     assert publisher_log_mode == 0o600
+
+
+def test_webrtc_sidecar_direct_mediamtx_source_skips_publisher_and_writes_source() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        ffmpeg_log = tmp / "ffmpeg.log"
+        mediamtx = tmp / "mediamtx"
+        mediamtx.write_text("#!/usr/bin/env bash\nsleep 20\n", encoding="utf-8")
+        mediamtx.chmod(0o755)
+        ffmpeg = tmp / "ffmpeg"
+        ffmpeg.write_text(
+            "#!/usr/bin/env bash\n"
+            f"printf '%s\\n' \"$*\" >> {ffmpeg_log}\n"
+            "sleep 20\n",
+            encoding="utf-8",
+        )
+        ffmpeg.chmod(0o755)
+        curl = tmp / "curl"
+        curl.write_text(
+            "#!/usr/bin/env bash\n"
+            "case \"$*\" in\n"
+            "  */v3/paths/list*) printf '%s\\n' '{\"items\":[]}' ;;\n"
+            "  *) echo ok ;;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        curl.chmod(0o755)
+
+        result = subprocess.run(
+            ["timeout", "5s", str(SIDECAR_SCRIPT), "run"],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+            env={
+                "PATH": f"{tmpdir}:/usr/bin:/bin",
+                "SF_VISION_TMUX_GUARD_ENABLED": "false",
+                "MEDIAMTX_BIN": str(mediamtx),
+                "FFMPEG_BIN": str(ffmpeg),
+                "FFPROBE_BIN": "/usr/bin/ffprobe",
+                "CURL_BIN": str(curl),
+                "SMARTFACTORY_VISION_RUN_DIR": str(tmp / "run"),
+                "MEDIAMTX_RTSP_PORT": "28554",
+                "MEDIAMTX_WEBRTC_PORT": "28889",
+                "MEDIAMTX_WEBRTC_ICE_UDP_PORT": "28189",
+                "MEDIAMTX_API_PORT": "29997",
+                "WEBRTC_SIDECAR_STREAMS": "global_cam_01/full,tb3_1_picam/full",
+                "WEBRTC_SIDECAR_MEDIAMTX_SOURCE_TEMPLATE_GLOBAL_CAM_01_FULL": "udp+mpegts://0.0.0.0:28555",
+                "WEBRTC_SIDECAR_INPUT_PRIORITY": "mjpeg",
+                "WEBRTC_SIDECAR_INPUT_URL_TEMPLATE": "http://127.0.0.1:8090/fallback?source={source}&view={view}",
+                "WEBRTC_SIDECAR_CANDIDATE_START_TIMEOUT_S": "1",
+                "WEBRTC_SIDECAR_RESTART_SEC": "1",
+            },
+        )
+
+        config_text = (tmp / "run" / "webrtc-sidecar" / "mediamtx.yml").read_text(encoding="utf-8")
+        pids_text = (tmp / "run" / "webrtc-sidecar" / "pids.tsv").read_text(encoding="utf-8")
+        ffmpeg_text = ffmpeg_log.read_text(encoding="utf-8") if ffmpeg_log.exists() else ""
+
+    assert result.returncode in {124, 130, 143}
+    assert "  global_cam_01_full:\n    source: udp+mpegts://0.0.0.0:28555" in config_text
+    assert "  tb3_1_picam_full:\n    source: publisher" in config_text
+    assert "publisher-global_cam_01_full" not in pids_text
+    assert "publisher-tb3_1_picam_full" in pids_text
+    assert "source=global_cam_01" not in ffmpeg_text
+    assert "source=tb3_1_picam" in ffmpeg_text
+
+
+def test_webrtc_sidecar_compositor_publisher_streams_skip_internal_publishers() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        mediamtx = tmp / "mediamtx"
+        mediamtx.write_text("#!/usr/bin/env bash\nsleep 20\n", encoding="utf-8")
+        mediamtx.chmod(0o755)
+        ffmpeg_log = tmp / "ffmpeg.log"
+        ffmpeg = tmp / "ffmpeg"
+        ffmpeg.write_text(
+            f"""#!/usr/bin/env bash
+printf '%s\n' "$*" >> {ffmpeg_log}
+sleep 20
+""",
+            encoding="utf-8",
+        )
+        ffmpeg.chmod(0o755)
+        curl = tmp / "curl"
+        curl.write_text(
+            """#!/usr/bin/env bash
+case "$*" in
+  */v3/paths/list*) printf '%s\n' '{"items":[]}' ;;
+  *) echo ok ;;
+esac
+""",
+            encoding="utf-8",
+        )
+        curl.chmod(0o755)
+
+        result = subprocess.run(
+            ["timeout", "5s", str(SIDECAR_SCRIPT), "run"],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+            env={
+                "PATH": f"{tmpdir}:/usr/bin:/bin",
+                "SF_VISION_TMUX_GUARD_ENABLED": "false",
+                "MEDIAMTX_BIN": str(mediamtx),
+                "FFMPEG_BIN": str(ffmpeg),
+                "FFPROBE_BIN": "/usr/bin/ffprobe",
+                "CURL_BIN": str(curl),
+                "SMARTFACTORY_VISION_RUN_DIR": str(tmp / "run"),
+                "MEDIAMTX_RTSP_PORT": "28554",
+                "MEDIAMTX_WEBRTC_PORT": "28889",
+                "MEDIAMTX_WEBRTC_ICE_UDP_PORT": "28189",
+                "MEDIAMTX_API_PORT": "29997",
+                "WEBRTC_SIDECAR_STREAMS": "global_cam_01/full,tb3_1_picam/full",
+                "WEBRTC_SIDECAR_COMPOSITOR_PUBLISHER_STREAMS": "global_cam_01/full,tb3_1_picam/full",
+            },
+        )
+
+        config_text = (tmp / "run" / "webrtc-sidecar" / "mediamtx.yml").read_text(encoding="utf-8")
+        pids_text = (tmp / "run" / "webrtc-sidecar" / "pids.tsv").read_text(encoding="utf-8")
+        ffmpeg_text = ffmpeg_log.read_text(encoding="utf-8") if ffmpeg_log.exists() else ""
+
+    assert result.returncode in {124, 130, 143}
+    assert "  global_cam_01_full:\n    source: publisher" in config_text
+    assert "  tb3_1_picam_full:\n    source: publisher" in config_text
+    assert "publisher-global_cam_01_full" not in pids_text
+    assert "publisher-tb3_1_picam_full" not in pids_text
+    assert ffmpeg_text == ""
+
+
+def test_webrtc_sidecar_status_treats_receiver_only_compositor_mode_as_ready() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        run_dir = tmp / "run"
+        sidecar_dir = run_dir / "webrtc-sidecar"
+        sidecar_dir.mkdir(parents=True)
+        mediamtx = subprocess.Popen(["python3", "-c", "import time; time.sleep(30)"])
+        try:
+            (sidecar_dir / "status.env").write_text(
+                "\n".join(
+                    [
+                        f"MEDIAMTX_PID={mediamtx.pid}",
+                        "EXPECTED_PUBLISHERS=0",
+                        "STREAM_PATHS=global_cam_01_full,tb3_1_picam_full",
+                        "MEDIAMTX_WEBRTC_PORT=28889",
+                        "MEDIAMTX_RTSP_PORT=28554",
+                        "WEBRTC_SIDECAR_PUBLIC_HOST=smartfactory-vision.local",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (sidecar_dir / "pids.tsv").write_text(
+                f"mediamtx\t{mediamtx.pid}\t{sidecar_dir / 'mediamtx.log'}\n",
+                encoding="utf-8",
+            )
+            curl = tmp / "curl"
+            curl.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+            curl.chmod(0o755)
+
+            result = subprocess.run(
+                [str(SIDECAR_SCRIPT), "--status"],
+                cwd=ROOT,
+                check=True,
+                text=True,
+                capture_output=True,
+                env={
+                    "PATH": f"{tmpdir}:/usr/bin:/bin",
+                    "SMARTFACTORY_VISION_RUN_DIR": str(run_dir),
+                    "CURL_BIN": str(curl),
+                },
+            )
+        finally:
+            mediamtx.terminate()
+            mediamtx.wait(timeout=5)
+
+    assert "state: receiver_ready" in result.stdout
+    assert "expected_publishers: 0" in result.stdout
+    assert "alive_publishers: 0/0" in result.stdout
+
+
+def test_webrtc_sidecar_copy_video_paths_use_stream_copy_for_matching_path_only() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        ffmpeg_log = tmp / "ffmpeg.log"
+        mediamtx = tmp / "mediamtx"
+        mediamtx.write_text("#!/usr/bin/env bash\nsleep 20\n", encoding="utf-8")
+        mediamtx.chmod(0o755)
+        ffmpeg = tmp / "ffmpeg"
+        ffmpeg.write_text(
+            "#!/usr/bin/env bash\n"
+            f"printf '%s\\n' \"$*\" >> {ffmpeg_log}\n"
+            "sleep 20\n",
+            encoding="utf-8",
+        )
+        ffmpeg.chmod(0o755)
+        curl = tmp / "curl"
+        curl.write_text(
+            "#!/usr/bin/env bash\n"
+            "case \"$*\" in\n"
+            "  */v3/paths/list*) printf '%s\\n' '{\"items\":[]}' ;;\n"
+            "  *) echo ok ;;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        curl.chmod(0o755)
+
+        result = subprocess.run(
+            ["timeout", "5s", str(SIDECAR_SCRIPT), "run"],
+            cwd=ROOT,
+            check=False,
+            text=True,
+            capture_output=True,
+            env={
+                "PATH": f"{tmpdir}:/usr/bin:/bin",
+                "SF_VISION_TMUX_GUARD_ENABLED": "false",
+                "MEDIAMTX_BIN": str(mediamtx),
+                "FFMPEG_BIN": str(ffmpeg),
+                "FFPROBE_BIN": "/usr/bin/ffprobe",
+                "CURL_BIN": str(curl),
+                "SMARTFACTORY_VISION_RUN_DIR": str(tmp / "run"),
+                "MEDIAMTX_RTSP_PORT": "28554",
+                "MEDIAMTX_WEBRTC_PORT": "28889",
+                "MEDIAMTX_WEBRTC_ICE_UDP_PORT": "28189",
+                "MEDIAMTX_API_PORT": "29997",
+                "WEBRTC_SIDECAR_STREAMS": "global_cam_01/full,tb3_1_picam/full",
+                "WEBRTC_SIDECAR_INPUT_PRIORITY": "mjpeg",
+                "WEBRTC_SIDECAR_INPUT_PRIORITY_GLOBAL_CAM_01_FULL": "direct,mjpeg",
+                "WEBRTC_SIDECAR_DIRECT_INPUT_URL_TEMPLATE_GLOBAL_CAM_01_FULL": "udp://0.0.0.0:28555",
+                "WEBRTC_SIDECAR_DIRECT_INPUT_FORMAT_GLOBAL_CAM_01_FULL": "mpegts",
+                "WEBRTC_SIDECAR_INPUT_URL_TEMPLATE": "http://127.0.0.1:8090/fallback?source={source}&view={view}",
+                "WEBRTC_SIDECAR_COPY_VIDEO_PATHS": "global_cam_01_full",
+                "WEBRTC_SIDECAR_CANDIDATE_START_TIMEOUT_S": "1",
+                "WEBRTC_SIDECAR_RESTART_SEC": "1",
+            },
+        )
+
+        ffmpeg_text = ffmpeg_log.read_text(encoding="utf-8") if ffmpeg_log.exists() else ""
+
+    assert result.returncode in {124, 130, 143}
+    assert "-f mpegts -i udp://0.0.0.0:28555 -an -c:v copy" in ffmpeg_text
+    assert any(
+        "source=global_cam_01&view=full" in line and "-c:v libx264" in line
+        for line in ffmpeg_text.splitlines()
+    )
+    assert not any(
+        "source=global_cam_01&view=full" in line and "-c:v copy" in line
+        for line in ffmpeg_text.splitlines()
+    )
+    assert "source=tb3_1_picam&view=full" in ffmpeg_text
+    assert "-c:v libx264" in ffmpeg_text
 
 
 def test_webrtc_sidecar_redacts_ffmpeg_emitted_credentials_in_publisher_log() -> None:
