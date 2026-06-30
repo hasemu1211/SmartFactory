@@ -127,6 +127,41 @@ def test_gopro_adapter_default_public_full_webrtc_output_is_720p() -> None:
 
     assert args.webrtc_full_output_width == 1280
     assert args.webrtc_full_output_height == 720
+    assert args.publish_roi_webrtc is True
+
+
+def test_gopro_adapter_can_disable_roi_webrtc_without_disabling_full_webrtc(tmp_path: Path) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "run_gopro_smart_roi_adapter_for_roi_webrtc_test",
+        GOPRO_ADAPTER_SCRIPT,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    args = module.parse_args(
+        [
+            "--publish-webrtc",
+            "--no-publish-roi-webrtc",
+            "--webrtc-metrics-dir",
+            str(tmp_path),
+        ]
+    )
+    assert args.publish_webrtc is True
+    assert args.publish_roi_webrtc is False
+
+    state = module.SharedDetectionState()
+    compositor = module.GoProWebRtcCompositor(
+        latest_capture=object(),
+        detection_state=state,
+        args=args,
+        roi_hint=None,
+    )
+    compositor._write_metrics()
+
+    assert (tmp_path / "global_cam_01_full.json").exists()
+    assert not (tmp_path / "global_cam_01_lift_roi.json").exists()
 
 
 def test_operator_script_is_valid_bash() -> None:
@@ -164,6 +199,7 @@ def test_operator_profiles_are_discoverable() -> None:
     assert "lab-gopro-tb3-webrtc" in result.stdout
     assert "lab-gopro-tb3-mediamtx-first" in result.stdout
     assert "lab-gopro-tb3-ffmpeg-first" in result.stdout
+    assert "lab-gopro-tb3-low-load" in result.stdout
 
 
 def test_lab_gopro_tb3_profile_prints_main_facing_urls_without_starting_processes() -> None:
@@ -300,10 +336,55 @@ def test_lab_gopro_tb3_ffmpeg_first_profile_exposes_compositor_receiver_paths() 
     assert "ai_server_sidecar_streams=global_cam_01/full,global_cam_01/lift_roi,tb3_1_picam/full,tb3_2_picam/full" in result.stdout
     assert "compositor_publisher_streams=global_cam_01/full,global_cam_01/lift_roi,tb3_1_picam/full,tb3_2_picam/full" in result.stdout
     assert "publish_webrtc=true" in result.stdout
+    assert "publish_roi_webrtc=true" in result.stdout
     assert "webrtc_full_output=1280x720" in result.stdout
     assert "webrtc_roi_output=640x480" in result.stdout
     assert "picam_publish_webrtc: true" in result.stdout
     assert "global_cam_01/raw" not in result.stdout
+
+
+def test_lab_gopro_tb3_low_load_profile_disables_optional_streams_without_hiding_full_webrtc() -> None:
+    result = run("print-config", "lab-gopro-tb3-low-load")
+
+    assert "profile: lab-gopro-tb3-low-load" in result.stdout
+    assert "adapter_after_webrtc_sidecar=true" in result.stdout
+    assert "source1_enabled: true" in result.stdout
+    assert "source2_enabled: false" in result.stdout
+    assert "sidecar_streams=global_cam_01/full,tb3_1_picam/full" in result.stdout
+    assert "ai_server_sidecar_streams=global_cam_01/full,tb3_1_picam/full" in result.stdout
+    assert "compositor_publisher_streams=global_cam_01/full,tb3_1_picam/full" in result.stdout
+    assert "publish_webrtc=true" in result.stdout
+    assert "publish_roi_webrtc=false" in result.stdout
+    assert "webrtc_full_output=960x540" in result.stdout
+    assert "picam_publish_webrtc: true" in result.stdout
+    assert "global_cam_01/lift_roi,tb3_1_picam/full" not in result.stdout
+
+
+def test_lab_gopro_tb3_low_load_sidecar_uses_only_low_load_receiver_paths() -> None:
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                "set -euo pipefail; "
+                f"cd {ROOT}; "
+                "set -a; "
+                "source config/vision/profiles/lab-gopro-tb3-low-load.env; "
+                "set +a; "
+                "./scripts/vision/run_webrtc_sidecar_mediamtx.sh --print-config"
+            ),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert "path=global_cam_01_full" in result.stdout
+    assert "path=tb3_1_picam_full" in result.stdout
+    assert "path=global_cam_01_lift_roi" not in result.stdout
+    assert "path=tb3_2_picam_full" not in result.stdout
+    assert "transport_origin=vision_pc_compositor_publisher" in result.stdout
 
 
 def test_lab_gopro_tb3_ffmpeg_first_sidecar_uses_compositor_publishers_without_raw_or_mjpeg_primary() -> None:

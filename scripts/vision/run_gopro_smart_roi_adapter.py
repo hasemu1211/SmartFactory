@@ -187,7 +187,13 @@ def _path_id(source: str, view: str) -> str:
 
 
 class GoProWebRtcCompositor:
-    """Publish GoPro full/lift_roi burned-overlay streams to MediaMTX."""
+    """Publish GoPro burned-overlay streams to MediaMTX.
+
+    ``--publish-webrtc`` controls whether the public full stream is emitted.
+    ``--publish-roi-webrtc`` is intentionally independent so low-load lab
+    profiles can keep the Main-facing full stream while avoiding the extra ROI
+    crop/encode/RTSP publisher work.
+    """
 
     def __init__(
         self,
@@ -201,6 +207,7 @@ class GoProWebRtcCompositor:
         self.detection_state = detection_state
         self.args = args
         self.roi_hint = roi_hint
+        self.publish_roi = bool(args.publish_roi_webrtc)
         self._running = False
         self._thread: threading.Thread | None = None
         self._full_publisher: RawVideoRtspPublisher | None = None
@@ -213,15 +220,23 @@ class GoProWebRtcCompositor:
             target_fps=args.stream_target_fps,
             ai_fps=args.target_fps,
         )
-        self._roi_metrics = CompositorMetrics(
-            source=args.source,
-            view=args.roi_view,
-            path_id=_path_id(args.source, args.roi_view),
-            target_fps=args.stream_target_fps,
-            ai_fps=args.target_fps,
+        self._roi_metrics = (
+            CompositorMetrics(
+                source=args.source,
+                view=args.roi_view,
+                path_id=_path_id(args.source, args.roi_view),
+                target_fps=args.stream_target_fps,
+                ai_fps=args.target_fps,
+            )
+            if self.publish_roi
+            else None
         )
         self._full_metrics_writer = MetricsWriter(metrics_dir / f"{self._full_metrics.path_id}.json")
-        self._roi_metrics_writer = MetricsWriter(metrics_dir / f"{self._roi_metrics.path_id}.json")
+        self._roi_metrics_writer = (
+            MetricsWriter(metrics_dir / f"{self._roi_metrics.path_id}.json")
+            if self._roi_metrics is not None
+            else None
+        )
 
     def start(self) -> None:
         self._running = True
@@ -239,6 +254,11 @@ class GoProWebRtcCompositor:
         for publisher in (self._full_publisher, self._roi_publisher):
             if publisher is not None:
                 publisher.close()
+
+    def _metrics(self) -> tuple[CompositorMetrics, ...]:
+        if self._roi_metrics is None:
+            return (self._full_metrics,)
+        return (self._full_metrics, self._roi_metrics)
 
     def _publisher(
         self,
@@ -273,8 +293,8 @@ class GoProWebRtcCompositor:
             loop_start = time.monotonic()
             sample = self.latest_capture.latest()
             if sample is None:
-                self._full_metrics.stale_frames += 1
-                self._roi_metrics.stale_frames += 1
+                for metrics in self._metrics():
+                    metrics.stale_frames += 1
                 self._write_metrics()
                 time.sleep(0.05)
                 continue
@@ -286,7 +306,7 @@ class GoProWebRtcCompositor:
                 updated_at <= 0
                 or (time.monotonic() - updated_at) * 1000.0 > self.args.webrtc_stale_overlay_after_ms
             )
-            if selection is None:
+            if self.publish_roi and selection is None:
                 selection = select_smart_roi(
                     frame,
                     view_id=self.args.roi_view,
@@ -308,33 +328,37 @@ class GoProWebRtcCompositor:
                     events=full_events,
                     stale=stale,
                 )
-                roi_crop = crop_frame(frame, selection.bbox_xyxy)
-                roi_overlay = render_burned_overlay_bgr(
-                    roi_crop,
-                    source=self.args.source,
-                    view=self.args.roi_view,
-                    frame_seq=capture_seq,
-                    events=events_for_crop(events, selection.bbox_xyxy),
-                    stale=stale,
-                )
-                roi_overlay = letterbox_frame_bgr(
-                    roi_overlay,
-                    width=self.args.webrtc_roi_output_width,
-                    height=self.args.webrtc_roi_output_height,
-                )
                 self._full_publisher = self._publisher(
                     self._full_publisher,
                     rtsp_url=self.args.webrtc_full_rtsp_url,
                     frame=full_overlay,
                 )
-                self._roi_publisher = self._publisher(
-                    self._roi_publisher,
-                    rtsp_url=self.args.webrtc_roi_rtsp_url,
-                    frame=roi_overlay,
-                )
                 self._full_publisher.write(full_overlay)
-                self._roi_publisher.write(roi_overlay)
-                for metrics in (self._full_metrics, self._roi_metrics):
+
+                if self.publish_roi:
+                    assert selection is not None
+                    roi_crop = crop_frame(frame, selection.bbox_xyxy)
+                    roi_overlay = render_burned_overlay_bgr(
+                        roi_crop,
+                        source=self.args.source,
+                        view=self.args.roi_view,
+                        frame_seq=capture_seq,
+                        events=events_for_crop(events, selection.bbox_xyxy),
+                        stale=stale,
+                    )
+                    roi_overlay = letterbox_frame_bgr(
+                        roi_overlay,
+                        width=self.args.webrtc_roi_output_width,
+                        height=self.args.webrtc_roi_output_height,
+                    )
+                    self._roi_publisher = self._publisher(
+                        self._roi_publisher,
+                        rtsp_url=self.args.webrtc_roi_rtsp_url,
+                        frame=roi_overlay,
+                    )
+                    self._roi_publisher.write(roi_overlay)
+
+                for metrics in self._metrics():
                     metrics.output_frames += 1
                     metrics.input_frames += 1
                     if stale:
@@ -343,7 +367,7 @@ class GoProWebRtcCompositor:
                         metrics.repeated_frames += 1
                     metrics.last_error = None
             except Exception as exc:  # noqa: BLE001 - keep live adapter running
-                for metrics in (self._full_metrics, self._roi_metrics):
+                for metrics in self._metrics():
                     metrics.last_error = f"{exc.__class__.__name__}: {exc}"
                     if "ffmpeg" in metrics.last_error.lower() or "publisher" in metrics.last_error.lower():
                         metrics.ffmpeg_restarts += 1
@@ -356,7 +380,8 @@ class GoProWebRtcCompositor:
 
     def _write_metrics(self) -> None:
         self._full_metrics_writer.write(self._full_metrics)
-        self._roi_metrics_writer.write(self._roi_metrics)
+        if self._roi_metrics is not None and self._roi_metrics_writer is not None:
+            self._roi_metrics_writer.write(self._roi_metrics)
 
 
 def _encode_jpeg(frame, *, quality: int) -> bytes:
@@ -543,7 +568,8 @@ def run(args: argparse.Namespace) -> int:
         webrtc_compositor.start()
         print(
             "GoPro WebRTC compositor publishing: "
-            f"full={args.webrtc_full_rtsp_url}, roi={args.webrtc_roi_rtsp_url}, "
+            f"full={args.webrtc_full_rtsp_url}, "
+            f"roi={args.webrtc_roi_rtsp_url if args.publish_roi_webrtc else 'disabled'}, "
             f"metrics_dir={args.webrtc_metrics_dir}",
             flush=True,
         )
@@ -717,7 +743,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=os.environ.get("GOPRO_PUBLISH_WEBRTC", "false").lower()
         in {"1", "true", "yes", "on"},
-        help="publish burned-overlay full/ROI H264 RTSP streams to MediaMTX",
+        help="publish burned-overlay full H264 RTSP stream to MediaMTX; ROI is controlled separately",
+    )
+    parser.add_argument(
+        "--publish-roi-webrtc",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("GOPRO_PUBLISH_ROI_WEBRTC", "true").lower()
+        in {"1", "true", "yes", "on"},
+        help="publish the burned-overlay ROI/crop RTSP stream when --publish-webrtc is enabled",
     )
     parser.add_argument("--webrtc-full-rtsp-url", default=os.environ.get("GOPRO_WEBRTC_FULL_RTSP_URL", ""))
     parser.add_argument("--webrtc-roi-rtsp-url", default=os.environ.get("GOPRO_WEBRTC_ROI_RTSP_URL", ""))

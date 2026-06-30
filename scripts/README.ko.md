@@ -12,7 +12,10 @@
 ## 가장 많이 쓰는 명령
 
 ```bash
-# 전체 실행: AI Server + GoPro global cam + PiCam WebRTC/MJPEG fallback + mDNS
+# 저부하 실행: GoPro full + tb3_1 PiCam WebRTC, lift_roi WebRTC/tb3_2 끔
+./scripts/vision/sf_lab.sh low-load
+
+# 전체 실행: GoPro full+lift_roi + tb3_1/tb3_2 + AI Server + MJPEG fallback + mDNS
 ./scripts/vision/sf_lab.sh all
 
 # 현재 상태 확인
@@ -29,9 +32,10 @@
 
 | 하고 싶은 일 | 실행 명령 | 설명 |
 |---|---|---|
-| 전체 lab vision 켜기 | `./scripts/vision/sf_lab.sh all` | 기본 권장 실행. GoPro + PiCam + AI Server + WebRTC/MJPEG fallback을 켭니다. |
+| 저부하 lab vision 켜기 | `./scripts/vision/sf_lab.sh low-load` | 노트북/약한 PC 권장. GoPro full + tb3_1 PiCam만 WebRTC로 켜고, lift_roi WebRTC와 tb3_2는 끕니다. |
+| 전체 lab vision 켜기 | `./scripts/vision/sf_lab.sh all` | lift_roi WebRTC나 tb3_2까지 필요할 때. GoPro + PiCam + AI Server + WebRTC/MJPEG fallback을 켭니다. |
 | 상태 확인 | `./scripts/vision/sf_lab.sh status` | 살아있는 프로세스, WebRTC/MJPEG 상태, GoPro/PiCam 상태를 봅니다. |
-| URL 확인 | `./scripts/vision/sf_lab.sh urls` | Main 대시보드, AI API, WebRTC, MJPEG fallback URL을 출력합니다. |
+| URL 확인 | `./scripts/vision/sf_lab.sh urls low-load` | 선택한 profile 기준으로 활성 WebRTC URL과 fallback URL을 출력합니다. |
 | 종료 | `./scripts/vision/sf_lab.sh down` | Vision 관련 live 프로세스를 내립니다. |
 | health 확인 | `./scripts/vision/sf_lab.sh api health` | AI Server health를 확인합니다. |
 | stream 계약 확인 | `./scripts/vision/sf_lab.sh api streams` | Main이 읽을 stream discovery JSON을 확인합니다. |
@@ -64,6 +68,7 @@ Main이 받을 수 있는 주요 URL은 아래 명령으로 확인합니다.
 
 ```bash
 ./scripts/vision/sf_lab.sh urls
+./scripts/vision/sf_lab.sh urls low-load
 ./scripts/vision/sf_lab.sh api streams
 ```
 
@@ -84,10 +89,13 @@ Main 화면에 `MJPEG·poll`이 보이면 먼저 아래만 확인하세요.
 # profile 목록
 ./scripts/vision/sf_vision.sh profiles
 
-# 권장 WebRTC profile 사전 점검
+# 저부하 WebRTC profile 사전 점검
+./scripts/vision/sf_vision.sh check lab-gopro-tb3-low-load
+
+# 전체 WebRTC profile 사전 점검
 ./scripts/vision/sf_vision.sh check lab-gopro-tb3-ffmpeg-first
 
-# 권장 WebRTC profile 직접 실행
+# 전체 WebRTC profile 직접 실행
 ./scripts/vision/sf_vision.sh up lab-gopro-tb3-ffmpeg-first
 
 # 상태/스모크/로그/종료
@@ -111,17 +119,23 @@ make vision-lab-down
 
 | Profile | 언제 쓰나 |
 |---|---|
-| `lab-gopro-tb3-ffmpeg-first` | 기본 권장. GoPro full은 720p WebRTC primary, lift ROI는 640x480 WebRTC, MJPEG fallback으로 실행. |
+| `lab-gopro-tb3-low-load` | 저부하 권장. GoPro full + tb3_1 PiCam만 WebRTC로 실행하고, lift_roi WebRTC와 tb3_2는 끕니다. |
+| `lab-gopro-tb3-ffmpeg-first` | 전체 WebRTC. GoPro full + lift ROI + tb3_1/tb3_2 WebRTC, MJPEG fallback으로 실행. |
 | `lab-gopro-tb3` | WebRTC보다 기존 MJPEG 안정 경로를 우선 확인할 때. |
 | `tb3-live-webrtc` | GoPro 없이 tb3_1 PiCam만 WebRTC로 확인할 때. |
 | `local-smoke` | 하드웨어 없이 API/gateway smoke만 할 때. |
 
-## 기본 WebRTC URL
+## 저부하 WebRTC URL
 
 ```text
 http://smartfactory-vision.local:8889/global_cam_01_full/
-http://smartfactory-vision.local:8889/global_cam_01_lift_roi/
 http://smartfactory-vision.local:8889/tb3_1_picam_full/
+```
+
+## 전체 WebRTC 추가 URL
+
+```text
+http://smartfactory-vision.local:8889/global_cam_01_lift_roi/
 http://smartfactory-vision.local:8889/tb3_2_picam_full/
 ```
 

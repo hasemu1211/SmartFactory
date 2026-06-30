@@ -47,6 +47,9 @@ Typical demo:
 Recommended lab WebRTC demo:
   ./scripts/vision/sf_vision.sh up lab-gopro-tb3-ffmpeg-first
 
+Low-load lab WebRTC demo:
+  ./scripts/vision/sf_vision.sh up lab-gopro-tb3-low-load
+
 Rollback/comparison WebRTC demo:
   ./scripts/vision/sf_vision.sh up lab-gopro-tb3-webrtc
 
@@ -124,6 +127,7 @@ load_profile() {
   export GOPRO_EVIDENCE_IMGSZ="${GOPRO_EVIDENCE_IMGSZ:-960}"
   export GOPRO_DROPPED_ITEM_CONF="${GOPRO_DROPPED_ITEM_CONF:-0.25}"
   export GOPRO_PUBLISH_WEBRTC="${GOPRO_PUBLISH_WEBRTC:-false}"
+  export GOPRO_PUBLISH_ROI_WEBRTC="${GOPRO_PUBLISH_ROI_WEBRTC:-true}"
   export GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS="${GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS:-1500}"
   export GOPRO_WEBRTC_METRICS_DIR="${GOPRO_WEBRTC_METRICS_DIR:-${VISION_WEBRTC_COMPOSITOR_METRICS_DIR:-${SMARTFACTORY_VISION_RUN_DIR:-.run/vision}/compositor-metrics}}"
   export GOPRO_EVIDENCE_CAPTURE_MODE="${GOPRO_EVIDENCE_CAPTURE_MODE:-parallel_then_pause_then_stream_frame}"
@@ -253,6 +257,7 @@ GoPro:
   evidence_imgsz=${GOPRO_EVIDENCE_IMGSZ}
   dropped_item_conf=${GOPRO_DROPPED_ITEM_CONF}
   publish_webrtc=${GOPRO_PUBLISH_WEBRTC}
+  publish_roi_webrtc=${GOPRO_PUBLISH_ROI_WEBRTC}
   webrtc_metrics_dir=${GOPRO_WEBRTC_METRICS_DIR}
   webrtc_stale_overlay_after_ms=${GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS}
   webrtc_full_output=${GOPRO_WEBRTC_FULL_OUTPUT_WIDTH:-1280}x${GOPRO_WEBRTC_FULL_OUTPUT_HEIGHT:-720}
@@ -434,6 +439,7 @@ GOPRO_ADAPTER_INPUT=${GOPRO_ADAPTER_INPUT}
 GOPRO_AI_MONITOR_FPS=${GOPRO_AI_MONITOR_FPS}
 GOPRO_AI_MONITOR_IMGSZ=${GOPRO_AI_MONITOR_IMGSZ}
 GOPRO_PUBLISH_WEBRTC=${GOPRO_PUBLISH_WEBRTC}
+GOPRO_PUBLISH_ROI_WEBRTC=${GOPRO_PUBLISH_ROI_WEBRTC}
 GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS=${GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS}
 GOPRO_WEBRTC_METRICS_DIR=${GOPRO_WEBRTC_METRICS_DIR}
 GOPRO_EVIDENCE_IMGSZ=${GOPRO_EVIDENCE_IMGSZ}
@@ -610,6 +616,11 @@ start_gopro_adapter() {
     adapter_cmd+=(--publish-webrtc)
   else
     adapter_cmd+=(--no-publish-webrtc)
+  fi
+  if is_truthy "${GOPRO_PUBLISH_ROI_WEBRTC}"; then
+    adapter_cmd+=(--publish-roi-webrtc)
+  else
+    adapter_cmd+=(--no-publish-roi-webrtc)
   fi
   adapter_cmd+=(--webrtc-metrics-dir "${GOPRO_WEBRTC_METRICS_DIR}")
   adapter_cmd+=(--webrtc-stale-overlay-after-ms "${GOPRO_WEBRTC_STALE_OVERLAY_AFTER_MS}")

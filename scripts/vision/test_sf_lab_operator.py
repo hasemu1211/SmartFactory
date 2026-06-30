@@ -62,7 +62,8 @@ def test_sf_lab_wrapper_is_valid_bash_and_has_operator_help() -> None:
     result = run("help")
 
     assert "sf_lab.sh all" in result.stdout
-    assert "WebRTC global/Pi streams + AI Server API + MJPEG fallback" in result.stdout
+    assert "sf_lab.sh low-load" in result.stdout
+    assert "full WebRTC: GoPro full+lift_roi + tb3_1/tb3_2 + MJPEG fallback" in result.stdout
     assert "api evaluate-quality" in result.stdout
     assert "profile=lab-gopro-tb3-ffmpeg-first" in result.stdout
     assert "Robot Pi camera" in result.stdout
@@ -84,6 +85,24 @@ def test_sf_lab_urls_prints_main_api_webrtc_and_mjpeg_urls() -> None:
     assert (
         "http://smartfactory-vision.local:8090/api/v1/vision/frame/stream?"
         "source=tb3_1_picam&view=full&max_fps=30"
+    ) in result.stdout
+
+
+def test_sf_lab_urls_low_load_prints_only_active_low_load_webrtc_urls() -> None:
+    result = run("urls", "low-load")
+
+    assert "Selected profile:" in result.stdout
+    assert "lab-gopro-tb3-low-load" in result.stdout
+    assert "http://smartfactory-vision.local:8889/global_cam_01_full/" in result.stdout
+    assert "http://smartfactory-vision.local:8889/tb3_1_picam_full/" in result.stdout
+    assert "http://smartfactory-vision.local:8889/global_cam_01_lift_roi/" not in result.stdout
+    assert "http://smartfactory-vision.local:8889/tb3_2_picam_full/" not in result.stdout
+    assert "Disabled WebRTC streams in this profile" in result.stdout
+    assert "global_cam_01/lift_roi" in result.stdout
+    assert "tb3_2_picam/full" in result.stdout
+    assert (
+        "http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?"
+        "source=global_cam_01&view=lift_roi&max_fps=30"
     ) in result.stdout
 
 

@@ -30,14 +30,15 @@ SmartFactory lab-friendly Vision entrypoint. It hides profile/env details for th
 current GoPro global camera + TurtleBot Pi camera lab setup.
 
 All-in-one live runtime (must run in tmux Smartfactory:3:Development):
-  $(basename "$0") all                 # WebRTC global/Pi streams + AI Server API + MJPEG fallback
-  $(basename "$0") stream              # same live runtime; operator-friendly alias
+  $(basename "$0") low-load            # low-load WebRTC: GoPro full + tb3_1 only, lift_roi WebRTC off
+  $(basename "$0") all                 # full WebRTC: GoPro full+lift_roi + tb3_1/tb3_2 + MJPEG fallback
+  $(basename "$0") stream              # same as all; operator-friendly alias
   $(basename "$0") down                # stop the bundled runtime
 
 Separated checks / URLs:
   $(basename "$0") status              # bundle status + safe direct-media probe
-  $(basename "$0") urls                # Main-facing WebRTC/MJPEG/API URLs
-  $(basename "$0") check               # non-live dependency/profile preflight
+  $(basename "$0") urls [profile]      # Main-facing WebRTC/MJPEG/API URLs
+  $(basename "$0") check [profile]     # non-live dependency/profile preflight
   $(basename "$0") probe               # read-only direct-media/WebRTC path probe
 
 API JSON helpers (call a running AI Server and print JSON for Main/connector checks):
@@ -53,6 +54,7 @@ API JSON helpers (call a running AI Server and print JSON for Main/connector che
 
 Defaults:
   profile=${PROFILE}
+  low_load_profile=lab-gopro-tb3-low-load
   ai_server=${AI_SERVER_URL}
   public_host=${VISION_PUBLIC_HOST}
   main_facing_api=${VISION_API_BASE_URL}
@@ -61,6 +63,33 @@ Safety boundary: this wrapper does not launch robot motion, Nav2, teleop,
 /cmd_vel, ROS parameter mutation, or whole-graph rosbridge. Robot Pi camera
 bringup remains manual on the TurtleBot.
 USAGE
+}
+
+profile_name_for_arg() {
+  local value="${1:-${PROFILE}}"
+  case "${value}" in
+    low-load|lowload|lite) printf '%s\n' "lab-gopro-tb3-low-load" ;;
+    full|all|stream|ffmpeg-first) printf '%s\n' "lab-gopro-tb3-ffmpeg-first" ;;
+    default|"") printf '%s\n' "${PROFILE}" ;;
+    *) printf '%s\n' "${value}" ;;
+  esac
+}
+
+load_profile_for_read() {
+  local selected="$1"
+  local profile_file="${ROOT_DIR}/config/vision/profiles/${selected}.env"
+  if [ ! -f "${profile_file}" ]; then
+    echo "ERROR: unknown profile '${selected}'" >&2
+    echo "Available profiles:" >&2
+    find "${ROOT_DIR}/config/vision/profiles" -maxdepth 1 -type f -name '*.env' \
+      -printf '%f\n' | sed 's/\.env$//' | sort >&2
+    return 2
+  fi
+  set -a
+  # shellcheck disable=SC1090
+  source "${profile_file}"
+  set +a
+  PROFILE="${selected}"
 }
 
 need_cmd() {
@@ -128,7 +157,13 @@ normalize_transition_operation() {
 }
 
 cmd_all() {
-  exec "${SCRIPT_DIR}/sf_vision.sh" up "${PROFILE}"
+  local selected
+  selected="$(profile_name_for_arg "${1:-${PROFILE}}")"
+  exec "${SCRIPT_DIR}/sf_vision.sh" up "${selected}"
+}
+
+cmd_low_load() {
+  exec "${SCRIPT_DIR}/sf_vision.sh" up "lab-gopro-tb3-low-load"
 }
 
 cmd_down() {
@@ -136,7 +171,9 @@ cmd_down() {
 }
 
 cmd_check() {
-  "${SCRIPT_DIR}/sf_vision.sh" check "${PROFILE}"
+  local selected
+  selected="$(profile_name_for_arg "${1:-${PROFILE}}")"
+  "${SCRIPT_DIR}/sf_vision.sh" check "${selected}"
 }
 
 cmd_status() {
@@ -157,51 +194,94 @@ cmd_probe() {
   python3 "${SCRIPT_DIR}/probe_direct_media_candidates.py" "$@"
 }
 
+stream_spec_is_active() {
+  local needle="$1"
+  local specs="${2:-}"
+  case ",${specs}," in
+    *",${needle},"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+stream_path_id() {
+  printf '%s_%s\n' "$1" "$2" | tr '/-' '__'
+}
+
 cmd_urls() {
+  local selected active_streams api_base stream_port public_host webrtc_port
+  selected="$(profile_name_for_arg "${1:-${PROFILE}}")"
+  load_profile_for_read "${selected}"
+  public_host="${VISION_PUBLIC_HOST:-${DEFAULT_PUBLIC_HOST}}"
+  api_base="${VISION_API_BASE_URL:-http://${public_host}:${AI_SERVER_PORT:-${DEFAULT_AI_SERVER_PORT}}}"
+  webrtc_port="${MEDIAMTX_WEBRTC_PORT:-${DEFAULT_WEBRTC_PORT}}"
+  stream_port="${VISION_STREAM_GATEWAY_PORT:-${DEFAULT_STREAM_PORT}}"
+  active_streams="${VISION_WEBRTC_COMPOSITOR_PUBLISHER_STREAMS:-${WEBRTC_SIDECAR_COMPOSITOR_PUBLISHER_STREAMS:-${VISION_WEBRTC_SIDECAR_STREAMS:-${WEBRTC_SIDECAR_STREAMS:-}}}}"
+  local disabled=()
+  local print_active_stream
+  print_active_stream() {
+    local source="$1" view="$2" label="$3" spec path_id
+    spec="${source}/${view}"
+    path_id="$(stream_path_id "${source}" "${view}")"
+    if stream_spec_is_active "${spec}" "${active_streams}"; then
+      printf '  http://%s:%s/%s/  # %s\n' "${public_host}" "${webrtc_port}" "${path_id}" "${label}"
+      printf '  http://%s:%s/%s/whep\n' "${public_host}" "${webrtc_port}" "${path_id}"
+    else
+      disabled+=("${spec}")
+    fi
+  }
+
   cat <<URLS
 SmartFactory lab Vision URLs
+
+Selected profile:
+  ${selected}
 
 Main dashboard:
   ${MAIN_SERVER_URL%/}/operate/control
 
 AI Server API/discovery (Main-facing):
-  ${VISION_API_BASE_URL%/}/api/v1/health
-  ${VISION_API_BASE_URL%/}/api/v1/vision/streams
-  ${VISION_API_BASE_URL%/}/api/v1/evidence/evaluate
+  ${api_base%/}/api/v1/health
+  ${api_base%/}/api/v1/vision/streams
+  ${api_base%/}/api/v1/evidence/evaluate
 
 Local API helper target:
   ${AI_SERVER_URL%/}
 
-WebRTC browser URLs:
-  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/global_cam_01_full/      # burned-overlay full video
-  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/global_cam_01_lift_roi/  # burned-overlay lift ROI crop
-  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/tb3_1_picam_full/        # burned-overlay PiCam full
-  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/tb3_2_picam_full/        # burned-overlay PiCam full
+Active WebRTC browser/WHEP URLs for this profile:
+URLS
+  print_active_stream "global_cam_01" "full" "burned-overlay GoPro full video"
+  print_active_stream "global_cam_01" "lift_roi" "burned-overlay GoPro lift ROI crop"
+  print_active_stream "tb3_1_picam" "full" "burned-overlay PiCam full"
+  print_active_stream "tb3_2_picam" "full" "burned-overlay PiCam full"
+  if [ "${#disabled[@]}" -gt 0 ]; then
+    printf '\nDisabled WebRTC streams in this profile (use full profile if needed):\n'
+    local item
+    for item in "${disabled[@]}"; do
+      printf '  %s\n' "${item}"
+    done
+  fi
+  cat <<URLS
 
-WebRTC WHEP URLs:
-  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/global_cam_01_full/whep
-  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/global_cam_01_lift_roi/whep
-  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/tb3_1_picam_full/whep
-  http://${VISION_PUBLIC_HOST}:${MEDIAMTX_WEBRTC_PORT}/tb3_2_picam_full/whep
-
-MJPEG fallback URLs:
-  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=global_cam_01&view=full&max_fps=30
-  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=global_cam_01&view=lift_roi&max_fps=30
-  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=tb3_1_picam&view=full&max_fps=30
-  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=tb3_2_picam&view=full&max_fps=30
+MJPEG fallback/diagnostic URLs:
+  http://${public_host}:${stream_port}/api/v1/vision/overlay/stream?source=global_cam_01&view=full&max_fps=30
+  http://${public_host}:${stream_port}/api/v1/vision/overlay/stream?source=global_cam_01&view=lift_roi&max_fps=30
+  http://${public_host}:${stream_port}/api/v1/vision/overlay/stream?source=tb3_1_picam&view=full&max_fps=30
+  http://${public_host}:${stream_port}/api/v1/vision/overlay/stream?source=tb3_2_picam&view=full&max_fps=30
 
 Latest-frame MJPEG diagnostic URLs (no Main streaming overlay contract):
-  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=global_cam_01&view=full&max_fps=30
-  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=tb3_1_picam&view=full&max_fps=30
-  http://${VISION_PUBLIC_HOST}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=tb3_2_picam&view=full&max_fps=30
+  http://${public_host}:${stream_port}/api/v1/vision/frame/stream?source=global_cam_01&view=full&max_fps=30
+  http://${public_host}:${stream_port}/api/v1/vision/frame/stream?source=tb3_1_picam&view=full&max_fps=30
+  http://${public_host}:${stream_port}/api/v1/vision/frame/stream?source=tb3_2_picam&view=full&max_fps=30
 
 AI overlay metadata diagnostic URLs (not required for Main streaming overlay):
-  ${VISION_API_BASE_URL%/}/api/v1/vision/overlay/metadata?source=global_cam_01&view=full&limit=20
-  ${VISION_API_BASE_URL%/}/api/v1/vision/overlay/metadata?source=tb3_1_picam&view=full&limit=20
+  ${api_base%/}/api/v1/vision/overlay/metadata?source=global_cam_01&view=full&limit=20
+  ${api_base%/}/api/v1/vision/overlay/metadata?source=tb3_1_picam&view=full&limit=20
 
 Operator commands:
+  ./scripts/vision/sf_lab.sh low-load
   ./scripts/vision/sf_lab.sh all
   ./scripts/vision/sf_lab.sh status
+  ./scripts/vision/sf_lab.sh urls ${selected}
   ./scripts/vision/sf_lab.sh api streams
   ./scripts/vision/sf_lab.sh api evaluate-no-frame
 URLS
@@ -348,6 +428,7 @@ main() {
   shift || true
   cd "${ROOT_DIR}"
   case "${command}" in
+    low-load|lowload|lite) cmd_low_load "$@" ;;
     all|up|stream) cmd_all "$@" ;;
     down|stop) cmd_down "$@" ;;
     check) cmd_check "$@" ;;
