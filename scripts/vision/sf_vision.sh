@@ -11,13 +11,20 @@ LOG_DIR="${RUN_DIR}/logs"
 PID_FILE="${RUN_DIR}/pids.tsv"
 SUPERVISOR_PID_FILE="${RUN_DIR}/supervisor.pid"
 SUMMARY_FILE="${RUN_DIR}/summary.env"
+WARNINGS_FILE="${RUN_DIR}/warnings.log"
 DEFAULT_PROFILE="lab-gopro-tb3"
 
 PROFILE=""
 PROFILE_FILE=""
 PIDS=()
+REQUIRED_PIDS=()
 NAMES=()
 LOGS=()
+OPTIONAL_WARNINGS=()
+LAST_STARTED_PID=""
+LAST_STARTED_LOG=""
+LAST_STARTED_NAME=""
+GOPRO_STREAM_AVAILABLE=false
 
 usage() {
   cat <<USAGE
@@ -95,6 +102,7 @@ load_profile() {
   PID_FILE="${RUN_DIR}/pids.tsv"
   SUPERVISOR_PID_FILE="${RUN_DIR}/supervisor.pid"
   SUMMARY_FILE="${RUN_DIR}/summary.env"
+  WARNINGS_FILE="${RUN_DIR}/warnings.log"
   export SMARTFACTORY_VISION_RUN_DIR="${RUN_DIR}"
 
   export AI_SERVER_HOST="${AI_SERVER_HOST:-0.0.0.0}"
@@ -110,6 +118,8 @@ load_profile() {
   export SF_VISION_MDNS_ENABLED="${SF_VISION_MDNS_ENABLED:-true}"
   export SF_VISION_BUNDLE_ENABLED="${SF_VISION_BUNDLE_ENABLED:-true}"
   export SF_VISION_GOPRO_ENABLED="${SF_VISION_GOPRO_ENABLED:-false}"
+  export SF_VISION_GOPRO_REQUIRED="${SF_VISION_GOPRO_REQUIRED:-false}"
+  export SF_VISION_OPTIONAL_CHILD_GRACE_SEC="${SF_VISION_OPTIONAL_CHILD_GRACE_SEC:-1}"
   export GOPRO_PORT="${GOPRO_PORT:-8554}"
   export GOPRO_PROTOCOL="${GOPRO_PROTOCOL:-TS}"
   export GOPRO_RESOLUTION="${GOPRO_RESOLUTION:-1080}"
@@ -217,6 +227,7 @@ Processes selected by profile:
   mdns_alias: ${SF_VISION_MDNS_ENABLED}
   local_bundle: ${SF_VISION_BUNDLE_ENABLED}
   gopro_stream_adapter: ${SF_VISION_GOPRO_ENABLED}
+  gopro_required: ${SF_VISION_GOPRO_REQUIRED}
   source1_enabled: ${VISION_SOURCE_1_ENABLED:-true} (${VISION_SOURCE_1_ID:-tb3_1_picam}, domain=${VISION_SOURCE_1_DOMAIN:-2})
   source2_enabled: ${VISION_SOURCE_2_ENABLED:-true} (${VISION_SOURCE_2_ID:-tb3_2_picam}, domain=${VISION_SOURCE_2_DOMAIN:-5})
   picam_publish_webrtc: ${PICAM_PUBLISH_WEBRTC}
@@ -409,7 +420,7 @@ ensure_not_running() {
       return 1
     fi
   fi
-  rm -f "${PID_FILE}" "${SUPERVISOR_PID_FILE}" "${SUMMARY_FILE}"
+  rm -f "${PID_FILE}" "${SUPERVISOR_PID_FILE}" "${SUMMARY_FILE}" "${WARNINGS_FILE}"
 }
 
 record_summary() {
@@ -453,7 +464,15 @@ PICAM_WEBRTC_METRICS_DIR=${PICAM_WEBRTC_METRICS_DIR}
 SF_VISION_TMUX_REQUIRED_CONTEXT=${SF_VISION_TMUX_REQUIRED_CONTEXT}
 SF_VISION_GOPRO_ADAPTER_AFTER_WEBRTC_SIDECAR=${SF_VISION_GOPRO_ADAPTER_AFTER_WEBRTC_SIDECAR}
 SF_VISION_GOPRO_MEDIAMTX_READY_PATH=${SF_VISION_GOPRO_MEDIAMTX_READY_PATH}
+SF_VISION_GOPRO_REQUIRED=${SF_VISION_GOPRO_REQUIRED}
 SUMMARY
+}
+
+record_warning() {
+  local message="$1"
+  OPTIONAL_WARNINGS+=("${message}")
+  printf '%s %s\n' "$(date -Is)" "${message}" >> "${WARNINGS_FILE}"
+  echo "${message}" >&2
 }
 
 record_process() {
@@ -474,10 +493,61 @@ start_logged() {
   (cd "${ROOT_DIR}" && exec "$@" >> "${log}" 2>&1) &
   local pid=$!
   PIDS+=("${pid}")
+  REQUIRED_PIDS+=("${pid}")
   NAMES+=("${name}")
   LOGS+=("${log}")
+  LAST_STARTED_PID="${pid}"
+  LAST_STARTED_LOG="${log}"
+  LAST_STARTED_NAME="${name}"
   record_process "${name}" "${pid}" "${log}"
   echo "[sf-vision] ${name} pid=${pid} log=${log}"
+}
+
+start_optional_logged() {
+  local name="$1"
+  shift
+  local log="${LOG_DIR}/${name}.log"
+  {
+    printf '[sf-vision] start optional %s at %s\n' "${name}" "$(date -Is)"
+    printf '[sf-vision] command:'
+    printf ' %q' "$@"
+    printf '\n--- output ---\n'
+  } > "${log}"
+  (cd "${ROOT_DIR}" && exec "$@" >> "${log}" 2>&1) &
+  local pid=$!
+  PIDS+=("${pid}")
+  NAMES+=("${name}")
+  LOGS+=("${log}")
+  LAST_STARTED_PID="${pid}"
+  LAST_STARTED_LOG="${log}"
+  LAST_STARTED_NAME="${name}"
+  record_process "${name}" "${pid}" "${log}"
+  echo "[sf-vision] optional ${name} pid=${pid} log=${log}"
+}
+
+optional_child_alive_after_grace() {
+  local label="$1" pid="$2" log="$3" hint="$4"
+  local grace="${SF_VISION_OPTIONAL_CHILD_GRACE_SEC:-1}"
+  sleep "${grace}"
+  if alive_pid "${pid}"; then
+    return 0
+  fi
+  local status=0
+  wait "${pid}" 2>/dev/null || status=$?
+  record_warning "WARN: optional ${label} exited early (status=${status}); ${hint}; keeping core AI Server/PiCam runtime alive. log=${log}"
+  return 1
+}
+
+print_optional_warnings() {
+  if [ "${#OPTIONAL_WARNINGS[@]}" -eq 0 ]; then
+    return 0
+  fi
+  echo "[sf-vision] optional hardware/media warnings:"
+  local warning
+  for warning in "${OPTIONAL_WARNINGS[@]}"; do
+    echo "[sf-vision]   ${warning}"
+  done
+  echo "[sf-vision] warnings recorded at ${WARNINGS_FILE}"
 }
 
 wait_for_url() {
@@ -563,7 +633,11 @@ start_gopro() {
     return 0
   fi
   start_gopro_stream
-  start_gopro_adapter
+  if is_truthy "${GOPRO_STREAM_AVAILABLE:-false}"; then
+    start_gopro_adapter
+  else
+    record_warning "WARN: optional GoPro stream is unavailable; skipping GoPro adapter and global_cam_01 WebRTC publisher"
+  fi
 }
 
 start_gopro_stream() {
@@ -580,10 +654,34 @@ start_gopro_stream() {
   if is_truthy "${GOPRO_TEST_READ}"; then
     stream_cmd+=(--test-read)
   fi
-  start_logged gopro-stream "${stream_cmd[@]}"
+  GOPRO_STREAM_AVAILABLE=false
+  if is_truthy "${SF_VISION_GOPRO_REQUIRED}"; then
+    start_logged gopro-stream "${stream_cmd[@]}"
+    GOPRO_STREAM_AVAILABLE=true
+  else
+    start_optional_logged gopro-stream "${stream_cmd[@]}"
+    if ! optional_child_alive_after_grace \
+      "GoPro stream" \
+      "${LAST_STARTED_PID}" \
+      "${LAST_STARTED_LOG}" \
+      "GoPro/global_cam_01 is unavailable"; then
+      return 0
+    fi
+    GOPRO_STREAM_AVAILABLE=true
+  fi
 
   echo "[sf-vision] warming up GoPro stream for ${GOPRO_STREAM_WARMUP_SEC}s"
   sleep "${GOPRO_STREAM_WARMUP_SEC}"
+  if ! alive_pid "${LAST_STARTED_PID}"; then
+    wait "${LAST_STARTED_PID}" 2>/dev/null || true
+    if is_truthy "${SF_VISION_GOPRO_REQUIRED}"; then
+      echo "ERROR: required GoPro stream exited during warmup; see ${LAST_STARTED_LOG}" >&2
+      return 1
+    fi
+    record_warning "WARN: optional GoPro stream exited during warmup; GoPro/global_cam_01 unavailable; keeping core AI Server/PiCam runtime alive. log=${LAST_STARTED_LOG}"
+    GOPRO_STREAM_AVAILABLE=false
+    return 0
+  fi
 }
 
 start_gopro_adapter() {
@@ -627,7 +725,16 @@ start_gopro_adapter() {
   if is_truthy "${GOPRO_EVALUATE_LIFT_ROI}"; then
     adapter_cmd+=(--evaluate-lift-roi)
   fi
-  start_logged gopro-adapter "${adapter_cmd[@]}"
+  if is_truthy "${SF_VISION_GOPRO_REQUIRED}"; then
+    start_logged gopro-adapter "${adapter_cmd[@]}"
+  else
+    start_optional_logged gopro-adapter "${adapter_cmd[@]}"
+    optional_child_alive_after_grace \
+      "GoPro adapter" \
+      "${LAST_STARTED_PID}" \
+      "${LAST_STARTED_LOG}" \
+      "global_cam_01 AI/WebRTC publisher is unavailable" || true
+  fi
 }
 
 start_picam_compositor() {
@@ -786,6 +893,10 @@ start_gopro_mediamtx_first() {
   start_gopro_stream
   start_webrtc_sidecar
   start_picam_compositors
+  if ! is_truthy "${GOPRO_STREAM_AVAILABLE:-false}"; then
+    record_warning "WARN: optional GoPro/global_cam_01 is unavailable; MediaMTX/PiCam/WebRTC fallback processes remain alive"
+    return 0
+  fi
   if is_truthy "${SF_VISION_WEBRTC_SIDECAR_ENABLED}"; then
     if [ -n "${SF_VISION_GOPRO_MEDIAMTX_READY_PATH}" ]; then
       if ! wait_for_mediamtx_path "${SF_VISION_GOPRO_MEDIAMTX_READY_PATH}" "${SF_VISION_GOPRO_MEDIAMTX_READY_TIMEOUT_SEC}"; then
@@ -846,9 +957,14 @@ run_up() {
     start_webrtc_sidecar
     start_picam_compositors
   fi
+  print_optional_warnings
   echo "[sf-vision] running. Ctrl-C or ./scripts/vision/sf_vision.sh down stops all child processes."
   set +e
-  wait -n "${PIDS[@]}"
+  if [ "${#REQUIRED_PIDS[@]}" -gt 0 ]; then
+    wait -n "${REQUIRED_PIDS[@]}"
+  else
+    wait -n "${PIDS[@]}"
+  fi
   local child_status=$?
   set -e
   echo "[sf-vision] a child process exited (status=${child_status}); shutting down runtime"
@@ -891,6 +1007,10 @@ status() {
     done < "${PID_FILE}"
   else
     echo "  process table: not recorded"
+  fi
+  if [ -s "${WARNINGS_FILE}" ]; then
+    echo "  optional warnings:"
+    sed 's/^/    /' "${WARNINGS_FILE}"
   fi
 }
 

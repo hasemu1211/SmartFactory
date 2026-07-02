@@ -23,6 +23,10 @@ This test verifies advisory/evidence API behavior only. AI Server must not issue
    ./scripts/vision/sf_lab.sh low-load
    ```
 
+   `global_cam_01`/GoPro is optional for this person-hazard validation. If no
+   GoPro is connected, the runtime should keep AI Server and PiCam paths alive
+   and record a warning instead of shutting down the full bundle.
+
 4. Robot Pi cameras are publishing:
 
    ```bash

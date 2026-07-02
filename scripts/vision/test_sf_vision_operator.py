@@ -179,6 +179,18 @@ def test_mediamtx_first_adapter_probe_is_bounded_and_non_fatal_to_fallbacks() ->
     assert "return 0" in body[body.index("start_gopro_mediamtx_first()") :]
 
 
+def test_operator_treats_hardware_children_as_optional_without_hiding_core_failures() -> None:
+    body = SCRIPT.read_text()
+
+    assert 'SF_VISION_GOPRO_REQUIRED="${SF_VISION_GOPRO_REQUIRED:-false}"' in body
+    assert "start_optional_logged gopro-stream" in body
+    assert "start_optional_logged gopro-adapter" in body
+    assert "optional GoPro/global_cam_01 is unavailable" in body
+    assert "keeping core AI Server/PiCam runtime alive" in body
+    assert "wait -n \"${REQUIRED_PIDS[@]}\"" in body
+    assert "WARNINGS_FILE" in body
+
+
 def test_operator_mediamtx_readiness_accepts_mediamtx_source_ready_field() -> None:
     operator_body = SCRIPT.read_text()
     sidecar_body = SIDECAR_SCRIPT.read_text()
@@ -348,6 +360,7 @@ def test_lab_gopro_tb3_low_load_profile_disables_optional_streams_without_hiding
 
     assert "profile: lab-gopro-tb3-low-load" in result.stdout
     assert "adapter_after_webrtc_sidecar=true" in result.stdout
+    assert "gopro_required: false" in result.stdout
     assert "source1_enabled: true" in result.stdout
     assert "source2_enabled: true" in result.stdout
     assert "sidecar_streams=global_cam_01/full,tb3_1_picam/full,tb3_2_picam/full" in result.stdout
@@ -385,6 +398,32 @@ def test_lab_gopro_tb3_low_load_sidecar_uses_only_low_load_receiver_paths() -> N
     assert "path=tb3_2_picam_full" in result.stdout
     assert "path=global_cam_01_lift_roi" not in result.stdout
     assert "transport_origin=vision_pc_compositor_publisher" in result.stdout
+
+
+def test_multi_source_gateway_normalizes_integer_double_env_values_for_ros_params() -> None:
+    result = subprocess.run(
+        [
+            "bash",
+            "-lc",
+            (
+                "set -euo pipefail; "
+                f"cd {ROOT}; "
+                "VISION_GATEWAY_REQUEST_TIMEOUT_SEC=8 "
+                "VISION_GATEWAY_PERIOD_SEC=1 "
+                "VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC=2 "
+                "./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh --print-config"
+            ),
+        ],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert "period=1.0s" in result.stdout
+    assert "output_period=2.0s" in result.stdout
+    bundle = (ROOT / "scripts" / "vision" / "run_d1_vision_multi_source_gateway_bundle.sh").read_text()
+    assert 'VISION_GATEWAY_REQUEST_TIMEOUT_SEC="$(sf_ros_double "${VISION_GATEWAY_REQUEST_TIMEOUT_SEC}")"' in bundle
 
 
 def test_lab_gopro_tb3_ffmpeg_first_sidecar_uses_compositor_publishers_without_raw_or_mjpeg_primary() -> None:

@@ -58,6 +58,15 @@ sf_lan_ip() {
     | head -n1 || true
 }
 
+sf_ros_double() {
+  local value="${1:-}"
+  if [[ "${value}" =~ ^[+-]?[0-9]+$ ]]; then
+    printf '%s.0\n' "${value}"
+  else
+    printf '%s\n' "${value}"
+  fi
+}
+
 sf_validate_vision_model_source_config_json() {
   local payload="${1:-}"
   [ -n "${payload}" ] || return 0
