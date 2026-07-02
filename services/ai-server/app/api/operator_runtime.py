@@ -77,6 +77,7 @@ ALLOWED_RUNTIME_PARAMS: dict[str, RuntimeParamSpec] = {
     "VISION_MAP_ROI_MIN_MARKERS": RuntimeParamSpec("int", 1, 8, description="Minimum visible ArUco markers needed to refresh Map ROI."),
     "VISION_MAP_ROI_STALE_USABLE_S": RuntimeParamSpec("float", 1.0, 600.0, description="Seconds to keep the last latched Map ROI when markers disappear."),
     "VISION_MAP_ROI_POLYGON_NORMALIZED": RuntimeParamSpec("normalized_polygon", description="Map ROI polygon as x,y;x,y;... normalized to full frame."),
+    "VISION_MAP_ROI_FREEZE_MARKER_IDS": RuntimeParamSpec("marker_ids", description="Comma-separated DICT_4X4_50 ids that freeze the diagnostic Map ROI once seen, e.g. 12."),
 }
 
 

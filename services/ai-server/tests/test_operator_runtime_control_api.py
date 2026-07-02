@@ -50,6 +50,7 @@ def test_operator_runtime_control_dry_run_writes_allowlisted_override(tmp_path: 
                 "PICAM_WEBRTC_AI_FPS": 7.5,
                 "VISION_MAP_ROI_ENABLED": True,
                 "VISION_MAP_ROI_MARKER_IDS": "11,12",
+                "VISION_MAP_ROI_FREEZE_MARKER_IDS": "12",
                 "VISION_MAP_ROI_MIN_MARKERS": 1,
                 "VISION_MAP_ROI_POLYGON_NORMALIZED": "0.1,0.1;0.8,0.1;0.8,0.9;0.1,0.9",
             },
@@ -78,6 +79,7 @@ def test_operator_runtime_control_dry_run_writes_allowlisted_override(tmp_path: 
     assert "export PICAM_WEBRTC_AI_FPS=7.5" in text
     assert "export VISION_MAP_ROI_ENABLED=true" in text
     assert "export VISION_MAP_ROI_MARKER_IDS=11,12" in text
+    assert "export VISION_MAP_ROI_FREEZE_MARKER_IDS=12" in text
     assert "export VISION_MAP_ROI_MIN_MARKERS=1" in text
     assert "export VISION_MAP_ROI_POLYGON_NORMALIZED='0.1,0.1;0.8,0.1;0.8,0.9;0.1,0.9'" in text
     assert json.loads((tmp_path / "last_request.json").read_text())["run_id"] == payload["run_id"]
@@ -196,6 +198,7 @@ def test_operator_runtime_status_lists_allowlisted_params_and_last_result(tmp_pa
     assert payload["profile"] == "lab-gopro-tb3-low-load"
     assert "GOPRO_AI_MONITOR_FPS" in payload["allowed_params"]
     assert "GOPRO_ROI_HINT_NORMALIZED" in payload["allowed_params"]
+    assert "VISION_MAP_ROI_FREEZE_MARKER_IDS" in payload["allowed_params"]
     assert "VISION_MAP_ROI_POLYGON_NORMALIZED" in payload["allowed_params"]
     assert payload["last_result"]["schema_version"] == "smartfactory-operator-runtime-control-result.v1"
     assert payload["last_result"]["run_id"] == "abc123"

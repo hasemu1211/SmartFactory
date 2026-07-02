@@ -6,6 +6,7 @@ from api_test_helpers import aruco_png_bytes, client, get_settings, main_module
 from app.detectors import MarkerDetection
 from app.map_roi import (
     FRESH,
+    LOCKED,
     STALE_USABLE,
     MapRoiConfig,
     MapRoiTracker,
@@ -86,6 +87,57 @@ def test_map_roi_tracker_latches_first_marker_observation_and_translates_polygon
     assert moved is not None
     assert moved.status == FRESH
     assert moved.polygon_xy == ((15.0, 17.0), (55.0, 17.0), (55.0, 57.0), (15.0, 57.0))
+
+
+def test_map_roi_tracker_freezes_once_preferred_marker_is_seen() -> None:
+    config = MapRoiConfig(
+        enabled=True,
+        source="global_cam_01",
+        marker_ids=("ARUCO_4X4_50_11", "ARUCO_4X4_50_12"),
+        min_markers=1,
+        stale_usable_s=30.0,
+        polygon_normalized=((0.1, 0.1), (0.5, 0.1), (0.5, 0.5), (0.1, 0.5)),
+        freeze_marker_ids=("ARUCO_4X4_50_12",),
+    )
+    tracker = MapRoiTracker()
+
+    initial = tracker.update(
+        source="global_cam_01",
+        detections=[_marker(11, 20.0, 30.0)],
+        image_width=101,
+        image_height=101,
+        config=config,
+        now_monotonic=10.0,
+    )
+    assert initial is not None
+    assert initial.status == FRESH
+
+    locked = tracker.update(
+        source="global_cam_01",
+        detections=[_marker(12, 80.0, 90.0)],
+        image_width=101,
+        image_height=101,
+        config=config,
+        now_monotonic=11.0,
+    )
+    assert locked is not None
+    assert locked.status == LOCKED
+    assert locked.reason == "marker_freeze_latch"
+    locked_polygon = locked.polygon_xy
+
+    later = tracker.update(
+        source="global_cam_01",
+        detections=[_marker(11, 50.0, 60.0)],
+        image_width=101,
+        image_height=101,
+        config=config,
+        now_monotonic=20.0,
+    )
+    assert later is not None
+    assert later.status == LOCKED
+    assert later.reason == "marker_freeze_locked"
+    assert later.polygon_xy == locked_polygon
+    assert later.age_s == 9.0
 
 
 def test_map_roi_tracker_keeps_latched_polygon_stale_then_expires() -> None:

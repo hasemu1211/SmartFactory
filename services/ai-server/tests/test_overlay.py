@@ -45,6 +45,31 @@ def test_overlay_renderer_draws_marker_bbox_and_metadata():
     assert overlay.metadata()["visual_state"] == "fresh"
 
 
+def test_overlay_renderer_shortens_aruco_marker_visual_labels(monkeypatch):
+    store = LatestFrameStore()
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
+    frame = store.put_decoded(source="tb3_1_picam", image_bgr=image)
+    event = {
+        "timestamp": "2026-06-15T09:00:00+09:00",
+        "class_name": "aruco_marker",
+        "marker_id": "ARUCO_4X4_50_12",
+        "confidence": 1.0,
+        "bbox_xyxy": [20, 20, 80, 80],
+        "metadata": {"latency_ms": 3.5},
+    }
+    captured_labels = []
+
+    def capture_label(image, text, x, y, color):
+        captured_labels.append(text)
+
+    monkeypatch.setattr(overlay_module, "_draw_label", capture_label)
+
+    render_overlay(frame, events=[event])
+
+    assert captured_labels[0] == "A12 1.00"
+    assert "ARUCO_4X4_50_12" not in captured_labels[0]
+
+
 def test_stale_overlay_has_unmistakable_visual_warning_band():
     store = LatestFrameStore()
     image = np.zeros((120, 160, 3), dtype=np.uint8)

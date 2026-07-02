@@ -18,6 +18,7 @@ Point = tuple[float, float]
 FRESH = "FRESH"
 STALE_USABLE = "STALE_USABLE"
 EXPIRED = "EXPIRED"
+LOCKED = "LOCKED"
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class MapRoiConfig:
     stale_usable_s: float = 180.0
     polygon_normalized: tuple[Point, ...] = ()
     label: str = "MAP ROI"
+    freeze_marker_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -194,12 +196,14 @@ class MapRoiTracker:
         self._reference_polygon_xy: tuple[Point, ...] = ()
         self._reference_frame_size_px: tuple[int, int] | None = None
         self._last_snapshot: MapRoiSnapshot | None = None
+        self._frozen_snapshot: MapRoiSnapshot | None = None
 
     def reset(self) -> None:
         self._reference_markers = {}
         self._reference_polygon_xy = ()
         self._reference_frame_size_px = None
         self._last_snapshot = None
+        self._frozen_snapshot = None
 
     def update(
         self,
@@ -241,6 +245,13 @@ class MapRoiTracker:
         visible_ids = tuple(marker_id for marker_id in configured_ids if marker_id in current_markers)
         missing_ids = tuple(marker_id for marker_id in configured_ids if marker_id not in current_markers)
         min_markers = max(1, min(int(config.min_markers), len(configured_ids)))
+        if self._frozen_snapshot is not None:
+            return self._frozen_snapshot.with_status(
+                status=LOCKED,
+                observed_monotonic=now,
+                missing_markers=missing_ids,
+                reason="marker_freeze_locked",
+            )
 
         if len(visible_ids) >= min_markers and not self._reference_markers:
             self._reference_markers = {marker_id: current_markers[marker_id] for marker_id in visible_ids}
@@ -286,6 +297,8 @@ class MapRoiTracker:
                 quality=round(len(usable_ids) / max(1, len(configured_ids)), 3),
                 reason="marker_affine_latch",
             )
+            if self._should_freeze(snapshot.markers_used, config.freeze_marker_ids):
+                snapshot = self._freeze_snapshot(snapshot, now_monotonic=now)
             self._last_snapshot = snapshot
             return snapshot
 
@@ -307,6 +320,23 @@ class MapRoiTracker:
             reason="markers_missing_latched_polygon_expired",
         )
 
+    def _should_freeze(self, markers_used: tuple[str, ...], freeze_marker_ids: tuple[str, ...]) -> bool:
+        if self._frozen_snapshot is not None or not freeze_marker_ids:
+            return False
+        return any(marker_id in markers_used for marker_id in freeze_marker_ids)
+
+    def _freeze_snapshot(self, snapshot: MapRoiSnapshot, *, now_monotonic: float) -> MapRoiSnapshot:
+        frozen = replace(
+            snapshot,
+            status=LOCKED,
+            updated_monotonic=now_monotonic,
+            observed_monotonic=now_monotonic,
+            age_s=0.0,
+            reason="marker_freeze_latch",
+        )
+        self._frozen_snapshot = frozen
+        return frozen
+
 
 def map_roi_config_from_settings(settings: Any) -> MapRoiConfig:
     return MapRoiConfig(
@@ -317,6 +347,7 @@ def map_roi_config_from_settings(settings: Any) -> MapRoiConfig:
         stale_usable_s=float(getattr(settings, "vision_map_roi_stale_usable_s", 180.0)),
         polygon_normalized=parse_normalized_polygon(str(getattr(settings, "vision_map_roi_polygon_normalized", ""))),
         label=str(getattr(settings, "vision_map_roi_label", "MAP ROI")),
+        freeze_marker_ids=parse_marker_ids(str(getattr(settings, "vision_map_roi_freeze_marker_ids", ""))),
     )
 
 

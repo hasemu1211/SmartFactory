@@ -142,6 +142,31 @@ def _is_visual_overlay_event(event: dict[str, Any]) -> bool:
     return event.get("class_name") != "unknown"
 
 
+def _short_marker_id(marker_id: Any) -> str | None:
+    raw = str(marker_id or "").strip()
+    if not raw:
+        return None
+    suffix = raw.rsplit("_", 1)[-1]
+    if suffix.isdigit():
+        return f"A{suffix}"
+    return raw
+
+
+def _event_label(event: dict[str, Any]) -> str:
+    class_name = str(event.get("class_name") or "evidence")
+    label_parts: list[str] = []
+    if class_name == "aruco_marker":
+        label_parts.append(_short_marker_id(event.get("marker_id")) or "A?")
+    else:
+        label_parts.append(class_name)
+        if event.get("marker_id"):
+            label_parts.append(str(event["marker_id"]))
+    confidence = event.get("confidence")
+    if isinstance(confidence, int | float):
+        label_parts.append(f"{confidence:.2f}")
+    return " ".join(label_parts)
+
+
 def render_overlay(
     frame: StoredFrame,
     *,
@@ -211,13 +236,7 @@ def render_overlay_bgr(
         color = _event_color(event, stale=stale)
         x1, y1, x2, y2 = bbox
         cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
-        label_parts = [str(event.get("class_name") or "evidence")]
-        if event.get("marker_id"):
-            label_parts.append(str(event["marker_id"]))
-        confidence = event.get("confidence")
-        if isinstance(confidence, int | float):
-            label_parts.append(f"{confidence:.2f}")
-        _draw_label(image, " ".join(label_parts), max(0, x1), max(14, y1), color)
+        _draw_label(image, _event_label(event), max(0, x1), max(14, y1), color)
 
     if stale:
         # Make stale evidence visually unmistakable for GUI/debug QA.  The full-width
