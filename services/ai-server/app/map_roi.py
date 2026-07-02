@@ -333,10 +333,10 @@ def snapshot_to_overlay_event(
 ) -> dict[str, Any] | None:
     if snapshot.status == EXPIRED or not snapshot.polygon_xy:
         return None
-    if snapshot.status == STALE_USABLE:
-        color_bgr = [0, 165, 255]
-    else:
-        color_bgr = [255, 255, 0]
+    # Keep Map ROI visually stable.  Status/age still appear in the label and
+    # metadata, but the polygon color remains cyan so stale transitions do not
+    # flicker amber in the operator's live view.
+    color_bgr = [255, 255, 0]
     label_text = f"{label} {snapshot.status} age={snapshot.age_s:.1f}s"
     if snapshot.markers_used:
         label_text += " " + ",".join(marker.rsplit("_", 1)[-1] for marker in snapshot.markers_used)

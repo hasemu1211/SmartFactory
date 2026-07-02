@@ -122,3 +122,25 @@ def test_overlay_renderer_draws_map_roi_polygon_with_distinct_color():
     assert int(sample[0]) > 120
     assert int(sample[1]) > 120
     assert int(sample[2]) < 100
+
+
+def test_overlay_renderer_suppresses_unknown_visual_boxes():
+    store = LatestFrameStore()
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
+    frame = store.put_decoded(source="global_cam_01", image_bgr=image)
+    unknown_event = {
+        "timestamp": "2026-07-02T09:00:00+09:00",
+        "class_name": "unknown",
+        "confidence": 0.72,
+        "bbox_xyxy": [20, 20, 100, 80],
+        "metadata": {"latency_ms": 3.5},
+    }
+
+    overlay = render_overlay(frame, events=[unknown_event])
+
+    decoded = cv2.imdecode(np.frombuffer(overlay.jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+    assert decoded is not None
+    assert overlay.metadata()["event_count"] == 1
+    # Unknown detections should remain in metadata counts but not draw a green
+    # rectangle in the operator view.  Sample away from the clock banner.
+    assert np.linalg.norm(decoded[20, 60].astype(float)) < 30

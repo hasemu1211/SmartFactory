@@ -132,6 +132,42 @@ def test_map_roi_tracker_keeps_latched_polygon_stale_then_expires() -> None:
     assert snapshot_to_overlay_event(expired) is None
 
 
+def test_stale_map_roi_overlay_keeps_cyan_color_to_avoid_live_flicker() -> None:
+    config = MapRoiConfig(
+        enabled=True,
+        source="global_cam_01",
+        marker_ids=("ARUCO_4X4_50_11",),
+        min_markers=1,
+        stale_usable_s=30.0,
+        polygon_normalized=((0.1, 0.1), (0.5, 0.1), (0.5, 0.5), (0.1, 0.5)),
+    )
+    tracker = MapRoiTracker()
+    assert tracker.update(
+        source="global_cam_01",
+        detections=[_marker(11, 20.0, 30.0)],
+        image_width=101,
+        image_height=101,
+        config=config,
+        now_monotonic=10.0,
+    )
+    stale = tracker.update(
+        source="global_cam_01",
+        detections=[],
+        image_width=101,
+        image_height=101,
+        config=config,
+        now_monotonic=12.0,
+    )
+    assert stale is not None
+    assert stale.status == STALE_USABLE
+
+    event = snapshot_to_overlay_event(stale)
+
+    assert event is not None
+    assert event["metadata"]["overlay_color_bgr"] == [255, 255, 0]
+    assert "STALE_USABLE" in event["metadata"]["overlay_label"]
+
+
 def test_snapshot_to_overlay_event_is_debug_only_polygon_metadata() -> None:
     config = MapRoiConfig(
         enabled=True,

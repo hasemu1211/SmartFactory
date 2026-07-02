@@ -134,6 +134,14 @@ def _draw_overlay_polygon(image: np.ndarray, event: dict[str, Any], *, stale: bo
         _draw_label(image, label, max(0, x), max(14, y), color)
 
 
+def _is_visual_overlay_event(event: dict[str, Any]) -> bool:
+    # Keep model fallback/unknown candidates available in event payloads for
+    # diagnostics, but do not clutter the live operator overlay with ambiguous
+    # boxes.  Main-facing hazard/evidence read models still decide from their
+    # own compact policies, not from this visual filter.
+    return event.get("class_name") != "unknown"
+
+
 def render_overlay(
     frame: StoredFrame,
     *,
@@ -191,10 +199,12 @@ def render_overlay_bgr(
     else:
         image = frame.decoded_bgr.copy()
 
-    for event in events:
+    visual_events = [event for event in events if _is_visual_overlay_event(event)]
+
+    for event in visual_events:
         _draw_overlay_polygon(image, event, stale=stale)
 
-    for event in events:
+    for event in visual_events:
         bbox = _bbox(event)
         if bbox is None:
             continue
