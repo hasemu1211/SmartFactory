@@ -412,6 +412,7 @@ def test_lab_gopro_tb3_low_load_profile_disables_optional_streams_without_hiding
     assert "compositor_publisher_streams=global_cam_01/full,tb3_1_picam/full,tb3_2_picam/full" in result.stdout
     assert "publish_webrtc=true" in result.stdout
     assert "publish_roi_webrtc=false" in result.stdout
+    assert "stream_target_fps=20" in result.stdout
     assert "webrtc_full_output=960x540" in result.stdout
     assert "picam_publish_webrtc: true" in result.stdout
     assert "global_cam_01/lift_roi,tb3_1_picam/full" not in result.stdout
@@ -441,6 +442,7 @@ def test_lab_gopro_tb3_low_load_sidecar_uses_only_low_load_receiver_paths() -> N
     assert "path=tb3_1_picam_full" in result.stdout
     assert "path=tb3_2_picam_full" in result.stdout
     assert "path=global_cam_01_lift_roi" not in result.stdout
+    assert "target_fps: 20" in result.stdout
     assert "transport_origin=vision_pc_compositor_publisher" in result.stdout
 
 
