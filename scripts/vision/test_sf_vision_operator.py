@@ -1163,15 +1163,29 @@ def test_restart_helper_is_low_load_scoped_and_restarts_via_override_file() -> N
     assert "git status --porcelain" in body
     assert "sf_vision.sh down" in body
     assert "SF_VISION_RUNTIME_OVERRIDE_FILE" in body
-    assert 'exec ./scripts/vision/sf_vision.sh up "${PROFILE}"' in body
+    assert './scripts/vision/sf_vision.sh up $(shell_quote "${PROFILE}")' in body
 
 
 def test_restart_helper_drops_parent_derived_stream_upstreams() -> None:
     body = RESTART_SCRIPT.read_text()
 
-    unset_index = body.index("unset VISION_STREAM_SOURCE_UPSTREAMS_JSON")
-    exec_index = body.index('exec ./scripts/vision/sf_vision.sh up "${PROFILE}"')
-    assert unset_index < exec_index
+    assert "env -u VISION_STREAM_SOURCE_UPSTREAMS_JSON" in body
+
+
+def test_restart_helper_restarts_in_operator_tmux_pane_with_verified_buffer() -> None:
+    body = RESTART_SCRIPT.read_text()
+
+    assert "runtime_tmux_target_pane()" in body
+    assert "SF_RUNTIME_CONTROL_TMUX_PANE" in body
+    assert 'TMUX_PANE:-' in body
+    assert "preflight_runtime_target_pane" in body
+    assert 'tmux set-buffer -b "${buffer}" -- "${LAUNCH_COMMAND}"' in body
+    assert 'tmux show-buffer -b "${buffer}"' in body
+    assert 'tmux send-keys -t "${target}" C-u' in body
+    assert 'tmux paste-buffer -t "${target}" -b "${buffer}" -p -d' in body
+    assert 'tmux send-keys -t "${target}" Enter' in body
+    assert "tmux buffer verification failed" in body
+    assert 'exec ./scripts/vision/sf_vision.sh up "${PROFILE}"' not in body
 
 
 def test_restart_helper_checks_tmux_before_git_pull_or_down() -> None:

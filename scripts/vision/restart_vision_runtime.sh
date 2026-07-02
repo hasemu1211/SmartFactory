@@ -80,6 +80,14 @@ current_tmux_context() {
   tmux display-message -p '#S:#I:#W' 2>/dev/null
 }
 
+tmux_pane_context() {
+  local pane="$1"
+  if [ -z "${pane}" ] || ! command -v tmux >/dev/null 2>&1; then
+    return 1
+  fi
+  tmux display-message -p -t "${pane}" '#S:#I:#W' 2>/dev/null
+}
+
 preflight_tmux_context_before_destructive_steps() {
   case "${SF_VISION_TMUX_GUARD_ENABLED:-true}" in
     0|false|FALSE|no|NO|off|OFF) return 0 ;;
@@ -96,6 +104,85 @@ Current context: ${current:-<not inside tmux>}
 Start the laptop low-load runtime from the required tmux pane once, then retry runtime-control.
 ERROR
   exit 4
+}
+
+runtime_tmux_target_pane() {
+  printf '%s\n' "${SF_RUNTIME_CONTROL_TMUX_PANE:-${TMUX_PANE:-}}"
+}
+
+preflight_runtime_target_pane() {
+  case "${SF_VISION_TMUX_GUARD_ENABLED:-true}" in
+    0|false|FALSE|no|NO|off|OFF) return 0 ;;
+  esac
+  local required target target_context
+  required="${SF_VISION_TMUX_REQUIRED_CONTEXT:-Smartfactory:3:Development}"
+  target="$(runtime_tmux_target_pane)"
+  target_context="$(tmux_pane_context "${target}" || true)"
+  if [ -n "${target}" ] && [ "${target_context}" = "${required}" ]; then
+    return 0
+  fi
+  cat >&2 <<ERROR
+ERROR: refusing remote restart because target tmux pane is not in ${required}.
+Target pane: ${target:-<empty>}
+Target context: ${target_context:-<unavailable>}
+Start the laptop low-load runtime from the required tmux pane once, then retry runtime-control.
+ERROR
+  exit 4
+}
+
+shell_quote() {
+  printf '%q' "$1"
+}
+
+append_env_assignment() {
+  local name="$1"
+  if [ -n "${!name+x}" ]; then
+    LAUNCH_COMMAND+=" ${name}=$(shell_quote "${!name}")"
+  fi
+}
+
+build_launch_command() {
+  LAUNCH_COMMAND="cd $(shell_quote "${ROOT_DIR}") && env -u VISION_STREAM_SOURCE_UPSTREAMS_JSON"
+  for name in \
+    SF_RUNTIME_CONTROL_ENABLED \
+    SF_RUNTIME_CONTROL_TOKEN \
+    SF_VISION_TMUX_GUARD_ENABLED \
+    SF_VISION_TMUX_REQUIRED_CONTEXT \
+    AI_SERVER_HOST \
+    AI_SERVER_PORT \
+    AI_SERVER_URL \
+    VISION_MODEL_WORKER_ENABLED \
+    VISION_MODEL_PATH \
+    VISION_MODEL_TASK \
+    VISION_MODEL_DEVICE \
+    VISION_MODEL_IMGSZ \
+    VISION_MODEL_CONF \
+    VISION_MODEL_IOU \
+    VISION_GATEWAY_REQUEST_TIMEOUT_SEC
+  do
+    append_env_assignment "${name}"
+  done
+  LAUNCH_COMMAND+=" SF_VISION_RUNTIME_OVERRIDE_FILE=$(shell_quote "${OVERRIDE_FILE}")"
+  LAUNCH_COMMAND+=" SF_RUNTIME_CONTROL_RUN_ID=$(shell_quote "${RUN_ID}")"
+  LAUNCH_COMMAND+=" ./scripts/vision/sf_vision.sh up $(shell_quote "${PROFILE}")"
+}
+
+start_runtime_in_tmux_pane() {
+  local target buffer loaded
+  target="$(runtime_tmux_target_pane)"
+  preflight_runtime_target_pane
+  build_launch_command
+  buffer="sf-runtime-control-${RUN_ID}"
+  tmux set-buffer -b "${buffer}" -- "${LAUNCH_COMMAND}"
+  loaded="$(tmux show-buffer -b "${buffer}")"
+  if [ "${loaded}" != "${LAUNCH_COMMAND}" ]; then
+    echo "ERROR: tmux buffer verification failed for ${buffer}" >&2
+    exit 5
+  fi
+  tmux send-keys -t "${target}" C-u
+  tmux paste-buffer -t "${target}" -b "${buffer}" -p -d
+  tmux send-keys -t "${target}" Enter
+  echo "[runtime-control] pasted restart command into tmux pane ${target}"
 }
 
 preflight_tmux_context_before_destructive_steps
@@ -118,12 +205,5 @@ fi
 echo "[runtime-control] stopping existing Vision runtime"
 ./scripts/vision/sf_vision.sh down || true
 
-echo "[runtime-control] starting ${PROFILE} with override file"
-# The helper is spawned by the AI Server, which itself was started by a previous
-# Vision runtime. Do not let derived runtime values from that parent process
-# leak into the replacement runtime: sf_vision.sh/profile defaults must
-# recompute these from the selected profile plus the explicit override file.
-unset VISION_STREAM_SOURCE_UPSTREAMS_JSON
-export SF_VISION_RUNTIME_OVERRIDE_FILE="${OVERRIDE_FILE}"
-export SF_RUNTIME_CONTROL_RUN_ID="${RUN_ID}"
-exec ./scripts/vision/sf_vision.sh up "${PROFILE}"
+echo "[runtime-control] starting ${PROFILE} with override file in the operator tmux pane"
+start_runtime_in_tmux_pane
