@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "vision" / "sf_vision.sh"
+RESTART_SCRIPT = ROOT / "scripts" / "vision" / "restart_vision_runtime.sh"
 SIDECAR_SCRIPT = ROOT / "scripts" / "vision" / "run_webrtc_sidecar_mediamtx.sh"
 PROFILE_DIR = ROOT / "config" / "vision" / "profiles"
 GOPRO_ADAPTER_SCRIPT = ROOT / "scripts" / "vision" / "run_gopro_smart_roi_adapter.py"
@@ -166,6 +167,7 @@ def test_gopro_adapter_can_disable_roi_webrtc_without_disabling_full_webrtc(tmp_
 
 def test_operator_script_is_valid_bash() -> None:
     subprocess.run(["bash", "-n", str(SCRIPT)], cwd=ROOT, check=True)
+    subprocess.run(["bash", "-n", str(RESTART_SCRIPT)], cwd=ROOT, check=True)
     subprocess.run(["bash", "-n", str(SIDECAR_SCRIPT)], cwd=ROOT, check=True)
 
 
@@ -1143,3 +1145,32 @@ def test_webrtc_sidecar_run_refuses_wrong_tmux_context_before_dependency_checks(
     assert result.returncode != 0
     assert "live WebRTC sidecar processes must run in tmux NoSuchSession:9:Nowhere" in result.stderr
     assert "mediamtx executable not found" not in result.stderr
+
+
+def test_operator_loads_runtime_override_file_after_profile() -> None:
+    body = SCRIPT.read_text()
+
+    assert "SF_VISION_RUNTIME_OVERRIDE_FILE" in body
+    assert 'source "${SF_VISION_RUNTIME_OVERRIDE_FILE}"' in body
+    assert "SF_RUNTIME_CONTROL_RUN_ID" in body
+
+
+def test_restart_helper_is_low_load_scoped_and_restarts_via_override_file() -> None:
+    body = RESTART_SCRIPT.read_text()
+
+    assert "lab-gopro-tb3-low-load" in body
+    assert "git pull --ff-only" in body
+    assert "git status --porcelain" in body
+    assert "sf_vision.sh down" in body
+    assert "SF_VISION_RUNTIME_OVERRIDE_FILE" in body
+    assert 'exec ./scripts/vision/sf_vision.sh up "${PROFILE}"' in body
+
+
+def test_restart_helper_checks_tmux_before_git_pull_or_down() -> None:
+    body = RESTART_SCRIPT.read_text()
+
+    preflight_index = body.index("preflight_tmux_context_before_destructive_steps")
+    git_pull_index = body.rindex("git pull --ff-only")
+    down_index = body.rindex("sf_vision.sh down")
+    assert preflight_index < git_pull_index < down_index
+    assert "refusing remote restart before stopping current runtime" in body

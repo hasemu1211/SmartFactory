@@ -51,6 +51,8 @@ API JSON helpers (call a running AI Server and print JSON for Main/connector che
   $(basename "$0") api evidence-mock [operation]
   $(basename "$0") api evaluate-no-frame [source] [view] [operation]
   $(basename "$0") api evaluate-quality [source] [view]
+  $(basename "$0") api runtime-status
+  $(basename "$0") api restart-low-load [--dry-run] [--git-pull] KEY=VALUE...
 
 Defaults:
   profile=${PROFILE}
@@ -113,6 +115,31 @@ curl_json_post() {
     -H 'Content-Type: application/json' \
     -d "${payload}" \
     "${url}"
+}
+
+curl_json_get_operator() {
+  need_cmd curl
+  local url="$1"
+  local curl_args=(-fsS --max-time "${CURL_TIMEOUT}")
+  if [ -n "${SF_RUNTIME_CONTROL_TOKEN:-}" ]; then
+    curl_args+=(-H "X-SF-Operator-Token: ${SF_RUNTIME_CONTROL_TOKEN}")
+  fi
+  curl "${curl_args[@]}" "${url}"
+}
+
+curl_json_post_operator() {
+  need_cmd curl
+  local url="$1"
+  local payload="$2"
+  local curl_args=(
+    -fsS
+    --max-time "${CURL_TIMEOUT}"
+    -H 'Content-Type: application/json'
+  )
+  if [ -n "${SF_RUNTIME_CONTROL_TOKEN:-}" ]; then
+    curl_args+=(-H "X-SF-Operator-Token: ${SF_RUNTIME_CONTROL_TOKEN}")
+  fi
+  curl "${curl_args[@]}" -d "${payload}" "${url}"
 }
 
 python_json() {
@@ -401,6 +428,65 @@ PY
   curl_json_post "${AI_SERVER_URL%/}/api/v1/evidence/evaluate" "${payload}"
 }
 
+api_runtime_status() {
+  curl_json_get_operator "${AI_SERVER_URL%/}/api/v1/operator/runtime/status"
+}
+
+api_restart_low_load() {
+  local dry_run="false"
+  local git_pull="false"
+  local require_clean_git="true"
+  local reason="operator low-load parameter restart"
+  local args=()
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --dry-run) dry_run="true"; shift ;;
+      --git-pull|--pull) git_pull="true"; shift ;;
+      --require-clean-git) require_clean_git="true"; shift ;;
+      --allow-dirty-git) require_clean_git="false"; shift ;;
+      --reason) reason="${2:-}"; shift 2 ;;
+      --) shift; break ;;
+      *) args+=("$1"); shift ;;
+    esac
+  done
+  if [ "$#" -gt 0 ]; then
+    args+=("$@")
+  fi
+  local payload
+  payload="$(python_json "${dry_run}" "${git_pull}" "${require_clean_git}" "${reason}" "${args[@]}" <<'PY'
+import json
+import sys
+
+dry_run = sys.argv[1].lower() in {"1", "true", "yes", "y", "on"}
+git_pull = sys.argv[2].lower() in {"1", "true", "yes", "y", "on"}
+require_clean_git = sys.argv[3].lower() in {"1", "true", "yes", "y", "on"}
+reason = sys.argv[4]
+params = {}
+errors = []
+for item in sys.argv[5:]:
+    if "=" not in item:
+        errors.append(f"expected KEY=VALUE, got {item!r}")
+        continue
+    key, value = item.split("=", 1)
+    if not key:
+        errors.append(f"empty key in {item!r}")
+        continue
+    params[key] = value
+if errors:
+    raise SystemExit("ERROR: " + "; ".join(errors))
+print(json.dumps({
+    "profile": "lab-gopro-tb3-low-load",
+    "params": params,
+    "reason": reason,
+    "dry_run": dry_run,
+    "git_pull": git_pull,
+    "require_clean_git": require_clean_git,
+}, separators=(",", ":")))
+PY
+)"
+  curl_json_post_operator "${AI_SERVER_URL%/}/api/v1/operator/runtime/low-load/restart" "${payload}"
+}
+
 cmd_api() {
   local subcommand="${1:-help}"
   shift || true
@@ -414,6 +500,8 @@ cmd_api() {
     evidence-mock|mock) api_evidence_mock "$@" ;;
     evaluate-no-frame|no-frame) api_evaluate_no_frame "$@" ;;
     evaluate-quality|quality) api_evaluate_quality "$@" ;;
+    runtime-status|operator-status) api_runtime_status "$@" ;;
+    restart-low-load|restart-lowload|runtime-restart) api_restart_low_load "$@" ;;
     help|-h|--help) usage ;;
     *)
       echo "ERROR: unknown api command: ${subcommand}" >&2

@@ -88,6 +88,14 @@ class Settings(BaseSettings):
     aruco_pose_profiles_path: Path = Field(
         default=REPO_ROOT / "config" / "perception" / "aruco_pose_profiles.example.json"
     )
+    sf_runtime_control_enabled: bool = False
+    sf_runtime_control_token: str = ""
+    sf_runtime_control_run_dir: Path = Field(
+        default=REPO_ROOT / ".run" / "vision" / "runtime-control"
+    )
+    sf_runtime_control_restart_script: Path = Field(
+        default=REPO_ROOT / "scripts" / "vision" / "restart_vision_runtime.sh"
+    )
 
     @property
     def source_registry(self) -> SourceRegistry:

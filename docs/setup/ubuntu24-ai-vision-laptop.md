@@ -211,6 +211,76 @@ an operator-managed `http://smartfactory-ai:8100` alias. If the lab subnet
 changes to `192.168.30.x`, update only DNS/mDNS/hosts or explicit fallback envs;
 do not hard-code the new subnet in tracked defaults.
 
+## Operator PC remote low-load refresh/restart
+
+The lab-only runtime-control API lets an operator PC ask the AI/Vision laptop to
+restart its local `low-load` runtime with a small allowlist of tuning parameters.
+This is for laptop runtime operation only; it is not a Main-facing robot-control
+API and it never publishes `/cmd_vel`, mutates Main DB rows, or runs arbitrary
+shell commands.
+
+Safety rules:
+
+- Disabled by default. Enable it only on the lab laptop with
+  `SF_RUNTIME_CONTROL_ENABLED=true`.
+- Optional but recommended token: set `SF_RUNTIME_CONTROL_TOKEN` on the laptop
+  and on the operator PC. Requests then need `X-SF-Operator-Token`.
+- Git update is limited to the laptop's current branch with `git pull --ff-only`.
+  The helper refuses to pull/restart if the laptop working tree is dirty.
+- Runtime params are allowlisted, for example
+  `GOPRO_AI_MONITOR_FPS`, `GOPRO_AI_MONITOR_IMGSZ`,
+  `GOPRO_WEBRTC_FULL_OUTPUT_WIDTH`, `GOPRO_WEBRTC_BITRATE`,
+  `PICAM_WEBRTC_AI_FPS`, and `GOPRO_ROI_HINT_NORMALIZED`.
+
+First time after pulling this feature, start low-load once on the laptop with the
+operator endpoint enabled:
+
+```bash
+cd ~/SmartFactory
+export SF_RUNTIME_CONTROL_ENABLED=true
+# Optional shared secret for the lab network:
+# export SF_RUNTIME_CONTROL_TOKEN='<lab-token>'
+./scripts/vision/sf_lab.sh low-load
+```
+
+Operator PC aliases, assuming this repo is also available locally:
+
+```bash
+export SF_VISION_LAPTOP_URL=http://smartfactory-vision.local:8100
+# If a token was set on the laptop, set the same value here:
+# export SF_RUNTIME_CONTROL_TOKEN='<lab-token>'
+alias sfvisionctl='cd ~/SmartFactory && AI_SERVER_URL=${SF_VISION_LAPTOP_URL:-http://smartfactory-vision.local:8100} ./scripts/vision/sf_lab.sh api'
+alias sflowrefresh='sfvisionctl restart-low-load --git-pull'
+alias sflowdry='sfvisionctl restart-low-load --dry-run'
+```
+
+Examples from the operator PC:
+
+```bash
+# Check whether the laptop endpoint is enabled and see the allowlist.
+sfvisionctl runtime-status
+
+# Dry-run: writes no restart, but validates the payload shape.
+sflowdry GOPRO_AI_MONITOR_FPS=3 GOPRO_AI_MONITOR_IMGSZ=512
+
+# Pull latest current-branch code on the laptop, then restart low-load with params.
+sflowrefresh \
+  GOPRO_AI_MONITOR_FPS=3 \
+  GOPRO_AI_MONITOR_IMGSZ=512 \
+  GOPRO_WEBRTC_FULL_OUTPUT_WIDTH=960 \
+  GOPRO_WEBRTC_FULL_OUTPUT_HEIGHT=540 \
+  GOPRO_WEBRTC_BITRATE=1200k \
+  PICAM_WEBRTC_AI_FPS=5
+
+# Static ROI hint tuning while MapROI/ArUco calibration is being developed.
+sflowrefresh GOPRO_ROI_HINT_NORMALIZED=0.10,0.20,0.50,0.55
+```
+
+If `--git-pull` fails because the laptop has local changes, the helper exits
+before stopping the current runtime. Inspect the laptop log under
+`.run/vision/runtime-control/<run_id>.log`, clean/commit/stash intentionally,
+and retry.
+
 ## Run
 
 Start the AI Server + public gateway bundle. The following is the lightweight

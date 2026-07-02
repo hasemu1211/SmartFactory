@@ -65,6 +65,7 @@ def test_sf_lab_wrapper_is_valid_bash_and_has_operator_help() -> None:
     assert "sf_lab.sh low-load" in result.stdout
     assert "full WebRTC: GoPro full+lift_roi + tb3_1/tb3_2 + MJPEG fallback" in result.stdout
     assert "api evaluate-quality" in result.stdout
+    assert "api restart-low-load" in result.stdout
     assert "profile=lab-gopro-tb3-ffmpeg-first" in result.stdout
     assert "Robot Pi camera" in result.stdout
 
@@ -205,3 +206,57 @@ def test_sf_lab_api_evaluate_no_frame_rejects_unknown_operation() -> None:
 
     assert result.returncode == 2
     assert "operation must be PICKUP or DROPOFF" in result.stderr
+
+
+def test_sf_lab_api_restart_low_load_posts_operator_runtime_payload(tmp_path: Path) -> None:
+    _, capture = fake_curl(tmp_path)
+
+    result = run(
+        "api",
+        "restart-low-load",
+        "--dry-run",
+        "--git-pull",
+        "GOPRO_AI_MONITOR_FPS=3",
+        "GOPRO_AI_MONITOR_IMGSZ=512",
+        "GOPRO_ROI_HINT_NORMALIZED=0.1,0.2,0.3,0.4",
+        env={
+            **fake_curl_env(tmp_path, capture),
+            "SF_RUNTIME_CONTROL_TOKEN": "token-1",
+        },
+    )
+
+    assert json.loads(result.stdout)["ok"] is True
+    observed = json.loads(capture.read_text())
+    assert observed["url"] == "http://ai-server.local:8100/api/v1/operator/runtime/low-load/restart"
+    assert "X-SF-Operator-Token: token-1" in observed["args"]
+    payload = json.loads(observed["payload"])
+    assert payload == {
+        "profile": "lab-gopro-tb3-low-load",
+        "params": {
+            "GOPRO_AI_MONITOR_FPS": "3",
+            "GOPRO_AI_MONITOR_IMGSZ": "512",
+            "GOPRO_ROI_HINT_NORMALIZED": "0.1,0.2,0.3,0.4",
+        },
+        "reason": "operator low-load parameter restart",
+        "dry_run": True,
+        "git_pull": True,
+        "require_clean_git": True,
+    }
+
+
+def test_sf_lab_api_runtime_status_sends_operator_token(tmp_path: Path) -> None:
+    _, capture = fake_curl(tmp_path)
+
+    result = run(
+        "api",
+        "runtime-status",
+        env={
+            **fake_curl_env(tmp_path, capture),
+            "SF_RUNTIME_CONTROL_TOKEN": "token-1",
+        },
+    )
+
+    assert json.loads(result.stdout)["ok"] is True
+    observed = json.loads(capture.read_text())
+    assert observed["url"] == "http://ai-server.local:8100/api/v1/operator/runtime/status"
+    assert "X-SF-Operator-Token: token-1" in observed["args"]

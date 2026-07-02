@@ -95,6 +95,14 @@ load_profile() {
   set -a
   # shellcheck disable=SC1090
   source "${PROFILE_FILE}"
+  if [ -n "${SF_VISION_RUNTIME_OVERRIDE_FILE:-}" ]; then
+    if [ ! -f "${SF_VISION_RUNTIME_OVERRIDE_FILE}" ]; then
+      echo "ERROR: SF_VISION_RUNTIME_OVERRIDE_FILE not found: ${SF_VISION_RUNTIME_OVERRIDE_FILE}" >&2
+      return 2
+    fi
+    # shellcheck disable=SC1090
+    source "${SF_VISION_RUNTIME_OVERRIDE_FILE}"
+  fi
   set +a
 
   RUN_DIR="${SMARTFACTORY_VISION_RUN_DIR:-${ROOT_DIR}/.run/vision}"
@@ -427,6 +435,8 @@ record_summary() {
   cat > "${SUMMARY_FILE}" <<SUMMARY
 PROFILE=${PROFILE}
 PROFILE_FILE=${PROFILE_FILE}
+SF_VISION_RUNTIME_OVERRIDE_FILE=${SF_VISION_RUNTIME_OVERRIDE_FILE:-}
+SF_RUNTIME_CONTROL_RUN_ID=${SF_RUNTIME_CONTROL_RUN_ID:-}
 VISION_API_BASE_URL=$(api_base_url)
 VISION_STREAM_BASE_URL=$(public_base_url)
 LMS_VISION_STREAM_BASE_URL=$(public_base_url)
