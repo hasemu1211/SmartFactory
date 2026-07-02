@@ -540,6 +540,22 @@ operator/prototype transport. The following endpoints support robot-free
 synthetic validation, GUI integration experiments, and the current Main-facing
 gateway; Main must not depend on ROS or rosbridge for production stream access.
 
+Canonical WebRTC path IDs are view-qualified MediaMTX paths, not raw AI Server
+source IDs. For the current full-view robot PiCam streams, Main should use:
+
+```text
+http://smartfactory-vision.local:8889/tb3_1_picam_full/
+http://smartfactory-vision.local:8889/tb3_2_picam_full/
+```
+
+`tb3_1_picam` and `tb3_2_picam` remain the canonical API `source` values for
+health, monitor, detection, and evidence calls. Main should discover production
+stream URLs from `GET /api/v1/vision/streams` when possible, specifically the
+per-source `stream_transports[]` entry with `kind=webrtc` and `sidecar.browser_url`.
+Do not infer `http://<vision-host>:8889/{source}/`; that raw-source path is not
+the current WebRTC contract because a source can expose multiple views such as
+`full`, `lift_roi`, or future cropped views.
+
 ### `POST /api/v1/vision/synthetic/frame`
 
 Purpose: generate one deterministic synthetic ArUco frame, push it through the

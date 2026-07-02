@@ -2,7 +2,7 @@
 
 Date: 2026-07-02
 Branch: `feature/ai-server-marker-detection`
-Required commit or newer: `e263293acbbaf887f8c69ac7a803ea3e6dfb5238`
+Required commit or newer: `f3210a809e63459bd2714612caad1c4d9773230d`
 Scope: live validation for the Main-facing person hazard API with `tb3_1` and `tb3_2` Pi cameras.
 
 ## Purpose
@@ -83,6 +83,22 @@ http://smartfactory-vision.local:8889/tb3_2_picam_full/
 ```
 
 Expected: both Pi camera streams are visible.
+
+Contract note: `tb3_1_picam` and `tb3_2_picam` are AI Server source IDs, not
+MediaMTX path IDs. The current canonical WebRTC browser paths append the view
+name: `tb3_1_picam_full` and `tb3_2_picam_full`. Main should either use these
+paths directly for the PiCam full view or discover the current `browser_url` from
+`GET /api/v1/vision/streams`; do not infer `http://...:8889/tb3_1_picam/`.
+
+For Main handoff, the minimum validation subset is:
+
+1. health check: `GET /api/v1/health`;
+2. stream check: open `tb3_1_picam_full` and `tb3_2_picam_full`;
+3. enable both `person_drive` monitors with the current Main `task_id` values;
+4. poll `GET /api/v1/vision/hazards/person/latest?robot_id=tb3_1` and
+   `...?robot_id=tb3_2` independently;
+5. verify Main treats `ADVISORY/HUMAN_DETECTED` as its own HOLD/E-stop decision
+   input and does not expect AI Server to command motion or write DB rows.
 
 ## Test cases
 
