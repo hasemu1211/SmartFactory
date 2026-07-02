@@ -119,6 +119,11 @@ echo "[runtime-control] stopping existing Vision runtime"
 ./scripts/vision/sf_vision.sh down || true
 
 echo "[runtime-control] starting ${PROFILE} with override file"
+# The helper is spawned by the AI Server, which itself was started by a previous
+# Vision runtime. Do not let derived runtime values from that parent process
+# leak into the replacement runtime: sf_vision.sh/profile defaults must
+# recompute these from the selected profile plus the explicit override file.
+unset VISION_STREAM_SOURCE_UPSTREAMS_JSON
 export SF_VISION_RUNTIME_OVERRIDE_FILE="${OVERRIDE_FILE}"
 export SF_RUNTIME_CONTROL_RUN_ID="${RUN_ID}"
 exec ./scripts/vision/sf_vision.sh up "${PROFILE}"

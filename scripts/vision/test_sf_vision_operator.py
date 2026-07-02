@@ -1166,6 +1166,14 @@ def test_restart_helper_is_low_load_scoped_and_restarts_via_override_file() -> N
     assert 'exec ./scripts/vision/sf_vision.sh up "${PROFILE}"' in body
 
 
+def test_restart_helper_drops_parent_derived_stream_upstreams() -> None:
+    body = RESTART_SCRIPT.read_text()
+
+    unset_index = body.index("unset VISION_STREAM_SOURCE_UPSTREAMS_JSON")
+    exec_index = body.index('exec ./scripts/vision/sf_vision.sh up "${PROFILE}"')
+    assert unset_index < exec_index
+
+
 def test_restart_helper_checks_tmux_before_git_pull_or_down() -> None:
     body = RESTART_SCRIPT.read_text()
 
