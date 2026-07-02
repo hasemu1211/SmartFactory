@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from threading import Lock
 from typing import Any
 
@@ -15,6 +15,10 @@ class VisionMonitorStateError(ValueError):
 KNOWN_MONITOR_IDS = {"person_drive", "drop_watch", "lift_evidence"}
 KNOWN_OPERATION_STATES = {"IDLE", "DRIVE", "PICKUP", "DROPOFF", "MONITOR", "UNKNOWN"}
 KNOWN_ROBOT_IDS = {"tb3_1", "tb3_2"}
+PERSON_DRIVE_SOURCES_BY_ROBOT_ID = {
+    "tb3_1": "tb3_1_picam",
+    "tb3_2": "tb3_2_picam",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,16 +82,44 @@ class VisionMonitorStateStore:
 
     def __init__(self) -> None:
         self._states: dict[str, VisionMonitorState] = {}
+        self._latest_keys: dict[str, str] = {}
         self._lock = Lock()
 
-    def get(self, monitor_id: str) -> VisionMonitorState:
+    def get(
+        self,
+        monitor_id: str,
+        *,
+        robot_id: str | None = None,
+        source: str | None = None,
+        source_registry: SourceRegistry | None = None,
+    ) -> VisionMonitorState:
         _ensure_monitor_id(monitor_id)
+        key = self._state_key(
+            monitor_id,
+            robot_id=robot_id,
+            source=source,
+            source_registry=source_registry,
+        )
         with self._lock:
-            return self._states.get(monitor_id, default_monitor_state(monitor_id))
+            if key is not None:
+                return self._states.get(
+                    key,
+                    _default_person_drive_state_for_key(key)
+                    if monitor_id == "person_drive"
+                    else default_monitor_state(monitor_id),
+                )
+            latest_key = self._latest_keys.get(monitor_id, monitor_id)
+            return self._states.get(latest_key, default_monitor_state(monitor_id))
 
     def list(self) -> list[VisionMonitorState]:
         with self._lock:
-            return [self._states.get(monitor_id, default_monitor_state(monitor_id)) for monitor_id in sorted(KNOWN_MONITOR_IDS)]
+            states: list[VisionMonitorState] = []
+            for robot_id in sorted(KNOWN_ROBOT_IDS):
+                key = _person_drive_state_key(robot_id)
+                states.append(self._states.get(key, _default_person_drive_state(robot_id)))
+            for monitor_id in sorted(KNOWN_MONITOR_IDS - {"person_drive"}):
+                states.append(self._states.get(monitor_id, default_monitor_state(monitor_id)))
+            return states
 
     def update(
         self,
@@ -98,8 +130,11 @@ class VisionMonitorStateStore:
         updated_at: str,
     ) -> VisionMonitorState:
         with self._lock:
-            previous = self._states.get(monitor_id, default_monitor_state(monitor_id))
-        revision = previous.revision + 1
+            revision = self._next_revision(
+                monitor_id,
+                payload,
+                source_registry=source_registry,
+            )
         state = validate_monitor_state_payload(
             monitor_id,
             payload,
@@ -108,13 +143,101 @@ class VisionMonitorStateStore:
             revision=revision,
         )
         with self._lock:
-            self._states[monitor_id] = state
+            if monitor_id == "person_drive":
+                if state.robot_id is None:
+                    if state.enabled:
+                        raise VisionMonitorStateError("person_drive requires robot_id or source")
+                    self._states[monitor_id] = state
+                    self._latest_keys[monitor_id] = monitor_id
+                    for robot_id in sorted(KNOWN_ROBOT_IDS):
+                        key = _person_drive_state_key(robot_id)
+                        self._states[key] = replace(
+                            state,
+                            source=PERSON_DRIVE_SOURCES_BY_ROBOT_ID[robot_id],
+                            robot_id=robot_id,
+                        )
+                    return state
+                key = _person_drive_state_key(state.robot_id)
+                self._states[key] = state
+                self._latest_keys[monitor_id] = key
+            else:
+                self._states[monitor_id] = state
+                self._latest_keys[monitor_id] = monitor_id
         return state
+
+    def _state_key(
+        self,
+        monitor_id: str,
+        *,
+        robot_id: str | None,
+        source: str | None,
+        source_registry: SourceRegistry | None,
+    ) -> str | None:
+        if monitor_id != "person_drive":
+            return monitor_id
+        resolved_robot_id = _validate_robot_id(robot_id)
+        if resolved_robot_id is None and source:
+            if source_registry is None:
+                raise VisionMonitorStateError("source_registry is required when selecting person_drive by source")
+            resolved_robot_id = _source_robot_id(source, source_registry)
+        if resolved_robot_id is None:
+            return None
+        if resolved_robot_id not in KNOWN_ROBOT_IDS:
+            raise VisionMonitorStateError(f"unknown robot_id: {resolved_robot_id}")
+        return _person_drive_state_key(resolved_robot_id)
+
+    def _next_revision(
+        self,
+        monitor_id: str,
+        payload: dict[str, Any],
+        *,
+        source_registry: SourceRegistry,
+    ) -> int:
+        if monitor_id != "person_drive":
+            previous = self._states.get(monitor_id, default_monitor_state(monitor_id))
+            return previous.revision + 1
+        key = self._state_key(
+            monitor_id,
+            robot_id=payload.get("robot_id"),
+            source=payload.get("source"),
+            source_registry=source_registry,
+        )
+        if key is None:
+            revisions = [
+                self._states.get(_person_drive_state_key(robot_id), _default_person_drive_state(robot_id)).revision
+                for robot_id in KNOWN_ROBOT_IDS
+            ]
+            revisions.append(self._states.get(monitor_id, default_monitor_state(monitor_id)).revision)
+            return max(revisions) + 1
+        previous = self._states.get(key, _default_person_drive_state_for_key(key))
+        return previous.revision + 1
 
 
 def _ensure_monitor_id(monitor_id: str) -> None:
     if monitor_id not in KNOWN_MONITOR_IDS:
         raise VisionMonitorStateError(f"unknown monitor_id: {monitor_id}")
+
+
+def _person_drive_state_key(robot_id: str) -> str:
+    return f"person_drive:{robot_id}"
+
+
+def _default_person_drive_state(robot_id: str) -> VisionMonitorState:
+    return replace(
+        default_monitor_state("person_drive"),
+        source=PERSON_DRIVE_SOURCES_BY_ROBOT_ID[robot_id],
+        robot_id=robot_id,
+    )
+
+
+def _default_person_drive_state_for_key(key: str) -> VisionMonitorState:
+    try:
+        _, robot_id = key.split(":", 1)
+    except ValueError as exc:
+        raise VisionMonitorStateError(f"invalid person_drive state key: {key}") from exc
+    if robot_id not in KNOWN_ROBOT_IDS:
+        raise VisionMonitorStateError(f"unknown robot_id: {robot_id}")
+    return _default_person_drive_state(robot_id)
 
 
 def _normalized_operation_state(value: Any) -> str:

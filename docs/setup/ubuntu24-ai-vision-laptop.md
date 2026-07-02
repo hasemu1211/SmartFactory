@@ -168,7 +168,13 @@ curl http://127.0.0.1:8100/api/v1/vision/monitors
 curl -X PUT http://127.0.0.1:8100/api/v1/vision/monitors/person_drive/state \
   -H 'Content-Type: application/json' \
   -d '{"enabled":true,"source":"tb3_1_picam","operation_state":"DRIVE","task_id":101}'
+curl -X PUT http://127.0.0.1:8100/api/v1/vision/monitors/person_drive/state \
+  -H 'Content-Type: application/json' \
+  -d '{"enabled":true,"source":"tb3_2_picam","operation_state":"DRIVE","task_id":102}'
+curl 'http://127.0.0.1:8100/api/v1/vision/monitors/person_drive/state?robot_id=tb3_1'
+curl 'http://127.0.0.1:8100/api/v1/vision/monitors/person_drive/state?robot_id=tb3_2'
 curl 'http://127.0.0.1:8100/api/v1/vision/hazards/person/latest?robot_id=tb3_1'
+curl 'http://127.0.0.1:8100/api/v1/vision/hazards/person/latest?robot_id=tb3_2'
 ```
 
 The monitor state API is **process-local/ephemeral** by design in this

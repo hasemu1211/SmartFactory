@@ -1574,9 +1574,18 @@ def vision_monitor_states() -> dict[str, Any]:
     }
 
 
-def vision_monitor_state(monitor_id: str) -> dict[str, Any]:
+def vision_monitor_state(
+    monitor_id: str,
+    robot_id: str | None = Query(default=None),
+    source: str | None = Query(default=None, json_schema_extra=SOURCE_ID_OPENAPI_EXTRA),
+) -> dict[str, Any]:
     try:
-        state = _runtime_context().monitor_states.get(monitor_id)
+        state = _runtime_context().monitor_states.get(
+            monitor_id,
+            robot_id=robot_id,
+            source=source,
+            source_registry=get_settings().source_registry,
+        )
     except VisionMonitorStateError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
@@ -1685,7 +1694,11 @@ def person_hazard_latest(
             )
         source = expected_source
     if source is None:
-        source = _runtime_context().monitor_states.get("person_drive").source
+        source = _runtime_context().monitor_states.get(
+            "person_drive",
+            robot_id=robot_id,
+            source_registry=get_settings().source_registry,
+        ).source
     if source is None:
         return {
             "schema_version": "vision-person-hazard-latest.v1",
@@ -1698,7 +1711,12 @@ def person_hazard_latest(
         }
     _ensure_known_source(source)
     resolved_robot_id = robot_id or _robot_id_for_source(source)
-    state = _runtime_context().monitor_states.get("person_drive")
+    state = _runtime_context().monitor_states.get(
+        "person_drive",
+        robot_id=resolved_robot_id,
+        source=source,
+        source_registry=get_settings().source_registry,
+    )
     active = (
         state.enabled
         and state.operation_state == "DRIVE"

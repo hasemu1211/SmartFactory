@@ -1918,7 +1918,7 @@
                         "description": "Process-local, ephemeral AI Server monitor state. Main must reassert desired state after AI Server restart; revision is monotonic only within the current process."
                       },
                       "type": "array",
-                      "minItems": 3
+                      "minItems": 4
                     }
                   },
                   "additionalProperties": false,
@@ -1991,6 +1991,43 @@
             "schema": {
               "type": "string",
               "title": "Monitor Id"
+            }
+          },
+          {
+            "name": "robot_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Robot Id"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "enum": [
+                "global_cam_01",
+                "tb3_1_picam",
+                "tb3_2_picam"
+              ],
+              "title": "Source"
             }
           }
         ],

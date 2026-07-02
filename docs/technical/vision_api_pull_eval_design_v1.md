@@ -61,6 +61,8 @@ Main이 DRIVE/PICK/DROP/IDLE 상태 전환 시 호출한다. monitor state는 AI
 
 `PUT /api/v1/vision/monitors/{monitor_id}/state`
 
+`person_drive`는 로봇별 독립 상태를 가진다. 따라서 `tb3_1`과 `tb3_2`가 동시에 `DRIVE`이면 Main은 같은 endpoint를 `source=tb3_1_picam`, `source=tb3_2_picam`으로 각각 호출해 둘 다 활성화한다. 특정 상태 확인은 `GET /api/v1/vision/monitors/person_drive/state?robot_id=tb3_1`처럼 조회한다.
+
 예:
 
 ```json
@@ -223,7 +225,7 @@ operation 정합성:
 
 - source: `tb3_1_picam`, `tb3_2_picam`
 - robot mapping: `tb3_1_picam -> tb3_1`, `tb3_2_picam -> tb3_2`
-- 운영: 해당 로봇이 `DRIVE`일 때만 monitor ON
+- 운영: 해당 로봇이 `DRIVE`일 때만 monitor ON. 두 로봇이 동시에 `DRIVE`이면 `person_drive` monitor state도 robot/source별로 동시에 ON 한다.
 - 모델: COCO 등 사전학습 `person`으로 MVP 가능. 사용자가 가짜 사람 그림으로 person 인식 확인했으므로 fine-tune은 우선순위 낮음.
 - confidence 정책: 고정 `0.85`는 높거나 낮을 수 있으므로 API 스키마가 아니라 policy config로 둔다. 긴급정지 성격상 초기에는 recall 우선(`0.45~0.65` 시작 + 1~2 frame 안정성)을 검증한다.
 - 최종 정지: AI Server가 아니라 Main/로봇 제어 계층이 수행.

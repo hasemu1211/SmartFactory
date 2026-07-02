@@ -160,7 +160,7 @@ def _vision_monitor_states_response_schema() -> dict[str, Any]:
             "monitors": {
                 "type": "array",
                 "items": _vision_monitor_state_schema(),
-                "minItems": 3,
+                "minItems": 4,
             },
         },
     }
