@@ -226,6 +226,24 @@ def test_operator_mediamtx_readiness_accepts_mediamtx_source_ready_field() -> No
     assert '"(ready|available|online|sourceReady)":true' in sidecar_body
 
 
+def test_restart_helper_records_git_pull_and_tmux_result_json() -> None:
+    body = RESTART_SCRIPT.read_text()
+
+    assert "smartfactory-operator-runtime-control-result.v1" in body
+    assert "LAST_RESULT_FILE" in body
+    assert "last_result.json" in body
+    assert "git pull --ff-only" in body
+    assert "${SF_RUNTIME_CONTROL_GIT_REMOTE:-origin}" in body
+    assert "GIT_PULL_COMMAND" in body
+    assert "GIT_PULL_EXIT_CODE" in body
+    assert "pull_output_tail" in body
+    assert "branch_before" in body
+    assert "head_after" in body
+    assert "tmux_buffer_verification_failed" in body
+    assert 'TMUX_PASTE_STATUS="ok"' in body
+    assert 'write_result "succeeded" "restart_pasted"' in body
+
+
 def test_operator_profiles_are_discoverable() -> None:
     result = run("profiles")
 

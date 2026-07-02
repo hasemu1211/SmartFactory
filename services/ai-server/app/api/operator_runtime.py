@@ -97,6 +97,7 @@ class RuntimeControlStatus(BaseModel):
     profile: str
     allowed_params: dict[str, dict[str, Any]]
     last_request: dict[str, Any] | None = None
+    last_result: dict[str, Any] | None = None
 
 
 def normalize_runtime_profile(value: str) -> str:
@@ -263,15 +264,23 @@ def _write_env_file(path: Path, params: dict[str, str], *, run_id: str, reason: 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _read_last_request(run_dir: Path) -> dict[str, Any] | None:
-    path = run_dir / "last_request.json"
+def _read_run_json(run_dir: Path, filename: str) -> dict[str, Any] | None:
+    path = run_dir / filename
     if not path.exists():
         return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
-        return {"error": "last_request.json is unreadable", "path": str(path)}
+        return {"error": f"{filename} is unreadable", "path": str(path)}
     return payload if isinstance(payload, dict) else None
+
+
+def _read_last_request(run_dir: Path) -> dict[str, Any] | None:
+    return _read_run_json(run_dir, "last_request.json")
+
+
+def _read_last_result(run_dir: Path) -> dict[str, Any] | None:
+    return _read_run_json(run_dir, "last_result.json")
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -349,6 +358,7 @@ def build_runtime_control_status(*, token: str | None = None) -> dict[str, Any]:
         "profile": LOW_LOAD_PROFILE,
         "allowed_params": allowed_params_schema(),
         "last_request": _read_last_request(run_dir),
+        "last_result": _read_last_result(run_dir),
     }
 
 

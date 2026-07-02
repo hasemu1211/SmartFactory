@@ -170,9 +170,22 @@ def test_operator_runtime_control_token_is_optional_but_enforced_when_configured
     assert accepted.status_code == 200
 
 
-def test_operator_runtime_status_lists_allowlisted_params(tmp_path: Path, monkeypatch) -> None:
+def test_operator_runtime_status_lists_allowlisted_params_and_last_result(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("SF_RUNTIME_CONTROL_ENABLED", "true")
     monkeypatch.setenv("SF_RUNTIME_CONTROL_RUN_DIR", str(tmp_path))
+    (tmp_path / "last_result.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "smartfactory-operator-runtime-control-result.v1",
+                "run_id": "abc123",
+                "status": "succeeded",
+                "stage": "restart_pasted",
+                "git": {"head_after": "f33b44a", "pull_exit_code": 0},
+                "tmux": {"target_pane": "%7", "paste_status": "ok"},
+            }
+        ),
+        encoding="utf-8",
+    )
     clear_settings_cache()
 
     response = client.get("/api/v1/operator/runtime/status")
@@ -184,6 +197,10 @@ def test_operator_runtime_status_lists_allowlisted_params(tmp_path: Path, monkey
     assert "GOPRO_AI_MONITOR_FPS" in payload["allowed_params"]
     assert "GOPRO_ROI_HINT_NORMALIZED" in payload["allowed_params"]
     assert "VISION_MAP_ROI_POLYGON_NORMALIZED" in payload["allowed_params"]
+    assert payload["last_result"]["schema_version"] == "smartfactory-operator-runtime-control-result.v1"
+    assert payload["last_result"]["run_id"] == "abc123"
+    assert payload["last_result"]["git"]["pull_exit_code"] == 0
+    assert payload["last_result"]["tmux"]["paste_status"] == "ok"
 
 
 def test_operator_runtime_status_requires_token_when_configured(tmp_path: Path, monkeypatch) -> None:
