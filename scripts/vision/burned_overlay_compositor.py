@@ -153,47 +153,81 @@ def letterbox_frame_and_events_bgr(
     canvas = np.full((target_height, target_width, 3), fill, dtype=frame_bgr.dtype)
     canvas[y_offset : y_offset + resized_height, x_offset : x_offset + resized_width] = resized
 
+    def map_point(x: float, y: float) -> list[int]:
+        nx = int(round(max(0.0, min(float(src_width), x)) * x_scale + x_offset))
+        ny = int(round(max(0.0, min(float(src_height), y)) * y_scale + y_offset))
+        nx = max(x_offset, min(x_offset + resized_width, nx))
+        ny = max(y_offset, min(y_offset + resized_height, ny))
+        return [nx, ny]
+
+    def translated_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+        copied_metadata: dict[str, Any] = {
+            **metadata,
+            "letterbox_translated": True,
+            "letterbox_source_size_px": {"width": src_width, "height": src_height},
+            "letterbox_output_size_px": {"width": target_width, "height": target_height},
+            "letterbox_scale": {"x": x_scale, "y": y_scale},
+            "letterbox_offset_px": {"x": x_offset, "y": y_offset},
+        }
+        raw_polygon = metadata.get("overlay_polygon_xy")
+        if isinstance(raw_polygon, list) and len(raw_polygon) >= 3:
+            polygon: list[list[int]] = []
+            for item in raw_polygon:
+                if not isinstance(item, list | tuple) or len(item) != 2:
+                    polygon = []
+                    break
+                try:
+                    polygon.append(map_point(float(item[0]), float(item[1])))
+                except (TypeError, ValueError):
+                    polygon = []
+                    break
+            if polygon:
+                copied_metadata["overlay_polygon_xy"] = polygon
+        return copied_metadata
+
     mapped: list[dict[str, Any]] = []
     for event in events:
+        metadata = event.get("metadata")
+        metadata = metadata if isinstance(metadata, dict) else {}
+        copied = dict(event)
+        copied["metadata"] = translated_metadata(metadata)
+
         raw = event.get("bbox_xyxy")
+        raw_polygon = metadata.get("overlay_polygon_xy")
+        has_polygon = isinstance(raw_polygon, list) and len(raw_polygon) >= 3
         if not isinstance(raw, list | tuple) or len(raw) != 4:
+            if has_polygon:
+                mapped.append(copied)
             continue
         try:
             x1, y1, x2, y2 = [float(value) for value in raw]
         except (TypeError, ValueError):
+            if has_polygon:
+                mapped.append(copied)
             continue
         x1 = max(0.0, min(float(src_width), x1))
         y1 = max(0.0, min(float(src_height), y1))
         x2 = max(0.0, min(float(src_width), x2))
         y2 = max(0.0, min(float(src_height), y2))
         if x2 <= x1 or y2 <= y1:
+            if has_polygon:
+                mapped.append(copied)
             continue
-        nx1 = int(round(x1 * x_scale + x_offset))
-        ny1 = int(round(y1 * y_scale + y_offset))
-        nx2 = int(round(x2 * x_scale + x_offset))
-        ny2 = int(round(y2 * y_scale + y_offset))
         active_x1 = x_offset
         active_y1 = y_offset
         active_x2 = x_offset + resized_width
         active_y2 = y_offset + resized_height
+        nx1, ny1 = map_point(x1, y1)
+        nx2, ny2 = map_point(x2, y2)
         nx1 = max(active_x1, min(active_x2, nx1))
         ny1 = max(active_y1, min(active_y2, ny1))
         nx2 = max(active_x1, min(active_x2, nx2))
         ny2 = max(active_y1, min(active_y2, ny2))
         if nx2 <= nx1 or ny2 <= ny1:
+            if has_polygon:
+                mapped.append(copied)
             continue
-        copied = dict(event)
         copied["bbox_xyxy"] = [nx1, ny1, nx2, ny2]
-        copied.setdefault("metadata", {})
-        if isinstance(copied["metadata"], dict):
-            copied["metadata"] = {
-                **copied["metadata"],
-                "letterbox_translated": True,
-                "letterbox_source_size_px": {"width": src_width, "height": src_height},
-                "letterbox_output_size_px": {"width": target_width, "height": target_height},
-                "letterbox_scale": {"x": x_scale, "y": y_scale},
-                "letterbox_offset_px": {"x": x_offset, "y": y_offset},
-            }
         mapped.append(copied)
     return canvas, mapped
 

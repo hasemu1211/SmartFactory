@@ -81,6 +81,59 @@ def _bbox(event: dict[str, Any]) -> tuple[int, int, int, int] | None:
     return x1, y1, x2, y2
 
 
+def _event_color(event: dict[str, Any], *, stale: bool) -> tuple[int, int, int]:
+    metadata = event.get("metadata")
+    if isinstance(metadata, dict):
+        raw_color = metadata.get("overlay_color_bgr")
+        if isinstance(raw_color, (list, tuple)) and len(raw_color) == 3:
+            try:
+                b, g, r = (max(0, min(255, int(value))) for value in raw_color)
+                return (b, g, r)
+            except (TypeError, ValueError):
+                pass
+    if stale:
+        return (0, 165, 255)
+    if event.get("class_name") == "person":
+        return (0, 0, 255)
+    if event.get("class_name") == "map_roi":
+        return (255, 255, 0)
+    return (0, 180, 0)
+
+
+def _overlay_polygon(event: dict[str, Any]) -> tuple[tuple[int, int], ...] | None:
+    metadata = event.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    raw = metadata.get("overlay_polygon_xy")
+    if not isinstance(raw, list) or len(raw) < 3:
+        return None
+    points: list[tuple[int, int]] = []
+    for item in raw:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            return None
+        try:
+            x = int(round(float(item[0])))
+            y = int(round(float(item[1])))
+        except (TypeError, ValueError):
+            return None
+        points.append((x, y))
+    return tuple(points)
+
+
+def _draw_overlay_polygon(image: np.ndarray, event: dict[str, Any], *, stale: bool) -> None:
+    polygon = _overlay_polygon(event)
+    if polygon is None:
+        return
+    color = _event_color(event, stale=stale)
+    points = np.asarray(polygon, dtype=np.int32).reshape((-1, 1, 2))
+    cv2.polylines(image, [points], isClosed=True, color=color, thickness=3, lineType=cv2.LINE_AA)
+    metadata = event.get("metadata")
+    label = metadata.get("overlay_label") if isinstance(metadata, dict) else None
+    if isinstance(label, str) and label:
+        x, y = polygon[0]
+        _draw_label(image, label, max(0, x), max(14, y), color)
+
+
 def render_overlay(
     frame: StoredFrame,
     *,
@@ -138,11 +191,14 @@ def render_overlay_bgr(
     else:
         image = frame.decoded_bgr.copy()
 
-    color = (0, 180, 0) if not stale else (0, 165, 255)
+    for event in events:
+        _draw_overlay_polygon(image, event, stale=stale)
+
     for event in events:
         bbox = _bbox(event)
         if bbox is None:
             continue
+        color = _event_color(event, stale=stale)
         x1, y1, x2, y2 = bbox
         cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
         label_parts = [str(event.get("class_name") or "evidence")]

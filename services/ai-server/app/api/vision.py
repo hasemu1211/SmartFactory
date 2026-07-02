@@ -28,6 +28,7 @@ from ..detectors import MarkerDetection, decode_image, detect_markers, generate_
 from ..docking import CameraIntrinsics, MarkerPose, estimate_marker_pose
 from ..evidence_cache import DEFAULT_VIEW_ID, normalize_view_id, source_view_key
 from ..frame_store import StoredFrame
+from ..map_roi import MapRoiTracker, map_roi_config_from_settings, snapshot_to_overlay_event
 from ..model_adapters import ModelAdapterError, UltralyticsSegmenterAdapter, VisionModelConfig
 from ..observability import structured_log
 from ..openapi_schemas import (
@@ -132,6 +133,40 @@ def _emit_vision_events():
 
 def _lift_roi_segmenter():
     return _lift_roi_segmenter_getter_var.get()()
+
+
+def _map_roi_overlay_events(
+    *,
+    source: str,
+    detections: list[MarkerDetection],
+    image_width: int,
+    image_height: int,
+    frame_seq: int | None,
+) -> list[dict[str, Any]]:
+    try:
+        config = map_roi_config_from_settings(get_settings())
+    except ValueError as exc:
+        _runtime_context().logger.warning("invalid Map ROI overlay config: %s", exc)
+        return []
+    if not config.enabled or source != config.source:
+        return []
+    context = _runtime_context()
+    with context.map_roi_trackers_lock:
+        tracker = context.map_roi_trackers.get(source)
+        if not isinstance(tracker, MapRoiTracker):
+            tracker = MapRoiTracker()
+            context.map_roi_trackers[source] = tracker
+        snapshot = tracker.update(
+            source=source,
+            detections=detections,
+            image_width=image_width,
+            image_height=image_height,
+            config=config,
+        )
+    if snapshot is None:
+        return []
+    event = snapshot_to_overlay_event(snapshot, label=config.label, frame_seq=frame_seq, timestamp=_now_iso())
+    return [event] if event is not None else []
 
 
 class SyntheticFrameRequest(BaseModel):
@@ -600,12 +635,22 @@ def _detect_and_overlay_frame_snapshot(*, frame: StoredFrame, pose_request: Pose
     for event in events:
         _runtime_context().store.add(event)
         _runtime_context().source_health.record_event(event)
-    overlay = render_overlay(frame, events=events, stale=stale)
+    overlay_events = [
+        *events,
+        *_map_roi_overlay_events(
+            source=frame.source,
+            detections=detections,
+            image_width=image_width,
+            image_height=image_height,
+            frame_seq=frame.frame_seq,
+        ),
+    ]
+    overlay = render_overlay(frame, events=overlay_events, stale=stale)
     _store_overlay_result(overlay)
     for roi_overlay in roi_overlays:
         _store_overlay_result(roi_overlay)
     _runtime_context().metrics.record_detect_image(event_count=len(events))
-    return {'frame': frame, 'events': events, 'overlay': overlay}
+    return {'frame': frame, 'events': events, 'overlay_events': overlay_events, 'overlay': overlay}
 
 def _store_latest_frame_from_bytes(*, source: str, payload: bytes, content_type: str) -> StoredFrame:
     """Decode and store one latest frame for HTTP debug ingest or future ROS callbacks.

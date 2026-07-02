@@ -83,6 +83,30 @@ def test_gopro_adapter_rejects_malformed_ai_event_lists() -> None:
         {"events": [{"class_name": "box", "bbox_xyxy": [1, 2, 3, 4]}]},
         None,
     ) == [{"class_name": "box", "bbox_xyxy": [1, 2, 3, 4]}]
+    assert module.successful_events(
+        200,
+        {
+            "events": [{"class_name": "box", "bbox_xyxy": [1, 2, 3, 4]}],
+            "overlay_events": [
+                {"class_name": "box", "bbox_xyxy": [1, 2, 3, 4]},
+                {
+                    "class_name": "map_roi",
+                    "metadata": {
+                        "overlay_polygon_xy": [[0, 0], [10, 0], [10, 10], [0, 10]]
+                    },
+                },
+            ],
+        },
+        None,
+    ) == [
+        {"class_name": "box", "bbox_xyxy": [1, 2, 3, 4]},
+        {
+            "class_name": "map_roi",
+            "metadata": {
+                "overlay_polygon_xy": [[0, 0], [10, 0], [10, 10], [0, 10]]
+            },
+        },
+    ]
 
 
 def test_gopro_adapter_rejects_malformed_bboxes_as_not_fresh() -> None:

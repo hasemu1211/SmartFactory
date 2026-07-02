@@ -230,7 +230,8 @@ Safety rules:
 - Runtime params are allowlisted, for example
   `GOPRO_AI_MONITOR_FPS`, `GOPRO_AI_MONITOR_IMGSZ`,
   `GOPRO_WEBRTC_FULL_OUTPUT_WIDTH`, `GOPRO_WEBRTC_BITRATE`,
-  `PICAM_WEBRTC_AI_FPS`, and `GOPRO_ROI_HINT_NORMALIZED`.
+  `PICAM_WEBRTC_AI_FPS`, `GOPRO_ROI_HINT_NORMALIZED`, and the diagnostic
+  `VISION_MAP_ROI_*` overlay-tuning values.
 
 First time after pulling this feature, start low-load once on the laptop with the
 operator endpoint enabled:
@@ -272,8 +273,20 @@ sflowrefresh \
   GOPRO_WEBRTC_BITRATE=1200k \
   PICAM_WEBRTC_AI_FPS=5
 
-# Static ROI hint tuning while MapROI/ArUco calibration is being developed.
+# Static ROI hint tuning for the legacy lift_roi crop.
 sflowrefresh GOPRO_ROI_HINT_NORMALIZED=0.10,0.20,0.50,0.55
+
+# Diagnostic global MapROI overlay.
+# This draws only on the AI/WebRTC overlay; it is not a Main-facing dropped-item
+# or lift evidence contract and does not mutate Main DB/control state.
+# Quote the polygon because semicolons are shell separators.
+sflowrefresh \
+  VISION_MAP_ROI_ENABLED=true \
+  VISION_MAP_ROI_SOURCE=global_cam_01 \
+  VISION_MAP_ROI_MARKER_IDS=11,12 \
+  VISION_MAP_ROI_MIN_MARKERS=1 \
+  VISION_MAP_ROI_STALE_USABLE_S=180 \
+  'VISION_MAP_ROI_POLYGON_NORMALIZED=0.19,0.03;0.73,0.03;0.73,0.94;0.27,0.94'
 ```
 
 If `--git-pull` fails because the laptop has local changes, the helper exits

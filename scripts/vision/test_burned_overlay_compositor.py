@@ -83,6 +83,37 @@ def test_letterbox_frame_and_events_scales_1080p_to_720p_exactly() -> None:
     assert mapped[0]["metadata"]["letterbox_output_size_px"] == {"width": 1280, "height": 720}
 
 
+def test_letterbox_frame_and_events_scales_debug_overlay_polygon() -> None:
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    events = [
+        {
+            "class_name": "map_roi",
+            "metadata": {
+                "overlay_polygon_xy": [[0, 0], [1920, 0], [1920, 1080], [0, 1080]],
+                "overlay_color_bgr": [255, 255, 0],
+            },
+        }
+    ]
+
+    output, mapped = letterbox_frame_and_events_bgr(frame, events, width=1280, height=720)
+
+    assert output.shape == (720, 1280, 3)
+    assert mapped == [
+        {
+            "class_name": "map_roi",
+            "metadata": {
+                "overlay_polygon_xy": [[0, 0], [1280, 0], [1280, 720], [0, 720]],
+                "overlay_color_bgr": [255, 255, 0],
+                "letterbox_translated": True,
+                "letterbox_source_size_px": {"width": 1920, "height": 1080},
+                "letterbox_output_size_px": {"width": 1280, "height": 720},
+                "letterbox_scale": {"x": 1280 / 1920, "y": 720 / 1080},
+                "letterbox_offset_px": {"x": 0, "y": 0},
+            },
+        }
+    ]
+
+
 def test_letterbox_frame_and_events_handles_non_16_9_offsets_and_clipping() -> None:
     frame = np.zeros((1000, 1000, 3), dtype=np.uint8)
     events = [

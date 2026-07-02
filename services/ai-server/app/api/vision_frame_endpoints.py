@@ -93,6 +93,7 @@ async def build_frame_process_response(
     processed = detect_and_overlay_frame_snapshot(frame=frame, stale=stale)
     overlay = processed["overlay"]
     events = processed["events"]
+    overlay_events = processed.get("overlay_events", events)
     return {
         "source": source,
         "processed": True,
@@ -100,10 +101,12 @@ async def build_frame_process_response(
         "frame_seq": frame.frame_seq,
         "event_count": len(events),
         "new_event_count": len(events),
+        "overlay_event_count": len(overlay_events),
         "evidence_action": "created",
         "frame": frame.metadata(include_content=True),
         "overlay": overlay.metadata(),
         "events": events,
+        "overlay_events": overlay_events,
         "reason": "forced" if force else "new frame processed",
         "ingest_context": frame_ingest_context(
             transport="http_debug",

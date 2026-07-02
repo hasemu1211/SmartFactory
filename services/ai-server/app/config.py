@@ -88,6 +88,13 @@ class Settings(BaseSettings):
     aruco_pose_profiles_path: Path = Field(
         default=REPO_ROOT / "config" / "perception" / "aruco_pose_profiles.example.json"
     )
+    vision_map_roi_enabled: bool = False
+    vision_map_roi_source: str = "global_cam_01"
+    vision_map_roi_marker_ids: str = "11,12"
+    vision_map_roi_min_markers: int = 1
+    vision_map_roi_stale_usable_s: float = 180.0
+    vision_map_roi_polygon_normalized: str = ""
+    vision_map_roi_label: str = "MAP ROI"
     sf_runtime_control_enabled: bool = False
     sf_runtime_control_token: str = ""
     sf_runtime_control_run_dir: Path = Field(

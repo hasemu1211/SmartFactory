@@ -16,6 +16,7 @@ from fastapi import Header, HTTPException
 from pydantic import BaseModel, Field
 
 from ..config import REPO_ROOT, get_settings
+from ..map_roi import parse_marker_ids, parse_normalized_polygon
 
 
 LOW_LOAD_PROFILE = "lab-gopro-tb3-low-load"
@@ -29,6 +30,7 @@ PROFILE_ALIASES = {
 _NUMERIC_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+)?$")
 _BITRATE_PATTERN = re.compile(r"^[1-9][0-9]{1,5}[kKmM]?$|^[1-9][0-9]{2,8}$")
 _SAFE_DEVICE_PATTERN = re.compile(r"^(cpu|cuda(?::[0-9])?|mps|[0-9])$")
+_SAFE_SOURCE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_:-]{1,80}$")
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,14 @@ ALLOWED_RUNTIME_PARAMS: dict[str, RuntimeParamSpec] = {
     "VISION_MODEL_IOU": RuntimeParamSpec("float", 0.01, 1.0, description="Default model IoU threshold."),
     "VISION_MODEL_IMGSZ": RuntimeParamSpec("int", 160, 1280, description="Default model image size."),
     "VISION_MODEL_DEVICE": RuntimeParamSpec("device", description="Inference device: cpu, cuda, cuda:0, mps, or numeric GPU id."),
+    # Diagnostic Map ROI overlay tuning. Overlay-only: Main-facing hazard/evidence
+    # contracts do not receive these polygon internals.
+    "VISION_MAP_ROI_ENABLED": RuntimeParamSpec("bool", description="Draw global map ROI diagnostic overlay."),
+    "VISION_MAP_ROI_SOURCE": RuntimeParamSpec("source_id", description="Source id for the diagnostic map ROI overlay."),
+    "VISION_MAP_ROI_MARKER_IDS": RuntimeParamSpec("marker_ids", description="Comma-separated DICT_4X4_50 ArUco ids, e.g. 11,12."),
+    "VISION_MAP_ROI_MIN_MARKERS": RuntimeParamSpec("int", 1, 8, description="Minimum visible ArUco markers needed to refresh Map ROI."),
+    "VISION_MAP_ROI_STALE_USABLE_S": RuntimeParamSpec("float", 1.0, 600.0, description="Seconds to keep the last latched Map ROI when markers disappear."),
+    "VISION_MAP_ROI_POLYGON_NORMALIZED": RuntimeParamSpec("normalized_polygon", description="Map ROI polygon as x,y;x,y;... normalized to full frame."),
 }
 
 
@@ -152,6 +162,27 @@ def _coerce_normalized_roi(value: Any) -> str:
     return ",".join(("%f" % item).rstrip("0").rstrip(".") for item in numbers)
 
 
+def _coerce_normalized_polygon(value: Any) -> str:
+    polygon = parse_normalized_polygon(value)
+    if not polygon:
+        raise ValueError("expected non-empty normalized polygon")
+    return ";".join(f"{x:g},{y:g}" for x, y in polygon)
+
+
+def _coerce_marker_ids(value: Any) -> str:
+    marker_ids = parse_marker_ids(value if isinstance(value, (list, tuple)) else str(value))
+    if not marker_ids:
+        raise ValueError("expected at least one marker id")
+    return ",".join(marker.rsplit("_", 1)[-1] for marker in marker_ids)
+
+
+def _coerce_source_id(value: Any) -> str:
+    raw = str(value).strip()
+    if not _SAFE_SOURCE_ID_PATTERN.match(raw):
+        raise ValueError("expected safe source id")
+    return raw
+
+
 def coerce_runtime_param(name: str, value: Any) -> str:
     spec = ALLOWED_RUNTIME_PARAMS.get(name)
     if spec is None:
@@ -169,6 +200,12 @@ def coerce_runtime_param(name: str, value: Any) -> str:
         return raw.lower()
     if spec.kind == "normalized_roi":
         return _coerce_normalized_roi(value)
+    if spec.kind == "normalized_polygon":
+        return _coerce_normalized_polygon(value)
+    if spec.kind == "marker_ids":
+        return _coerce_marker_ids(value)
+    if spec.kind == "source_id":
+        return _coerce_source_id(value)
     if spec.kind == "device":
         raw = str(value).strip()
         if not _SAFE_DEVICE_PATTERN.match(raw):

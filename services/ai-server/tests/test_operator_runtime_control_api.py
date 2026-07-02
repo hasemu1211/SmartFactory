@@ -48,6 +48,10 @@ def test_operator_runtime_control_dry_run_writes_allowlisted_override(tmp_path: 
                 "GOPRO_WEBRTC_BITRATE": "1200k",
                 "GOPRO_ROI_HINT_NORMALIZED": "0.1,0.2,0.3,0.4",
                 "PICAM_WEBRTC_AI_FPS": 7.5,
+                "VISION_MAP_ROI_ENABLED": True,
+                "VISION_MAP_ROI_MARKER_IDS": "11,12",
+                "VISION_MAP_ROI_MIN_MARKERS": 1,
+                "VISION_MAP_ROI_POLYGON_NORMALIZED": "0.1,0.1;0.8,0.1;0.8,0.9;0.1,0.9",
             },
         },
     )
@@ -72,6 +76,10 @@ def test_operator_runtime_control_dry_run_writes_allowlisted_override(tmp_path: 
     assert "export GOPRO_WEBRTC_BITRATE=1200k" in text
     assert "export GOPRO_ROI_HINT_NORMALIZED=0.1,0.2,0.3,0.4" in text
     assert "export PICAM_WEBRTC_AI_FPS=7.5" in text
+    assert "export VISION_MAP_ROI_ENABLED=true" in text
+    assert "export VISION_MAP_ROI_MARKER_IDS=11,12" in text
+    assert "export VISION_MAP_ROI_MIN_MARKERS=1" in text
+    assert "export VISION_MAP_ROI_POLYGON_NORMALIZED='0.1,0.1;0.8,0.1;0.8,0.9;0.1,0.9'" in text
     assert json.loads((tmp_path / "last_request.json").read_text())["run_id"] == payload["run_id"]
 
 
@@ -175,6 +183,7 @@ def test_operator_runtime_status_lists_allowlisted_params(tmp_path: Path, monkey
     assert payload["profile"] == "lab-gopro-tb3-low-load"
     assert "GOPRO_AI_MONITOR_FPS" in payload["allowed_params"]
     assert "GOPRO_ROI_HINT_NORMALIZED" in payload["allowed_params"]
+    assert "VISION_MAP_ROI_POLYGON_NORMALIZED" in payload["allowed_params"]
 
 
 def test_operator_runtime_status_requires_token_when_configured(tmp_path: Path, monkeypatch) -> None:

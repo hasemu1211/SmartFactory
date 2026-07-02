@@ -93,3 +93,32 @@ def test_overlay_banner_labels_live_stream_as_realtime(monkeypatch):
 
     assert captured_labels[-1] == "tb3_1_picam time=12:34:56 events=0"
     assert "frame=" not in captured_labels[-1]
+
+
+def test_overlay_renderer_draws_map_roi_polygon_with_distinct_color():
+    store = LatestFrameStore()
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
+    frame = store.put_decoded(source="global_cam_01", image_bgr=image)
+    event = {
+        "timestamp": "2026-07-02T09:00:00+09:00",
+        "class_name": "map_roi",
+        "confidence": 1.0,
+        "metadata": {
+            "debug_overlay": True,
+            "overlay_kind": "map_roi",
+            "overlay_polygon_xy": [[20, 20], [100, 20], [100, 80], [20, 80]],
+            "overlay_color_bgr": [255, 255, 0],
+            "overlay_label": "MAP ROI FRESH",
+        },
+    }
+
+    overlay = render_overlay(frame, events=[event])
+
+    decoded = cv2.imdecode(np.frombuffer(overlay.jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
+    assert decoded is not None
+    assert overlay.metadata()["event_count"] == 1
+    # BGR cyan line near the top polygon edge; allow JPEG compression.
+    sample = decoded[20, 60]
+    assert int(sample[0]) > 120
+    assert int(sample[1]) > 120
+    assert int(sample[2]) < 100

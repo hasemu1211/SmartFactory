@@ -40,6 +40,8 @@ class RuntimeContext:
     overlay_images: dict[str | SourceViewKey, OverlayRenderResult] = field(default_factory=dict)
     overlay_images_lock: Lock = field(default_factory=Lock)
     monitor_states: VisionMonitorStateStore = field(default_factory=VisionMonitorStateStore)
+    map_roi_trackers: dict[str, object] = field(default_factory=dict)
+    map_roi_trackers_lock: Lock = field(default_factory=Lock)
 
 
 def create_runtime_context() -> RuntimeContext:
