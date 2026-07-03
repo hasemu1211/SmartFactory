@@ -169,3 +169,31 @@ def test_overlay_renderer_suppresses_unknown_visual_boxes():
     # Unknown detections should remain in metadata counts but not draw a green
     # rectangle in the operator view.  Sample away from the clock banner.
     assert np.linalg.norm(decoded[20, 60].astype(float)) < 30
+
+
+def test_overlay_renderer_uses_explicit_polygon_label_anchor(monkeypatch):
+    store = LatestFrameStore()
+    image = np.zeros((120, 160, 3), dtype=np.uint8)
+    frame = store.put_decoded(source="global_cam_01", image_bgr=image)
+    captured_labels = []
+
+    def capture_label(image, text, x, y, color):
+        captured_labels.append((text, x, y, color))
+
+    monkeypatch.setattr(overlay_module, "_draw_label", capture_label)
+    monkeypatch.setattr(overlay_module, "_local_clock_label", lambda: "12:34:56")
+    event = {
+        "timestamp": "2026-07-02T09:00:00+09:00",
+        "class_name": "zone_roi",
+        "confidence": 1.0,
+        "metadata": {
+            "overlay_polygon_xy": [[20, 20], [100, 20], [100, 80], [20, 80]],
+            "overlay_color_bgr": [255, 0, 255],
+            "overlay_label": "ZONE storage 1",
+            "overlay_label_xy": [28, 44],
+        },
+    }
+
+    render_overlay(frame, events=[event])
+
+    assert captured_labels[0][:3] == ("ZONE storage 1", 28, 44)

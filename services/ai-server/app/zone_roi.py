@@ -105,8 +105,8 @@ def _zone_label(zone_id: str, raw_label: str) -> str:
         "inbound": "inbound",
         "outbound": "outbound",
         "charging": "charging",
-        "storage_upper": "storage upper",
-        "storage_lower": "storage lower",
+        "storage_upper": "storage 1",
+        "storage_lower": "storage 2",
     }
     for prefix, label in prefixes.items():
         if zone_id.startswith(prefix):
@@ -163,6 +163,21 @@ def _polygon_to_pixels(polygon: tuple[Point, ...], *, image_width: int, image_he
     return [[float(x * image_width), float(y * image_height)] for x, y in polygon]
 
 
+def _label_anchor_xy(polygon_xy: list[list[float]], *, image_width: int, image_height: int) -> list[float]:
+    # Place zone labels just inside the polygon instead of on the border.
+    # The renderer treats y as a text baseline, so this keeps the label
+    # readable and avoids covering/being covered by the top ROI line.
+    xs = [float(point[0]) for point in polygon_xy]
+    ys = [float(point[1]) for point in polygon_xy]
+    x = min(xs) + 8.0
+    y = min(ys) + 24.0
+    max_x = float(max(0, image_width - 1))
+    max_y = float(max(14, image_height - 1))
+    return [
+        max(0.0, min(max_x, x)),
+        max(14.0, min(max_y, y)),
+    ]
+
 def zone_to_overlay_event(
     zone: ZoneRoi,
     *,
@@ -172,18 +187,24 @@ def zone_to_overlay_event(
     frame_seq: int | None = None,
     timestamp: str | None = None,
 ) -> dict[str, Any]:
-    color_bgr = [0, 220, 0] if zone.natural_item_location else [0, 165, 255]
+    color_bgr = [255, 0, 255] if zone.natural_item_location else [0, 165, 255]
     label_prefix = "ZONE" if zone.natural_item_location else "REF"
+    polygon_xy = _polygon_to_pixels(
+        zone.polygon_normalized,
+        image_width=image_width,
+        image_height=image_height,
+    )
     metadata: dict[str, Any] = {
         "debug_overlay": True,
         "overlay_kind": "zone_roi",
-        "overlay_polygon_xy": _polygon_to_pixels(
-            zone.polygon_normalized,
+        "overlay_polygon_xy": polygon_xy,
+        "overlay_color_bgr": color_bgr,
+        "overlay_label": f"{label_prefix} {zone.label}",
+        "overlay_label_xy": _label_anchor_xy(
+            polygon_xy,
             image_width=image_width,
             image_height=image_height,
         ),
-        "overlay_color_bgr": color_bgr,
-        "overlay_label": f"{label_prefix} {zone.label}",
         "zone_roi": {
             "zone_id": zone.zone_id,
             "role": zone.role,

@@ -120,6 +120,18 @@ def _overlay_polygon(event: dict[str, Any]) -> tuple[tuple[int, int], ...] | Non
     return tuple(points)
 
 
+def _overlay_label_xy(event: dict[str, Any], fallback: tuple[int, int]) -> tuple[int, int]:
+    metadata = event.get("metadata")
+    if not isinstance(metadata, dict):
+        return fallback
+    raw = metadata.get("overlay_label_xy")
+    if not isinstance(raw, (list, tuple)) or len(raw) != 2:
+        return fallback
+    try:
+        return int(round(float(raw[0]))), int(round(float(raw[1])))
+    except (TypeError, ValueError):
+        return fallback
+
 def _draw_overlay_polygon(image: np.ndarray, event: dict[str, Any], *, stale: bool) -> None:
     polygon = _overlay_polygon(event)
     if polygon is None:
@@ -130,7 +142,7 @@ def _draw_overlay_polygon(image: np.ndarray, event: dict[str, Any], *, stale: bo
     metadata = event.get("metadata")
     label = metadata.get("overlay_label") if isinstance(metadata, dict) else None
     if isinstance(label, str) and label:
-        x, y = polygon[0]
+        x, y = _overlay_label_xy(event, polygon[0])
         _draw_label(image, label, max(0, x), max(14, y), color)
 
 

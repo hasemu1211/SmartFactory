@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from api_test_helpers import aruco_png_bytes, client, get_settings, main_module
+from app.config import REPO_ROOT
 from app.zone_roi import load_zone_roi_config, load_zone_roi_config_cached, zone_roi_overlay_events
 
 
@@ -66,10 +67,21 @@ def test_zone_roi_config_builds_visual_overlay_events(tmp_path) -> None:
     assert [event["class_name"] for event in events] == ["zone_roi", "zone_roi"]
     assert events[0]["metadata"]["overlay_kind"] == "zone_roi"
     assert events[0]["metadata"]["overlay_polygon_xy"] == [[20.0, 10.0], [80.0, 10.0], [80.0, 40.0], [20.0, 40.0]]
-    assert events[0]["metadata"]["overlay_color_bgr"] == [0, 220, 0]
+    assert events[0]["metadata"]["overlay_color_bgr"] == [255, 0, 255]
     assert events[0]["metadata"]["overlay_label"] == "ZONE inbound"
+    assert events[0]["metadata"]["overlay_label_xy"] == [28.0, 34.0]
     assert events[1]["metadata"]["overlay_color_bgr"] == [0, 165, 255]
     assert events[1]["metadata"]["overlay_label"] == "REF charging"
+
+
+def test_zone_roi_draft_config_uses_compact_storage_labels() -> None:
+    config = load_zone_roi_config(
+        REPO_ROOT / "config" / "vision" / "zone_rois" / "global_cam_01_lab_draft.json"
+    )
+
+    labels = [zone.label for zone in config.zones if zone.zone_id.startswith("storage_")]
+
+    assert labels == ["storage 1", "storage 2"]
 
 
 def test_zone_roi_overlay_does_not_pollute_main_facing_detection_store(monkeypatch, tmp_path) -> None:
