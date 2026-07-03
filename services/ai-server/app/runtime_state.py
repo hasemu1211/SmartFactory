@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import logging
 from threading import Lock
+from typing import Any
 
 from .config import get_settings
 from .event_store import InMemoryEventStore
@@ -38,6 +39,7 @@ class RuntimeContext:
         default_factory=lambda: LatestEvidenceCache(maxlen_per_source=20)
     )
     overlay_images: dict[str | SourceViewKey, OverlayRenderResult] = field(default_factory=dict)
+    overlay_event_layers: dict[str | SourceViewKey, tuple[int, list[dict[str, Any]]]] = field(default_factory=dict)
     overlay_images_lock: Lock = field(default_factory=Lock)
     monitor_states: VisionMonitorStateStore = field(default_factory=VisionMonitorStateStore)
     map_roi_trackers: dict[str, object] = field(default_factory=dict)

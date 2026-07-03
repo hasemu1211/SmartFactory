@@ -104,3 +104,41 @@ def test_zone_roi_overlay_does_not_pollute_main_facing_detection_store(monkeypat
         "zone_roi",
     ]
     assert len(context.store.latest(source="global_cam_01", limit=10)) == 1
+
+
+def test_zone_roi_metadata_plane_includes_overlay_without_polluting_store(monkeypatch, tmp_path) -> None:
+    context = main_module._runtime_context()
+    context.store.reset()
+    context.source_health.reset()
+    context.frame_store.reset()
+    context.overlay_cache.reset()
+    with context.overlay_images_lock:
+        context.overlay_images.clear()
+
+    zone_path = _zone_config(tmp_path)
+    monkeypatch.setenv("VISION_ZONE_ROI_ENABLED", "true")
+    monkeypatch.setenv("VISION_ZONE_ROI_CONFIG_PATH", str(zone_path))
+    monkeypatch.setenv("VISION_ZONE_ROI_SOURCE", "global_cam_01")
+    get_settings.cache_clear()
+    load_zone_roi_config_cached.cache_clear()
+
+    response = client.post(
+        "/api/v1/vision/frame/process",
+        data={"source": "global_cam_01", "force": "true"},
+        files={"image": ("aruco.png", aruco_png_bytes(), "image/png")},
+    )
+    assert response.status_code == 200
+    assert [event["class_name"] for event in response.json()["events"]] == ["aruco_marker"]
+
+    metadata = client.get(
+        "/api/v1/vision/overlay/metadata",
+        params={"source": "global_cam_01", "view": "full", "limit": 10},
+    )
+
+    assert metadata.status_code == 200
+    assert [event["class_name"] for event in metadata.json()["events"]] == [
+        "aruco_marker",
+        "zone_roi",
+        "zone_roi",
+    ]
+    assert len(context.store.latest(source="global_cam_01", limit=10)) == 1

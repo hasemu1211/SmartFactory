@@ -338,7 +338,10 @@ def test_map_roi_overlay_does_not_pollute_main_facing_detection_store(monkeypatc
         params={"source": "global_cam_01", "limit": 10},
     )
     assert metadata.status_code == 200
-    assert [event["class_name"] for event in metadata.json()["events"]] == ["aruco_marker"]
+    assert [event["class_name"] for event in metadata.json()["events"]] == [
+        "aruco_marker",
+        "map_roi",
+    ]
 
     get_settings.cache_clear()
 

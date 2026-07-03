@@ -382,14 +382,86 @@ def _ensure_known_source_view(source: str, view: str | None = None) -> str:
         ) from exc
     return view_id
 
-def _store_overlay_result(result: OverlayRenderResult) -> None:
+def _store_overlay_result(
+    result: OverlayRenderResult,
+    *,
+    events: list[dict[str, Any]] | tuple[dict[str, Any], ...] | None = None,
+) -> None:
     context = _runtime_context()
     metadata = result.metadata()
-    context.overlay_cache.add(metadata, view=result.view)
     with context.overlay_images_lock:
-        context.overlay_images[source_view_key(result.source, result.view)] = result
+        # Keep overlay metadata, image bytes, and the compositor metadata event
+        # layer as one internal snapshot for /overlay/metadata readers.
+        context.overlay_cache.add(metadata, view=result.view)
+        key = source_view_key(result.source, result.view)
+        context.overlay_images[key] = result
+        if events is not None:
+            context.overlay_event_layers[key] = (
+                result.frame_seq,
+                [dict(event) for event in events],
+            )
+        else:
+            context.overlay_event_layers.pop(key, None)
         if result.view == DEFAULT_VIEW_ID:
             context.overlay_images[result.source] = result
+            if events is not None:
+                context.overlay_event_layers[result.source] = (
+                    result.frame_seq,
+                    [dict(event) for event in events],
+                )
+            else:
+                context.overlay_event_layers.pop(result.source, None)
+
+
+def _latest_overlay_metadata_snapshot(
+    source: str,
+    *,
+    view: str = DEFAULT_VIEW_ID,
+    runtime_context: RuntimeContext | None = None,
+) -> tuple[dict[str, Any], list[dict[str, Any]] | None]:
+    context = runtime_context or _runtime_context()
+    view_id = normalize_view_id(view)
+    with context.overlay_images_lock:
+        overlay = context.overlay_cache.latest(source, view=view_id)
+        if overlay is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no overlay available for source/view: {source}/{view_id}",
+            )
+        cached = context.overlay_event_layers.get(source_view_key(source, view_id))
+        if cached is None and view_id == DEFAULT_VIEW_ID:
+            cached = context.overlay_event_layers.get(source)
+        if cached is None:
+            return overlay, None
+        cached_frame_seq, events = cached
+        overlay_frame_seq = overlay.get("frame_seq")
+        if not isinstance(overlay_frame_seq, int) or cached_frame_seq != overlay_frame_seq:
+            return overlay, None
+        return overlay, [dict(event) for event in events]
+
+
+
+def _overlay_sync_status_for_snapshot(
+    source: str,
+    *,
+    overlay: dict[str, Any],
+    runtime_context: RuntimeContext | None = None,
+) -> dict[str, Any]:
+    context = runtime_context or _runtime_context()
+    frame = context.frame_store.latest(source)
+    frame_seq = frame.frame_seq if frame is not None else None
+    overlay_frame_seq = overlay.get("frame_seq") if isinstance(overlay, dict) else None
+    overlay_lag_frames = (
+        max(0, frame_seq - overlay_frame_seq)
+        if isinstance(frame_seq, int) and isinstance(overlay_frame_seq, int)
+        else None
+    )
+    return {
+        "latest_frame_seq": frame_seq,
+        "latest_overlay_frame_seq": overlay_frame_seq,
+        "overlay_lag_frames": overlay_lag_frames,
+        "overlay_visual_state": overlay.get("visual_state") if isinstance(overlay, dict) else None,
+    }
 
 def _latest_overlay_image(
     source: str,
@@ -695,7 +767,7 @@ def _detect_and_overlay_frame_snapshot(*, frame: StoredFrame, pose_request: Pose
         ),
     ]
     overlay = render_overlay(frame, events=overlay_events, stale=stale)
-    _store_overlay_result(overlay)
+    _store_overlay_result(overlay, events=overlay_events)
     for roi_overlay in roi_overlays:
         _store_overlay_result(roi_overlay)
     _runtime_context().metrics.record_detect_image(event_count=len(events))
@@ -1556,32 +1628,49 @@ def latest_overlay_metadata(
     it does not return image bytes and has no control or DB side effects.
     """
     view_id = _ensure_known_source_view(source, view)
-    response = build_latest_overlay_response(
-        source=source,
+    context = _runtime_context()
+    overlay, cached_overlay_events = _latest_overlay_metadata_snapshot(
+        source,
         view=view_id,
-        runtime_context=_runtime_context(),
-        frame_overlay_sync_status=frame_overlay_sync_status,
-        now_iso=_now_iso,
+        runtime_context=context,
     )
-    overlay_frame_seq = response.get("overlay", {}).get("frame_seq")
-    overlay_image = response.get("overlay", {}).get("image", {})
+    response = {
+        "generated_at": _now_iso(),
+        "requested_source": source,
+        "requested_view": view_id,
+        "sync": _overlay_sync_status_for_snapshot(
+            source,
+            overlay=overlay,
+            runtime_context=context,
+        ),
+        "overlay": overlay,
+    }
+    overlay_frame_seq = overlay.get("frame_seq")
+    overlay_image = overlay.get("image", {})
     overlay_width = overlay_image.get("width") if isinstance(overlay_image, dict) else None
     overlay_height = overlay_image.get("height") if isinstance(overlay_image, dict) else None
-    candidate_events = _runtime_context().store.latest(source=source, limit=_runtime_context().store.maxlen)
-    events = [
-        event
-        for event in candidate_events
-        if isinstance(event.get("metadata"), dict)
-        and event["metadata"].get("frame_seq") == overlay_frame_seq
-        and (
-            view_id == DEFAULT_VIEW_ID
-            or (
-                event.get("roi_id") == view_id
-                and event["metadata"].get("image_width") == overlay_width
-                and event["metadata"].get("image_height") == overlay_height
+    candidate_events = context.store.latest(source=source, limit=context.store.maxlen)
+    if cached_overlay_events is not None:
+        events = cached_overlay_events[:limit]
+    else:
+        # Compatibility fallback for overlays produced before the event-layer
+        # cache existed.  This intentionally returns only persisted detection
+        # events; debug-only ROI layers must not be reconstructed from lossy
+        # event-store dictionaries because MapROI needs marker-corner geometry.
+        events = [
+            event
+            for event in candidate_events
+            if isinstance(event.get("metadata"), dict)
+            and event["metadata"].get("frame_seq") == overlay_frame_seq
+            and (
+                view_id == DEFAULT_VIEW_ID
+                or (
+                    event.get("roi_id") == view_id
+                    and event["metadata"].get("image_width") == overlay_width
+                    and event["metadata"].get("image_height") == overlay_height
+                )
             )
-        )
-    ][:limit]
+        ][:limit]
     return {
         **response,
         "metadata_plane": {
