@@ -10,6 +10,7 @@ from app.map_roi import (
     STALE_USABLE,
     MapRoiConfig,
     MapRoiTracker,
+    normalize_freeze_mode,
     parse_marker_ids,
     parse_normalized_polygon,
     snapshot_to_overlay_event,
@@ -51,6 +52,13 @@ def test_parse_normalized_polygon_accepts_semicolon_format() -> None:
         (0.8, 0.2),
         (0.7, 0.9),
     )
+
+
+def test_normalize_freeze_mode_accepts_any_and_all_only() -> None:
+    assert normalize_freeze_mode("ANY") == "any"
+    assert normalize_freeze_mode(" all ") == "all"
+    with pytest.raises(ValueError):
+        normalize_freeze_mode("either")
 
 
 def test_map_roi_tracker_latches_first_marker_observation_and_translates_polygon() -> None:
@@ -138,6 +146,55 @@ def test_map_roi_tracker_freezes_once_preferred_marker_is_seen() -> None:
     assert later.reason == "marker_freeze_locked"
     assert later.polygon_xy == locked_polygon
     assert later.age_s == 9.0
+
+
+def test_map_roi_tracker_freeze_all_uses_visible_markers_not_only_roi_markers() -> None:
+    config = MapRoiConfig(
+        enabled=True,
+        source="global_cam_01",
+        marker_ids=("ARUCO_4X4_50_11", "ARUCO_4X4_50_12"),
+        min_markers=1,
+        stale_usable_s=30.0,
+        polygon_normalized=((0.1, 0.1), (0.5, 0.1), (0.5, 0.5), (0.1, 0.5)),
+        freeze_marker_ids=("ARUCO_4X4_50_6", "ARUCO_4X4_50_12"),
+        freeze_mode="all",
+    )
+    tracker = MapRoiTracker()
+
+    first = tracker.update(
+        source="global_cam_01",
+        detections=[_marker(11, 20.0, 30.0), _marker(6, 40.0, 50.0)],
+        image_width=101,
+        image_height=101,
+        config=config,
+        now_monotonic=10.0,
+    )
+    assert first is not None
+    assert first.status == FRESH
+
+    no_lock = tracker.update(
+        source="global_cam_01",
+        detections=[_marker(12, 80.0, 90.0)],
+        image_width=101,
+        image_height=101,
+        config=config,
+        now_monotonic=11.0,
+    )
+    assert no_lock is not None
+    assert no_lock.status == FRESH
+
+    locked = tracker.update(
+        source="global_cam_01",
+        detections=[_marker(6, 42.0, 52.0), _marker(12, 81.0, 91.0)],
+        image_width=101,
+        image_height=101,
+        config=config,
+        now_monotonic=12.0,
+    )
+    assert locked is not None
+    assert locked.status == LOCKED
+    assert locked.reason == "marker_freeze_latch"
+    assert locked.markers_used == ("ARUCO_4X4_50_12",)
 
 
 def test_map_roi_tracker_keeps_latched_polygon_stale_then_expires() -> None:

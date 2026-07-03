@@ -96,6 +96,7 @@ class Settings(BaseSettings):
     vision_map_roi_polygon_normalized: str = ""
     vision_map_roi_label: str = "MAP ROI"
     vision_map_roi_freeze_marker_ids: str = ""
+    vision_map_roi_freeze_mode: str = "any"
     sf_runtime_control_enabled: bool = False
     sf_runtime_control_token: str = ""
     sf_runtime_control_run_dir: Path = Field(

@@ -61,12 +61,12 @@
     <article class="card">
       <h2>1. tb3_1 PiCam 실제 person detection overlay</h2>
       <img id="tb3Overlay" alt="tb3_1 person detection overlay" src="http://smartfactory-vision.local:8100/api/v1/vision/overlay/latest/image?source=tb3_1_picam&view=full" />
-      <p>발표 포인트: Pi 카메라 프레임에서 YOLO person을 감지하고, Main-facing API에는 bbox 대신 <code>ADVISORY / HUMAN_DETECTED</code>만 전달.</p>
+      <p>Pi 카메라 프레임에서 YOLO person을 감지하고, Main-facing API에는 bbox 대신 <code>ADVISORY / HUMAN_DETECTED</code> 중심의 판단 결과를 전달합니다.</p>
     </article>
     <article class="card">
       <h2>2. Global Cam Map ROI + ArUco lock overlay</h2>
       <img id="globalOverlay" alt="global map roi overlay" src="http://smartfactory-vision.local:8100/api/v1/vision/overlay/latest/image?source=global_cam_01&view=full" />
-      <p>발표 포인트: ArUco 11/12를 기준으로 맵 영역을 잡고, marker 12가 잡히면 ROI를 LOCK해서 흔들림을 줄임.</p>
+      <p>ArUco 11/12를 기준으로 맵 영역을 잡고, marker 6과 12가 같은 프레임에 잡히면 ROI를 LOCK해 흔들림을 줄입니다.</p>
     </article>
   </section>
 

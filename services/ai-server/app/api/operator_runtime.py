@@ -78,6 +78,7 @@ ALLOWED_RUNTIME_PARAMS: dict[str, RuntimeParamSpec] = {
     "VISION_MAP_ROI_STALE_USABLE_S": RuntimeParamSpec("float", 1.0, 600.0, description="Seconds to keep the last latched Map ROI when markers disappear."),
     "VISION_MAP_ROI_POLYGON_NORMALIZED": RuntimeParamSpec("normalized_polygon", description="Map ROI polygon as x,y;x,y;... normalized to full frame."),
     "VISION_MAP_ROI_FREEZE_MARKER_IDS": RuntimeParamSpec("marker_ids", description="Comma-separated DICT_4X4_50 ids that freeze the diagnostic Map ROI once seen, e.g. 12."),
+    "VISION_MAP_ROI_FREEZE_MODE": RuntimeParamSpec("enum", allowed_values=("any", "all"), description="Freeze when any or all configured freeze markers are visible."),
 }
 
 
@@ -185,6 +186,14 @@ def _coerce_source_id(value: Any) -> str:
     return raw
 
 
+def _coerce_enum(value: Any, spec: RuntimeParamSpec) -> str:
+    raw = str(value).strip().lower()
+    if raw not in spec.allowed_values:
+        allowed = ", ".join(spec.allowed_values)
+        raise ValueError(f"expected one of: {allowed}")
+    return raw
+
+
 def coerce_runtime_param(name: str, value: Any) -> str:
     spec = ALLOWED_RUNTIME_PARAMS.get(name)
     if spec is None:
@@ -213,6 +222,8 @@ def coerce_runtime_param(name: str, value: Any) -> str:
         if not _SAFE_DEVICE_PATTERN.match(raw):
             raise ValueError("expected device cpu, cuda, cuda:0, mps, or numeric id")
         return raw
+    if spec.kind == "enum":
+        return _coerce_enum(value, spec)
     raise ValueError(f"unsupported param kind '{spec.kind}'")
 
 
@@ -240,6 +251,7 @@ def allowed_params_schema() -> dict[str, dict[str, Any]]:
             "kind": spec.kind,
             "min": spec.min_value,
             "max": spec.max_value,
+            "allowed_values": list(spec.allowed_values),
             "description": spec.description,
         }
         for name, spec in sorted(ALLOWED_RUNTIME_PARAMS.items())

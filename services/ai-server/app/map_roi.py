@@ -38,6 +38,7 @@ class MapRoiConfig:
     polygon_normalized: tuple[Point, ...] = ()
     label: str = "MAP ROI"
     freeze_marker_ids: tuple[str, ...] = ()
+    freeze_mode: str = "any"
 
 
 @dataclass(frozen=True)
@@ -136,6 +137,13 @@ def parse_normalized_polygon(value: str | list[Any] | tuple[Any, ...]) -> tuple[
     if points and len(points) < 3:
         raise ValueError("polygon needs at least 3 points")
     return tuple(points)
+
+
+def normalize_freeze_mode(value: str) -> str:
+    raw = str(value or "any").strip().lower()
+    if raw not in {"any", "all"}:
+        raise ValueError("freeze mode must be 'any' or 'all'")
+    return raw
 
 
 def scale_normalized_polygon(polygon: tuple[Point, ...], *, image_width: int, image_height: int) -> tuple[Point, ...]:
@@ -297,7 +305,7 @@ class MapRoiTracker:
                 quality=round(len(usable_ids) / max(1, len(configured_ids)), 3),
                 reason="marker_affine_latch",
             )
-            if self._should_freeze(snapshot.markers_used, config.freeze_marker_ids):
+            if self._should_freeze(tuple(current_markers), config.freeze_marker_ids, config.freeze_mode):
                 snapshot = self._freeze_snapshot(snapshot, now_monotonic=now)
             self._last_snapshot = snapshot
             return snapshot
@@ -320,10 +328,19 @@ class MapRoiTracker:
             reason="markers_missing_latched_polygon_expired",
         )
 
-    def _should_freeze(self, markers_used: tuple[str, ...], freeze_marker_ids: tuple[str, ...]) -> bool:
+    def _should_freeze(
+        self,
+        visible_marker_ids: tuple[str, ...],
+        freeze_marker_ids: tuple[str, ...],
+        freeze_mode: str,
+    ) -> bool:
         if self._frozen_snapshot is not None or not freeze_marker_ids:
             return False
-        return any(marker_id in markers_used for marker_id in freeze_marker_ids)
+        visible = set(visible_marker_ids)
+        mode = normalize_freeze_mode(freeze_mode)
+        if mode == "all":
+            return all(marker_id in visible for marker_id in freeze_marker_ids)
+        return any(marker_id in visible for marker_id in freeze_marker_ids)
 
     def _freeze_snapshot(self, snapshot: MapRoiSnapshot, *, now_monotonic: float) -> MapRoiSnapshot:
         frozen = replace(
@@ -348,6 +365,7 @@ def map_roi_config_from_settings(settings: Any) -> MapRoiConfig:
         polygon_normalized=parse_normalized_polygon(str(getattr(settings, "vision_map_roi_polygon_normalized", ""))),
         label=str(getattr(settings, "vision_map_roi_label", "MAP ROI")),
         freeze_marker_ids=parse_marker_ids(str(getattr(settings, "vision_map_roi_freeze_marker_ids", ""))),
+        freeze_mode=normalize_freeze_mode(str(getattr(settings, "vision_map_roi_freeze_mode", "any"))),
     )
 
 
