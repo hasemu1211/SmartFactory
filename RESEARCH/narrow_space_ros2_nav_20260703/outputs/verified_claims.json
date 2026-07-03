@@ -1,0 +1,18 @@
+[
+  {
+    "claim_id": "clm_001",
+    "text": "TurtleBot3 Burger의 공식 하드웨어 사양은 크기 138 mm x 178 mm x 192 mm, 최대 병진 속도 0.22 m/s, 최대 회전 속도 2.84 rad/s로 기재되어 있다.",
+    "risk": "high",
+    "claim_type": "numeric",
+    "source_ids": [
+      "src_017",
+      "src_018"
+    ],
+    "counter_search": "ROBOTIS e-Manual과 ROBOTIS 제품 페이지를 교차 확인했으며, 동일한 Burger 크기/속도 값이 제시되어 반박 출처를 찾지 못했다.",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  }
+]

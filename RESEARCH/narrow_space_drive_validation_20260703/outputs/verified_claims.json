@@ -1,0 +1,34 @@
+[
+  {
+    "claim_id": "clm_001",
+    "text": "ros2_tracing provides ROS2 core tracing instrumentation plus CLI/launch tools and currently uses LTTng/Linux.",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_005",
+      "src_006"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_002",
+    "text": "ROS 2 bag records topic, service, and action data and can replay saved bags for later examination and experiment reproduction.",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_007",
+      "src_008"
+    ],
+    "counter_search": "",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  }
+]

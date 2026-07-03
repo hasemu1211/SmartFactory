@@ -1,0 +1,17 @@
+{
+  "session_id": "vision_streaming_efficiency_20260703",
+  "topic": "SmartFactory low-load vision streaming efficiency and quality research",
+  "created_at": "2026-07-03T00:00:00+09:00",
+  "local_project_root": "/home/codelab/Desktop/Project/SmartFactory",
+  "basis_profile": "./scripts/vision/sf_lab.sh low-load -> lab-gopro-tb3-low-load",
+  "status": "synthesized",
+  "verification": {
+    "passed": true,
+    "signature": "a549b075cd16e33b33d8bb2f1e4eacfd816357684681b44d8c504b2e66be2cb1",
+    "verified_count": 6,
+    "unresolved_count": 0,
+    "refuted_count": 0,
+    "checked_at": "2026-07-03T06:09:08.381869+00:00",
+    "checker": "validate_ledger.py"
+  }
+}
