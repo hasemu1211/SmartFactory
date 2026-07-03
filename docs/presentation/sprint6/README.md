@@ -1,0 +1,38 @@
+# Sprint 6 발표 원천 소스 모음
+
+이번 폴더는 최종 발표자료가 아니라, 발표 슬라이드를 만들 때 가져다 쓸 **캡처 이미지 / 쉬운 설명 / 검증 로그 원천자료**입니다.
+
+## 바로 볼 파일
+
+- `live-capture.html` — 실시간 캡처용 웹페이지
+- `sprint6-source-notes.md` — 이번 주 작업을 쉬운 말로 정리한 발표 메모
+- `capture-log-summary.md` — 실제 tb3_1 person detection API 로그 요약
+
+## 대표 이미지
+
+- `assets/01-tb3_1-person-detection-overlay.jpg` — PiCam 사람 감지 overlay
+- `assets/01-tb3_1-person-camera-frame.jpg` — PiCam 원본 프레임
+- `assets/02-global-map-roi-locked.jpg` — Global Cam Map ROI + ArUco LOCK overlay
+
+## 실시간 캡처 URL
+
+AI 노트북/SF runtime이 켜져 있을 때:
+
+```text
+http://smartfactory-vision.local:8889/tb3_1_picam_full/
+http://smartfactory-vision.local:8889/global_cam_01_full/
+http://smartfactory-vision.local:8100/api/v1/vision/hazards/person/latest?robot_id=tb3_1
+```
+
+이 PC에서 캡처용 페이지 서버를 켜려면:
+
+```bash
+cd /home/codelab/Desktop/Project/SmartFactory
+python3 -m http.server 9876 --directory docs/presentation/sprint6
+```
+
+브라우저:
+
+```text
+http://127.0.0.1:9876/live-capture.html
+```
