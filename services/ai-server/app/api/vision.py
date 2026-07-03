@@ -63,6 +63,7 @@ from ..smart_roi import (
     translate_detector_result_from_roi_to_full,
 )
 from ..vision_interfaces import DetectorResult
+from ..zone_roi import ZoneRoiConfig, load_zone_roi_config_cached, zone_roi_overlay_events
 from ..vision_monitor_profiles import (
     PERSON_DRIVE_PROFILE_ID,
     PERSON_DRIVE_THRESHOLD_SET_ID,
@@ -167,6 +168,48 @@ def _map_roi_overlay_events(
         return []
     event = snapshot_to_overlay_event(snapshot, label=config.label, frame_seq=frame_seq, timestamp=_now_iso())
     return [event] if event is not None else []
+
+
+def _zone_roi_config_from_settings(settings: Any) -> ZoneRoiConfig | None:
+    enabled = bool(getattr(settings, "vision_zone_roi_enabled", False))
+    if not enabled:
+        return None
+    path = getattr(settings, "vision_zone_roi_config_path", "")
+    try:
+        config = load_zone_roi_config_cached(str(path), enabled)
+    except (OSError, ValueError) as exc:
+        _runtime_context().logger.warning("invalid Zone ROI overlay config: %s", exc)
+        return None
+    source_override = str(getattr(settings, "vision_zone_roi_source", "") or "").strip()
+    if source_override and source_override != config.source:
+        return ZoneRoiConfig(
+            enabled=config.enabled,
+            source=source_override,
+            coordinate_space=config.coordinate_space,
+            zones=config.zones,
+            status=config.status,
+        )
+    return config
+
+
+def _zone_roi_overlay_events(
+    *,
+    source: str,
+    image_width: int,
+    image_height: int,
+    frame_seq: int | None,
+) -> list[dict[str, Any]]:
+    config = _zone_roi_config_from_settings(get_settings())
+    if config is None:
+        return []
+    return zone_roi_overlay_events(
+        config,
+        source=source,
+        image_width=image_width,
+        image_height=image_height,
+        frame_seq=frame_seq,
+        timestamp=_now_iso(),
+    )
 
 
 class SyntheticFrameRequest(BaseModel):
@@ -640,6 +683,12 @@ def _detect_and_overlay_frame_snapshot(*, frame: StoredFrame, pose_request: Pose
         *_map_roi_overlay_events(
             source=frame.source,
             detections=detections,
+            image_width=image_width,
+            image_height=image_height,
+            frame_seq=frame.frame_seq,
+        ),
+        *_zone_roi_overlay_events(
+            source=frame.source,
             image_width=image_width,
             image_height=image_height,
             frame_seq=frame.frame_seq,

@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from api_test_helpers import aruco_png_bytes, client, get_settings, main_module
+from app.zone_roi import load_zone_roi_config, load_zone_roi_config_cached, zone_roi_overlay_events
+
+
+@pytest.fixture(autouse=True)
+def _clear_settings_and_zone_cache():
+    get_settings.cache_clear()
+    load_zone_roi_config_cached.cache_clear()
+    yield
+    get_settings.cache_clear()
+    load_zone_roi_config_cached.cache_clear()
+
+
+def _zone_config(tmp_path):
+    path = tmp_path / "zones.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "smartfactory-zone-roi-draft.v1",
+                "source": "global_cam_01",
+                "coordinate_space": "normalized_full_frame_xy",
+                "zones": [
+                    {
+                        "zone_id": "inbound_static_item_zone",
+                        "label": "inbound",
+                        "role": "allowed_static_item_zone",
+                        "natural_item_location": True,
+                        "reference_markers": [0, 1],
+                        "polygon_normalized": [[0.1, 0.1], [0.4, 0.1], [0.4, 0.4], [0.1, 0.4]],
+                    },
+                    {
+                        "zone_id": "charging_reference_zone",
+                        "label": "charging",
+                        "role": "robot_charging_reference_zone",
+                        "natural_item_location": False,
+                        "reference_markers": [3, 4],
+                        "polygon_normalized": [[0.5, 0.1], [0.8, 0.1], [0.8, 0.4], [0.5, 0.4]],
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_zone_roi_config_builds_visual_overlay_events(tmp_path) -> None:
+    config = load_zone_roi_config(_zone_config(tmp_path))
+
+    events = zone_roi_overlay_events(
+        config,
+        source="global_cam_01",
+        image_width=200,
+        image_height=100,
+        frame_seq=42,
+        timestamp="2026-07-03T00:00:00+09:00",
+    )
+
+    assert [event["class_name"] for event in events] == ["zone_roi", "zone_roi"]
+    assert events[0]["metadata"]["overlay_kind"] == "zone_roi"
+    assert events[0]["metadata"]["overlay_polygon_xy"] == [[20.0, 10.0], [80.0, 10.0], [80.0, 40.0], [20.0, 40.0]]
+    assert events[0]["metadata"]["overlay_color_bgr"] == [0, 220, 0]
+    assert events[0]["metadata"]["overlay_label"] == "ZONE inbound"
+    assert events[1]["metadata"]["overlay_color_bgr"] == [0, 165, 255]
+    assert events[1]["metadata"]["overlay_label"] == "REF charging"
+
+
+def test_zone_roi_overlay_does_not_pollute_main_facing_detection_store(monkeypatch, tmp_path) -> None:
+    context = main_module._runtime_context()
+    context.store.reset()
+    context.source_health.reset()
+    context.frame_store.reset()
+    context.overlay_cache.reset()
+    with context.overlay_images_lock:
+        context.overlay_images.clear()
+
+    zone_path = _zone_config(tmp_path)
+    monkeypatch.setenv("VISION_ZONE_ROI_ENABLED", "true")
+    monkeypatch.setenv("VISION_ZONE_ROI_CONFIG_PATH", str(zone_path))
+    monkeypatch.setenv("VISION_ZONE_ROI_SOURCE", "global_cam_01")
+    get_settings.cache_clear()
+    load_zone_roi_config_cached.cache_clear()
+
+    response = client.post(
+        "/api/v1/vision/frame/process",
+        data={"source": "global_cam_01", "force": "true"},
+        files={"image": ("aruco.png", aruco_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["event_count"] == 1
+    assert body["overlay_event_count"] == 3
+    assert [event["class_name"] for event in body["events"]] == ["aruco_marker"]
+    assert [event["class_name"] for event in body["overlay_events"]] == [
+        "aruco_marker",
+        "zone_roi",
+        "zone_roi",
+    ]
+    assert len(context.store.latest(source="global_cam_01", limit=10)) == 1

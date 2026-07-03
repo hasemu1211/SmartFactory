@@ -79,6 +79,8 @@ ALLOWED_RUNTIME_PARAMS: dict[str, RuntimeParamSpec] = {
     "VISION_MAP_ROI_POLYGON_NORMALIZED": RuntimeParamSpec("normalized_polygon", description="Map ROI polygon as x,y;x,y;... normalized to full frame."),
     "VISION_MAP_ROI_FREEZE_MARKER_IDS": RuntimeParamSpec("marker_ids", description="Comma-separated DICT_4X4_50 ids that freeze the diagnostic Map ROI once seen, e.g. 12."),
     "VISION_MAP_ROI_FREEZE_MODE": RuntimeParamSpec("enum", allowed_values=("any", "all"), description="Freeze when any or all configured freeze markers are visible."),
+    "VISION_ZONE_ROI_ENABLED": RuntimeParamSpec("bool", description="Draw static zone ROI diagnostic overlay."),
+    "VISION_ZONE_ROI_SOURCE": RuntimeParamSpec("source_id", description="Source id for the diagnostic zone ROI overlay."),
 }
 
 

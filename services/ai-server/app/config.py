@@ -97,6 +97,11 @@ class Settings(BaseSettings):
     vision_map_roi_label: str = "MAP ROI"
     vision_map_roi_freeze_marker_ids: str = ""
     vision_map_roi_freeze_mode: str = "any"
+    vision_zone_roi_enabled: bool = False
+    vision_zone_roi_config_path: Path = Field(
+        default=REPO_ROOT / "config" / "vision" / "zone_rois" / "global_cam_01_lab_draft.json"
+    )
+    vision_zone_roi_source: str = "global_cam_01"
     sf_runtime_control_enabled: bool = False
     sf_runtime_control_token: str = ""
     sf_runtime_control_run_dir: Path = Field(

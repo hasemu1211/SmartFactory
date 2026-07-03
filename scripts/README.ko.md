@@ -119,7 +119,7 @@ make vision-lab-down
 
 | Profile | 언제 쓰나 |
 |---|---|
-| `lab-gopro-tb3-low-load` | 저부하 권장. GoPro full + tb3_1/tb3_2 PiCam WebRTC를 실행하고, lift_roi WebRTC만 끕니다. |
+| `lab-gopro-tb3-low-load` | 저부하 권장. GoPro full + tb3_1/tb3_2 PiCam WebRTC를 실행하고, lift_roi WebRTC만 끕니다. Global full overlay에는 Map ROI와 정적 Zone ROI 튜닝 레이어를 함께 표시합니다. |
 | `lab-gopro-tb3-ffmpeg-first` | 전체 WebRTC. GoPro full + lift ROI + tb3_1/tb3_2 WebRTC, MJPEG fallback으로 실행. |
 | `lab-gopro-tb3` | WebRTC보다 기존 MJPEG 안정 경로를 우선 확인할 때. |
 | `tb3-live-webrtc` | GoPro 없이 tb3_1 PiCam만 WebRTC로 확인할 때. |
@@ -132,6 +132,10 @@ http://smartfactory-vision.local:8889/global_cam_01_full/
 http://smartfactory-vision.local:8889/tb3_1_picam_full/
 http://smartfactory-vision.local:8889/tb3_2_picam_full/
 ```
+
+`global_cam_01_full`의 Zone ROI는 `config/vision/zone_rois/global_cam_01_lab_draft.json` 기반의
+operator tuning overlay입니다. Main-facing API 응답에는 raw polygon을 넣지 않고,
+낙하물 API 구현 시 같은 perception state에서 compact advisory JSON만 반환합니다.
 
 ## 전체 WebRTC 추가 URL
 
