@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import lru_cache, wraps
 from inspect import isawaitable
+from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 from typing import Any
@@ -18,7 +19,7 @@ from fastapi import File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from ..config import get_settings
+from ..config import REPO_ROOT, get_settings
 from ..contracts import (
     ContractValidationError,
     validate_vision_event,
@@ -174,7 +175,9 @@ def _zone_roi_config_from_settings(settings: Any) -> ZoneRoiConfig | None:
     enabled = bool(getattr(settings, "vision_zone_roi_enabled", False))
     if not enabled:
         return None
-    path = getattr(settings, "vision_zone_roi_config_path", "")
+    path = Path(getattr(settings, "vision_zone_roi_config_path", ""))
+    if not path.is_absolute():
+        path = REPO_ROOT / path
     try:
         config = load_zone_roi_config_cached(str(path), enabled)
     except (OSError, ValueError) as exc:

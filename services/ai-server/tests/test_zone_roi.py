@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -141,4 +142,33 @@ def test_zone_roi_metadata_plane_includes_overlay_without_polluting_store(monkey
         "zone_roi",
         "zone_roi",
     ]
+    assert len(context.store.latest(source="global_cam_01", limit=10)) == 1
+
+
+def test_zone_roi_relative_config_path_resolves_from_repo_root_when_ai_server_cwd_changes(monkeypatch) -> None:
+    context = main_module._runtime_context()
+    context.store.reset()
+    context.source_health.reset()
+    context.frame_store.reset()
+    context.overlay_cache.reset()
+    with context.overlay_images_lock:
+        context.overlay_images.clear()
+        context.overlay_event_layers.clear()
+
+    monkeypatch.chdir(Path("services/ai-server"))
+    monkeypatch.setenv("VISION_ZONE_ROI_ENABLED", "true")
+    monkeypatch.setenv("VISION_ZONE_ROI_CONFIG_PATH", "config/vision/zone_rois/global_cam_01_lab_draft.json")
+    monkeypatch.setenv("VISION_ZONE_ROI_SOURCE", "global_cam_01")
+    get_settings.cache_clear()
+    load_zone_roi_config_cached.cache_clear()
+
+    response = client.post(
+        "/api/v1/vision/frame/process",
+        data={"source": "global_cam_01", "force": "true"},
+        files={"image": ("aruco.png", aruco_png_bytes(), "image/png")},
+    )
+
+    assert response.status_code == 200
+    class_names = [event["class_name"] for event in response.json()["overlay_events"]]
+    assert class_names.count("zone_roi") == 5
     assert len(context.store.latest(source="global_cam_01", limit=10)) == 1
