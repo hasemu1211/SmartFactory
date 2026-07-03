@@ -15,7 +15,22 @@
     .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; align-items:start; }
     .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
     img { width:100%; height:auto; border-radius:10px; border:1px solid var(--line); background:#000; image-rendering:auto; }
-    iframe { width:100%; height:360px; border:1px solid var(--line); border-radius:10px; background:#fff; color:#000; }
+    .json-panel {
+      width:100%;
+      min-height:360px;
+      max-height:520px;
+      overflow:auto;
+      box-sizing:border-box;
+      border:1px solid var(--line);
+      border-radius:10px;
+      background:#020617;
+      color:#d1fae5;
+      padding:12px;
+      white-space:pre-wrap;
+      word-break:break-word;
+      font:13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    .json-panel.error { color:#fecaca; background:#450a0a; }
     code, a { color:#67e8f9; }
     .badge { display:inline-block; padding:3px 8px; border-radius:999px; background:#064e3b; color:#bbf7d0; font-weight:700; font-size:12px; margin-right:6px; }
     .links { display:flex; flex-wrap:wrap; gap:8px; }
@@ -28,7 +43,7 @@
 <header>
   <h1>Sprint 6 Vision Live Capture</h1>
   <p><span class="badge">LIVE</span> PiCam 사람 감지 API / Global Map ROI 발표 캡처용 페이지</p>
-  <p class="small">이미지는 1초마다 cache-busting으로 새로고침됩니다. JSON iframe은 브라우저 CORS 없이 원본 endpoint 화면을 그대로 보여줍니다.</p>
+  <p class="small">이미지는 1초마다 새로고침됩니다. JSON은 캡처용 로컬 프록시를 통해 어두운 배경의 읽기 쉬운 패널로 표시합니다.</p>
 </header>
 <main>
   <section class="card">
@@ -58,38 +73,59 @@
   <section class="grid">
     <article class="card">
       <h2>3. Person Hazard API 응답</h2>
-      <iframe id="hazardFrame" src="http://smartfactory-vision.local:8100/api/v1/vision/hazards/person/latest?robot_id=tb3_1"></iframe>
+      <pre id="hazardJson" class="json-panel">loading...</pre>
+      <p class="small"><a href="http://smartfactory-vision.local:8100/api/v1/vision/hazards/person/latest?robot_id=tb3_1" target="_blank">원본 API 열기</a></p>
     </article>
     <article class="card">
       <h2>4. tb3_1 overlay metadata / 실제 detection 로그</h2>
-      <iframe id="metaFrame" src="http://smartfactory-vision.local:8100/api/v1/vision/overlay/metadata?source=tb3_1_picam&view=full&limit=5"></iframe>
+      <pre id="metaJson" class="json-panel">loading...</pre>
+      <p class="small"><a href="http://smartfactory-vision.local:8100/api/v1/vision/overlay/metadata?source=tb3_1_picam&view=full&limit=5" target="_blank">원본 API 열기</a></p>
     </article>
   </section>
 
   <section class="grid">
     <article class="card">
       <h2>5. AI Server health</h2>
-      <iframe id="healthFrame" src="http://smartfactory-vision.local:8100/api/v1/health"></iframe>
+      <pre id="healthJson" class="json-panel">loading...</pre>
+      <p class="small"><a href="http://smartfactory-vision.local:8100/api/v1/health" target="_blank">원본 API 열기</a></p>
     </article>
     <article class="card">
       <h2>6. Vision streams 상태</h2>
-      <iframe id="streamsFrame" src="http://smartfactory-vision.local:8100/api/v1/vision/streams"></iframe>
+      <pre id="streamsJson" class="json-panel">loading...</pre>
+      <p class="small"><a href="http://smartfactory-vision.local:8100/api/v1/vision/streams" target="_blank">원본 API 열기</a></p>
     </article>
   </section>
 </main>
 <script>
   const stamp = () => Date.now();
+  const proxyPath = (path) => '/proxy?path=' + encodeURIComponent(path) + '&t=' + stamp();
   function refreshImages() {
     document.getElementById('tb3Overlay').src = 'http://smartfactory-vision.local:8100/api/v1/vision/overlay/latest/image?source=tb3_1_picam&view=full&t=' + stamp();
     document.getElementById('globalOverlay').src = 'http://smartfactory-vision.local:8100/api/v1/vision/overlay/latest/image?source=global_cam_01&view=full&t=' + stamp();
   }
-  function refreshIframes() {
-    document.getElementById('hazardFrame').src = 'http://smartfactory-vision.local:8100/api/v1/vision/hazards/person/latest?robot_id=tb3_1&t=' + stamp();
-    document.getElementById('metaFrame').src = 'http://smartfactory-vision.local:8100/api/v1/vision/overlay/metadata?source=tb3_1_picam&view=full&limit=5&t=' + stamp();
-    document.getElementById('healthFrame').src = 'http://smartfactory-vision.local:8100/api/v1/health?t=' + stamp();
+  async function loadJson(id, path) {
+    const el = document.getElementById(id);
+    try {
+      const response = await fetch(proxyPath(path), {cache: 'no-store'});
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const payload = await response.json();
+      el.classList.remove('error');
+      el.textContent = JSON.stringify(payload, null, 2);
+    } catch (error) {
+      el.classList.add('error');
+      el.textContent = 'JSON 로드 실패: ' + error.message + '\n\n캡처용 서버는 serve_live_capture.py로 실행해야 합니다.\n원본 링크를 새 탭으로 열어 확인할 수 있습니다.';
+    }
   }
+  function refreshJson() {
+    loadJson('hazardJson', '/api/v1/vision/hazards/person/latest?robot_id=tb3_1');
+    loadJson('metaJson', '/api/v1/vision/overlay/metadata?source=tb3_1_picam&view=full&limit=5');
+    loadJson('healthJson', '/api/v1/health');
+    loadJson('streamsJson', '/api/v1/vision/streams');
+  }
+  refreshImages();
+  refreshJson();
   setInterval(refreshImages, 1000);
-  setInterval(refreshIframes, 3000);
+  setInterval(refreshJson, 3000);
 </script>
 </body>
 </html>

@@ -28,7 +28,7 @@ http://smartfactory-vision.local:8100/api/v1/vision/hazards/person/latest?robot_
 
 ```bash
 cd /home/codelab/Desktop/Project/SmartFactory
-python3 -m http.server 9876 --directory docs/presentation/sprint6
+python3 docs/presentation/sprint6/serve_live_capture.py
 ```
 
 브라우저:
@@ -36,3 +36,6 @@ python3 -m http.server 9876 --directory docs/presentation/sprint6
 ```text
 http://127.0.0.1:9876/live-capture.html
 ```
+
+주의: `live-capture.html`의 JSON 패널은 `/proxy`를 사용하므로 일반
+`python3 -m http.server`가 아니라 `serve_live_capture.py`로 띄워야 한다.
