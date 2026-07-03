@@ -7,12 +7,14 @@
 - `live-capture.html` — 실시간 캡처용 웹페이지
 - `sprint6-source-notes.md` — 이번 주 작업을 쉬운 말로 정리한 발표 메모
 - `capture-log-summary.md` — 실제 tb3_1 person detection API 로그 요약
+- `zone-roi-draft.md` — Global Cam 정적 구역 ROI 초안과 낙하물 판단 기준
 
 ## 대표 이미지
 
 - `assets/01-tb3_1-person-detection-overlay.jpg` — PiCam 사람 감지 overlay
 - `assets/01-tb3_1-person-camera-frame.jpg` — PiCam 원본 프레임
 - `assets/02-global-map-roi-locked.jpg` — Global Cam Map ROI + ArUco LOCK overlay
+- `assets/03-global-zone-roi-draft.jpg` — 입고/출고/창고/충전 구역 ROI 초안 overlay
 
 ## 실시간 캡처 URL
 

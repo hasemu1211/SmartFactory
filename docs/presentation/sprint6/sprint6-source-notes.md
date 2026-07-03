@@ -54,8 +54,15 @@
 ## 5. Global Cam Map ROI + ArUco 기준 고정
 
 - Global Cam에서 전체 작업 맵 영역(Map ROI)을 overlay로 표시한다.
-- ArUco marker 11/12를 기준으로 맵 ROI를 잡고, marker 12가 잡히면 ROI를 LOCK한다.
+- ArUco marker 11/12를 기준으로 맵 ROI를 잡고, marker 6과 12가 같은 프레임에 잡히면 ROI를 LOCK한다.
 - ROI가 흔들리는 문제를 줄이고, 다음 단계인 구역 ROI/낙하물 감시/학습 데이터 수집의 기준선을 만든다.
+
+## 6. Global Cam 정적 Zone ROI 초안
+
+- Map ROI 안에서 입고/출고/창고/충전 구역을 구분하는 초안을 만들었다.
+- 입고(A1/A0), 출고(A5/A6), 창고(A9/A10 상단/하단)는 물건이 있어도 자연스러운 정적 구역으로 둔다.
+- 충전(A3/A4)은 로봇 기준 참고 구역이며, target item 정상 방치 구역으로는 우선 보지 않는다.
+- 주행 중 파레트/캐리어는 고정 구역이 아니라 Main/ROS 상태 기반 DynamicCarrierROI로 별도 추가한다.
 
 발표 문장 예시:
 
@@ -64,10 +71,12 @@
 근거 자료:
 
 - `assets/02-global-map-roi-locked.jpg`
+- `assets/03-global-zone-roi-draft.jpg`
+- `zone-roi-draft.md`
 
 ## 다음 단계
 
-1. Map ROI 안에서 입고/출고/충전/창고/주행구역 등 세부 구역 ROI 잡기
+1. 정적 Zone ROI 초안을 실제 감시 코드에 연결하고, 필요하면 현장 화면 기준으로 미세 조정
 2. 낙하물/적재 증거용 데이터 수집 스크립트 정리
 3. `target_item`, `carrier_pallet` 라벨링 전략으로 모델 학습 준비
 4. 낙하물 감시 API와 pick/drop 증거 API 구현/검증
