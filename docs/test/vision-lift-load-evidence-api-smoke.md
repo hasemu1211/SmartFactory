@@ -18,7 +18,7 @@ MVP 기본 정책:
 
 - `burst_frames=5`
 - `min_pass_frames=1`
-- 즉 5프레임 중 expected ArUco marker가 지정 ZoneROI 안에서 1프레임이라도 잡히면 `PASS`.
+- 즉 5프레임 중 expected ArUco marker가 지정 ZoneROI 안에서 1프레임이라도 잡히면 `PASS` 후보가 된다. 단, 같은 burst에서 extra item marker/count가 보이면 `FAIL`로 fail-closed 처리한다.
 - `event.confidence`는 관측 비율이다. 예: 1/5면 `0.2`, 5/5면 `1.0`.
 
 ## 1. 실행 준비
@@ -258,7 +258,7 @@ curl -sS -X POST "$AI/api/v1/vision/evidence/lift-load/evaluate" \
 | `NO_DECISION / SOURCE_STALE` | global cam latest frame이 안 들어오거나 너무 오래됨. GoPro/low-load부터 확인. |
 | `NO_DECISION / POLICY_NOT_APPLICABLE` | zone id가 없거나, alias 미매핑이거나, natural item zone이 아님. |
 | `FAIL / EXPECTED_ITEM_COUNT_MISMATCH` | 프레임은 들어왔지만 expected marker/count가 조건과 맞지 않음. |
-| `PASS`인데 confidence가 낮음 | 5프레임 중 일부만 잡힘. MVP는 1프레임 hit면 PASS지만, confidence는 증거 강도 참고값. |
+| `PASS`인데 confidence가 낮음 | 5프레임 중 일부만 잡힘. MVP는 extra item이 없는 경우 1프레임 hit면 PASS지만, confidence는 증거 강도 참고값. |
 | HTTP `400` | source/robot/marker 범위 같은 명시 계약 위반. |
 | HTTP `422` | JSON schema 위반, 필수값 누락, 알 수 없는 extra field 등. |
 
@@ -395,3 +395,30 @@ Optional remaining validation, not required for the current smoke goal:
 - Unknown `location_id` should return `NO_DECISION/POLICY_NOT_APPLICABLE`.
 - Reserved marker ids `0..19` should return HTTP `400`.
 - Invalid `source` or `robot_id` should return validation errors.
+
+## 10. Code review follow-up for 9.2 dual-marker finding
+
+Review finding:
+
+- Severity: HIGH for evidence correctness, because the API could return `PASS` when an expected marker appeared in at least one burst frame even though another item marker was also observed in the same requested ZoneROI during the burst.
+- Scope: lift-load evidence policy only. No Main/ROS/WebRTC/DB contract change is required.
+- Constraint kept: the MVP still allows `burst_frames=5`, `min_pass_frames=1` for a single clearly observed expected item.
+
+Fix direction:
+
+- Keep the one-frame PASS threshold for the normal single-item case.
+- Add a burst-level fail-closed guard: if any sampled frame observes more item markers than `expected_item_count`, the result is `FAIL / EXPECTED_ITEM_COUNT_MISMATCH` even if another frame matched the expected marker/count.
+- Reuse the existing reason code and compact response shape, so Main does not need a new enum or parser change.
+
+Expected behavior after the fix:
+
+| live condition | expected result |
+| --- | --- |
+| only expected marker `29` appears in outbound zone in at least 1/5 frames | `PASS` |
+| marker `27` and `29` both appear in outbound zone during the burst while `expected_marker_id=29`, `expected_item_count=1` | `FAIL / EXPECTED_ITEM_COUNT_MISMATCH` |
+| marker is in `charging_reference_zone` | `NO_DECISION / POLICY_NOT_APPLICABLE` |
+
+Regression coverage added:
+
+- Unit policy test for `per_frame_item_counts=[1,1,2,1,1]`, `min_pass_frames=1` now expects `FAIL`.
+- Existing API tests still cover single-frame PASS, wrong marker FAIL, mixed markers in one frame FAIL, non-natural zone NO_DECISION, and reserved marker HTTP 400.

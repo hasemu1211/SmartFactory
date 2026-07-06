@@ -172,6 +172,24 @@ def test_lift_load_marker_burst_is_uncertain_when_default_burst_has_too_few_fram
     assert result["total_frames"] == 1
 
 
+def test_lift_load_marker_burst_fails_when_extra_item_appears_anywhere_in_burst():
+    result = evaluate_lift_load_marker_burst(
+        per_frame_expected_counts=[1, 1, 1, 1, 1],
+        per_frame_item_counts=[1, 1, 2, 1, 1],
+        expected_count=1,
+        operation="DROPOFF",
+        min_pass_frames=1,
+        requested_frames=5,
+    )
+
+    assert result["result"] == "FAIL"
+    assert result["event_type"] == "LIFT_LOAD_EVIDENCE"
+    assert result["reason_code"] == "EXPECTED_ITEM_COUNT_MISMATCH"
+    assert result["accepted_frames"] == 4
+    assert result["observed_count"] == 2
+    assert result["command_satisfying"] is False
+
+
 def test_lift_load_marker_burst_fails_when_wrong_item_marker_is_present():
     result = evaluate_lift_load_marker_burst(
         per_frame_expected_counts=[0, 0, 0],

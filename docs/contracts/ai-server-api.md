@@ -425,7 +425,7 @@ Request example:
 
 Boundary notes:
 
-Default MVP policy: the endpoint samples up to `burst_frames=5` distinct latest frames and uses `min_pass_frames=1`, so one valid expected-marker hit is enough for `PASS`; `event.confidence` remains the accepted-frame ratio.
+Default MVP policy: the endpoint samples up to `burst_frames=5` distinct latest frames and uses `min_pass_frames=1`, so one valid expected-marker hit is enough for `PASS` only when no extra item marker/count is observed in the requested ZoneROI during the burst; `event.confidence` remains the accepted-frame ratio.
 
 - `source` must be `global_cam_01`.
 - `robot_id` must be `tb3_1` or `tb3_2`.

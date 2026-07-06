@@ -470,6 +470,19 @@ def evaluate_lift_load_marker_burst(
     )
     observed_count = max(set(item_counts), key=item_counts.count) if item_counts else None
     confidence = round(matching_frames / requested_frames, 3)
+    extra_item_observed = any(item_count > expected_count for item_count in item_counts)
+
+    if extra_item_observed:
+        return _compact_lift_result(
+            operation=operation,
+            result="FAIL",
+            reason_code="EXPECTED_ITEM_COUNT_MISMATCH",
+            expected_count=expected_count,
+            observed_count=max(item_counts),
+            accepted_frames=matching_frames,
+            total_frames=total_frames,
+            confidence=confidence,
+        )
 
     if matching_frames >= min_pass_frames:
         return _compact_lift_result(

@@ -31,7 +31,7 @@ Example:
 }
 ```
 
-Default MVP policy: AI samples up to `burst_frames=5` distinct latest frames, and `min_pass_frames=1` means one valid expected-marker hit is enough for `PASS`. `event.confidence` still reports the observed ratio, e.g. `0.2` for 1/5.
+Default MVP policy: AI samples up to `burst_frames=5` distinct latest frames, and `min_pass_frames=1` means one valid expected-marker hit is enough for `PASS` only if the same burst does not observe extra item markers/count in the requested ZoneROI. `event.confidence` still reports the observed ratio, e.g. `0.2` for 1/5.
 
 ## 2. Required / recommended fields
 

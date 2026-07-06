@@ -189,7 +189,7 @@ Main이 DRIVE/PICK/DROP/IDLE 상태 전환 시 호출한다. monitor state는 AI
 
 operation 정합성:
 
-MVP 기본 정책은 `burst_frames=5`, `min_pass_frames=1`이다. 즉 5프레임 burst 중 expected marker가 ZoneROI 안에서 1회라도 잡히면 `PASS`로 본다. 단, `event.confidence`는 1/5면 `0.2`처럼 관측 비율을 그대로 드러낸다.
+MVP 기본 정책은 `burst_frames=5`, `min_pass_frames=1`이다. 즉 5프레임 burst 중 expected marker가 ZoneROI 안에서 1회라도 잡히면 `PASS`로 볼 수 있지만, 같은 burst 안에서 `expected_item_count`보다 많은 item marker가 관측되면 `FAIL / EXPECTED_ITEM_COUNT_MISMATCH`로 fail-closed 처리한다. `event.confidence`는 1/5면 `0.2`처럼 관측 비율을 그대로 드러낸다.
 
 - Main command naming: `PICK_UP`, `DROP_OFF`.
 - AI 내부 policy naming: `PICKUP`, `DROPOFF`.
