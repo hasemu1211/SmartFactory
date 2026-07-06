@@ -422,8 +422,92 @@ def evaluate_lift_load_burst(
     )
 
 
+def evaluate_lift_load_marker_burst(
+    *,
+    per_frame_expected_counts: Iterable[int],
+    per_frame_item_counts: Iterable[int],
+    expected_count: int,
+    operation: str,
+    min_pass_frames: int,
+    requested_frames: int,
+) -> dict[str, Any]:
+    """Aggregate fixed-ZoneROI ArUco item-marker burst evidence.
+
+    The route owns image sampling and zone containment. This policy seam only
+    decides whether the compact per-frame counts satisfy the command evidence
+    threshold. It intentionally has no access to bbox, polygons, image bytes, or
+    control actions.
+    """
+
+    if expected_count < 0:
+        raise ValueError("expected_count must be >= 0")
+    if min_pass_frames <= 0:
+        raise ValueError("min_pass_frames must be positive")
+    if requested_frames <= 0:
+        raise ValueError("requested_frames must be positive")
+
+    expected_counts = [int(count) for count in per_frame_expected_counts]
+    item_counts = [int(count) for count in per_frame_item_counts]
+    total_frames = min(len(expected_counts), len(item_counts))
+    if total_frames == 0:
+        return _compact_lift_result(
+            operation=operation,
+            result="UNCERTAIN",
+            reason_code="NO_RELEVANT_DETECTION",
+            expected_count=expected_count,
+            observed_count=None,
+            accepted_frames=0,
+            total_frames=0,
+            confidence=None,
+        )
+
+    expected_counts = expected_counts[:total_frames]
+    item_counts = item_counts[:total_frames]
+    matching_frames = sum(
+        1
+        for expected_count_in_frame, item_count_in_frame in zip(expected_counts, item_counts, strict=False)
+        if expected_count_in_frame == expected_count and item_count_in_frame == expected_count
+    )
+    observed_count = max(set(item_counts), key=item_counts.count) if item_counts else None
+    confidence = round(matching_frames / requested_frames, 3)
+
+    if matching_frames >= min_pass_frames:
+        return _compact_lift_result(
+            operation=operation,
+            result="PASS",
+            reason_code="EXPECTED_ITEM_COUNT_MATCH_AND_STABLE",
+            expected_count=expected_count,
+            observed_count=expected_count,
+            accepted_frames=matching_frames,
+            total_frames=total_frames,
+            confidence=confidence,
+        )
+    if total_frames < min_pass_frames:
+        return _compact_lift_result(
+            operation=operation,
+            result="UNCERTAIN",
+            reason_code="LOW_CONFIDENCE",
+            expected_count=expected_count,
+            observed_count=observed_count,
+            accepted_frames=matching_frames,
+            total_frames=total_frames,
+            confidence=confidence,
+        )
+    return _compact_lift_result(
+        operation=operation,
+        result="FAIL",
+        reason_code="EXPECTED_ITEM_COUNT_MISMATCH",
+        expected_count=expected_count,
+        observed_count=observed_count,
+        accepted_frames=matching_frames,
+        total_frames=total_frames,
+        confidence=confidence,
+    )
+
+
 __all__ = [
     "RectRoi",
     "evaluate_dropped_item_policy",
     "evaluate_lift_load_burst",
+    "evaluate_lift_load_marker_burst",
 ]

@@ -7,7 +7,13 @@ import pytest
 
 from api_test_helpers import aruco_png_bytes, client, get_settings, main_module
 from app.config import REPO_ROOT
-from app.zone_roi import load_zone_roi_config, load_zone_roi_config_cached, zone_roi_overlay_events
+from app.zone_roi import (
+    find_zone_by_id,
+    load_zone_roi_config,
+    load_zone_roi_config_cached,
+    zone_contains_pixel,
+    zone_roi_overlay_events,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -82,6 +88,55 @@ def test_zone_roi_draft_config_uses_compact_storage_labels() -> None:
     labels = [zone.label for zone in config.zones if zone.zone_id.startswith("storage_")]
 
     assert labels == ["storage 1", "storage 2"]
+
+
+def test_zone_roi_draft_config_exposes_operator_location_aliases() -> None:
+    config = load_zone_roi_config(
+        REPO_ROOT / "config" / "vision" / "zone_rois" / "global_cam_01_lab_draft.json"
+    )
+
+    assert config.location_aliases == {
+        "inbound": "inbound_static_item_zone",
+        "outbound": "outbound_static_item_zone",
+        "storage_1": "storage_upper_static_item_zone",
+        "storage_2": "storage_lower_static_item_zone",
+    }
+
+
+def test_zone_roi_rejects_location_aliases_pointing_to_unknown_zones(tmp_path) -> None:
+    path = tmp_path / "bad-zones.json"
+    path.write_text(
+        json.dumps(
+            {
+                "source": "global_cam_01",
+                "coordinate_space": "normalized_full_frame_xy",
+                "location_aliases": {"inbound": "missing_zone"},
+                "zones": [
+                    {
+                        "zone_id": "inbound_static_item_zone",
+                        "label": "inbound",
+                        "role": "allowed_static_item_zone",
+                        "natural_item_location": True,
+                        "polygon_normalized": [[0.1, 0.1], [0.4, 0.1], [0.4, 0.4], [0.1, 0.4]],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="references unknown zone_id"):
+        load_zone_roi_config(path)
+
+
+def test_zone_contains_pixel_treats_polygon_edges_as_inside(tmp_path) -> None:
+    config = load_zone_roi_config(_zone_config(tmp_path))
+    zone = find_zone_by_id(config, "inbound_static_item_zone")
+    assert zone is not None
+
+    assert zone_contains_pixel(zone, x=20, y=20, image_width=200, image_height=200) is True
+    assert zone_contains_pixel(zone, x=50, y=50, image_width=200, image_height=200) is True
+    assert zone_contains_pixel(zone, x=90, y=90, image_width=200, image_height=200) is False
 
 
 def test_zone_roi_overlay_does_not_pollute_main_facing_detection_store(monkeypatch, tmp_path) -> None:

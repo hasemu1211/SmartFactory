@@ -177,8 +177,13 @@ Main이 DRIVE/PICK/DROP/IDLE 상태 전환 시 호출한다. monitor state는 AI
   "task_id": 303,
   "command_id": 3,
   "operation": "PICK_UP",
+  "expected_item_id": "main-owned-item-id",
+  "expected_marker_id": 20,
   "expected_item_count": 1,
-  "capture_profile": "high_res_burst"
+  "vision_zone_id": "inbound_static_item_zone",
+  "burst_frames": 5,
+  "min_pass_frames": 3,
+  "sample_interval_ms": 80
 }
 ```
 
@@ -187,35 +192,58 @@ operation 정합성:
 - Main command naming: `PICK_UP`, `DROP_OFF`.
 - AI 내부 policy naming: `PICKUP`, `DROPOFF`.
 - AI Server가 Main-facing API에서 `PICK_UP`/`DROP_OFF`를 받아 내부 이름으로 normalize한다.
+- 호환성상 `PICKUP`/`DROPOFF`도 입력 enum으로 허용하지만 Main에는 `PICK_UP`/`DROP_OFF` 사용을 권장한다.
+- MVP는 custom YOLO 없이 `global_cam_01` 최신 프레임의 fixed ZoneROI 안에서
+  ArUco item marker를 3~5 frame burst로 검증한다.
+- `location_id`는 `config/vision/zone_rois/*.json`의 `location_aliases`에
+  명시된 경우에만 `vision_zone_id`로 해석한다. 매핑되지 않은 Main/domain
+  위치 id는 `NO_DECISION/POLICY_NOT_APPLICABLE`이며, AI Server가 Main DB id를
+  임의로 만들지 않는다.
+- item marker 후보는 `0~19` map/zone marker와 분리하여 `20~49`만 허용한다.
+  현재 실기 후보 기본값은 `20,22,23,24,27,29`다.
 
 응답 예:
 
 ```json
 {
-  "schema_version": "vision-monitor-event.v1",
-  "event_type": "ITEM_PICKED",
+  "schema_version": "vision-lift-load-evaluate.v1",
+  "monitor_id": "lift_evidence",
   "source": "global_cam_01",
   "robot_id": "tb3_1",
   "task_id": 303,
   "command_id": 3,
+  "operation": "PICKUP",
+  "vision_zone_id": "inbound_static_item_zone",
   "result": "PASS",
-  "severity": "INFO",
-  "confidence": 0.91,
-  "observed_at": "2026-06-30T...+09:00",
   "reason_code": "EXPECTED_ITEM_COUNT_MATCH_AND_STABLE",
-  "trusted": false,
-  "image_url": "/api/v1/evidence/images/global_cam_01/lift_roi/2026-06-30/proof-303.jpg",
-  "profile_id": "lift_evidence_burst_v1",
-  "threshold_set_id": "lift_evidence_fixture_v1",
-  "data_json": {
-    "assignment_status": "OWNED",
-    "related_robot_ids": [],
-    "task_id_ref": 303,
-    "ai_judgement": {
-      "verification_status": "PASS",
-      "expected_count": 1,
+  "event": {
+    "schema_version": "vision-monitor-event.v1",
+    "event_type": "ITEM_PICKED",
+    "source": "global_cam_01",
+    "robot_id": "tb3_1",
+    "task_id": 303,
+    "command_id": 3,
+    "result": "PASS",
+    "severity": "INFO",
+    "confidence": 0.6,
+    "observed_at": "2026-07-06T...+09:00",
+    "reason_code": "EXPECTED_ITEM_COUNT_MATCH_AND_STABLE",
+    "trusted": false,
+    "image_url": null,
+    "profile_id": "lift_evidence_burst_v1",
+    "threshold_set_id": "lift_evidence_fixture_v1",
+    "data_json": {
+      "assignment_status": "OWNED",
+      "task_id_ref": 303,
+      "expected_item_id": "main-owned-item-id",
+      "expected_marker_ids": ["ARUCO_4X4_50_20"],
+      "detected_marker_id": "ARUCO_4X4_50_20",
+      "marker_dictionary": "DICT_4X4_50",
+      "vision_zone_id": "inbound_static_item_zone",
+      "expected_item_count": 1,
       "observed_count": 1,
-      "accepted_frames": 4
+      "accepted_frames": 3,
+      "total_frames": 5
     }
   }
 }

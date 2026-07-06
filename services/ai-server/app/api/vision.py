@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from asyncio import sleep as async_sleep
 from urllib.error import HTTPError, URLError
 from urllib.request import Request as UrlRequest, urlopen
 from contextvars import ContextVar
@@ -12,12 +13,13 @@ from inspect import isawaitable
 from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
-from typing import Any
+from typing import Any, Literal
 
 import cv2
 from fastapi import File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import HTMLResponse, Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from starlette.concurrency import run_in_threadpool
 
 from ..config import REPO_ROOT, get_settings
 from ..contracts import (
@@ -42,6 +44,7 @@ from ..openapi_schemas import (
     _frame_process_response_schema,
     _json_response_openapi,
     _latest_frame_response_schema,
+    _lift_load_evaluate_response_schema,
     _lift_roi_openapi_schema,
     _overlay_canvas_metadata_response_schema,
     _person_hazard_latest_response_schema,
@@ -64,12 +67,22 @@ from ..smart_roi import (
     translate_detector_result_from_roi_to_full,
 )
 from ..vision_interfaces import DetectorResult
-from ..zone_roi import ZoneRoiConfig, load_zone_roi_config_cached, zone_roi_overlay_events
+from ..zone_roi import (
+    ZoneRoi,
+    ZoneRoiConfig,
+    find_zone_by_id,
+    load_zone_roi_config_cached,
+    zone_contains_pixel,
+    zone_roi_overlay_events,
+)
 from ..vision_monitor_profiles import (
+    LIFT_EVIDENCE_PROFILE_ID,
+    LIFT_EVIDENCE_THRESHOLD_SET_ID,
     PERSON_DRIVE_PROFILE_ID,
     PERSON_DRIVE_THRESHOLD_SET_ID,
     POLICY_VERSION as VISION_MONITOR_POLICY_VERSION,
 )
+from ..vision_monitor_policies import evaluate_lift_load_marker_burst
 from ..vision_monitor_state import VisionMonitorStateError
 from ..wms_client import emit_vision_events as default_emit_vision_events
 from .dependencies import ContextGetter
@@ -248,6 +261,38 @@ class VisionMonitorStateRequest(BaseModel):
     profile_id: str | None = None
     policy_version: str = VISION_MONITOR_POLICY_VERSION
     threshold_set_id: str | None = None
+
+
+class LiftLoadEvaluateRequest(BaseModel):
+    """Main-facing one-shot lift/load evidence request.
+
+    Main owns task/command/location identity. AI Server only maps the requested
+    ZoneROI plus expected ArUco marker observations into compact evidence.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: Literal["global_cam_01"] = "global_cam_01"
+    robot_id: Literal["tb3_1", "tb3_2"]
+    task_id: int | str | None = None
+    command_id: int | str | None = None
+    operation: Literal["PICK_UP", "PICKUP", "DROP_OFF", "DROPOFF"]
+    expected_item_id: str | None = None
+    expected_marker_id: str | int | None = None
+    expected_marker_ids: list[str | int] | None = None
+    expected_item_count: int = Field(default=1, ge=1, le=10)
+    location_id: str | None = None
+    vision_zone_id: str | None = None
+    burst_frames: int = Field(default=5, ge=1, le=10)
+    min_pass_frames: int | None = Field(default=None, ge=1, le=10)
+    sample_interval_ms: int = Field(default=80, ge=0, le=500)
+    max_frame_age_s: float = Field(default=2.0, ge=0)
+
+    @model_validator(mode="after")
+    def _validate_burst_threshold(self) -> "LiftLoadEvaluateRequest":
+        if self.min_pass_frames is not None and self.min_pass_frames > self.burst_frames:
+            raise ValueError("min_pass_frames must be <= burst_frames")
+        return self
 
 
 class WebRtcOfferRequest(BaseModel):
@@ -1951,6 +1996,403 @@ def person_hazard_latest(
     }
 
 
+DEFAULT_ARUCO_ITEM_MARKER_IDS = (
+    "ARUCO_4X4_50_20",
+    "ARUCO_4X4_50_22",
+    "ARUCO_4X4_50_23",
+    "ARUCO_4X4_50_24",
+    "ARUCO_4X4_50_27",
+    "ARUCO_4X4_50_29",
+)
+
+
+def _normalize_lift_operation(operation: str) -> str:
+    normalized = operation.strip().upper().replace("-", "_")
+    aliases = {
+        "PICK_UP": "PICKUP",
+        "PICKUP": "PICKUP",
+        "DROP_OFF": "DROPOFF",
+        "DROPOFF": "DROPOFF",
+    }
+    try:
+        return aliases[normalized]
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=f"unknown lift-load operation: {operation}") from exc
+
+
+def _normalize_expected_marker_id(value: str | int) -> str:
+    raw = str(value).strip().upper()
+    if raw.startswith("ARUCO_4X4_50_"):
+        suffix = raw.rsplit("_", 1)[-1]
+    else:
+        suffix = raw
+    try:
+        marker_int = int(suffix)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid expected marker id: {value}") from exc
+    if marker_int < 20 or marker_int > 49:
+        raise HTTPException(
+            status_code=400,
+            detail="expected item marker id must be in 20..49; 0..19 are reserved for map/zone/spare markers",
+        )
+    return f"ARUCO_4X4_50_{marker_int}"
+
+
+def _expected_marker_ids(payload: LiftLoadEvaluateRequest) -> tuple[str, ...]:
+    marker_values: list[str | int] = []
+    if payload.expected_marker_id is not None:
+        marker_values.append(payload.expected_marker_id)
+    if payload.expected_marker_ids:
+        marker_values.extend(payload.expected_marker_ids)
+    if not marker_values:
+        return DEFAULT_ARUCO_ITEM_MARKER_IDS
+    return tuple(sorted({_normalize_expected_marker_id(value) for value in marker_values}))
+
+
+def _lift_monitor_event_type(*, operation: str, result: str) -> str:
+    if result == "NO_DECISION":
+        return "NO_DECISION"
+    if result == "UNCERTAIN":
+        return "LIFT_LOAD_UNCERTAIN"
+    if result != "PASS":
+        return "LIFT_LOAD_EVIDENCE"
+    if operation == "PICKUP":
+        return "ITEM_PICKED"
+    if operation == "DROPOFF":
+        return "ITEM_PLACED"
+    return "LIFT_LOAD_EVIDENCE"
+
+
+def _build_lift_load_monitor_event(
+    *,
+    source: str,
+    robot_id: str | None,
+    task_id: int | str | None,
+    command_id: int | str | None,
+    operation: str,
+    result: str,
+    reason_code: str,
+    confidence: float | None,
+    observed_at: str,
+    expected_item_id: str | None,
+    expected_marker_ids: tuple[str, ...],
+    expected_item_count: int,
+    detected_marker_ids: list[str],
+    vision_zone_id: str | None,
+    location_id: str | None,
+    zone_resolution_source: str | None,
+    accepted_frames: int,
+    total_frames: int,
+    observed_count: int | None,
+) -> dict[str, Any]:
+    event_type = _lift_monitor_event_type(operation=operation, result=result)
+    severity = "INFO" if result == "PASS" else ("LOW" if result == "NO_DECISION" else "MEDIUM")
+    payload = {
+        "schema_version": "vision-monitor-event.v1",
+        "event_id": str(uuid4()),
+        "event_type": event_type,
+        "source": source,
+        "robot_id": robot_id,
+        "task_id": task_id,
+        "command_id": command_id,
+        "result": result,
+        "severity": severity,
+        "confidence": confidence,
+        "reason_code": reason_code,
+        "trusted": False,
+        "observed_at": observed_at,
+        "image_url": None,
+        "policy_version": VISION_MONITOR_POLICY_VERSION,
+        "profile_id": LIFT_EVIDENCE_PROFILE_ID,
+        "threshold_set_id": LIFT_EVIDENCE_THRESHOLD_SET_ID,
+        "data_json": {
+            "result": result,
+            "reason_code": reason_code,
+            "policy_version": VISION_MONITOR_POLICY_VERSION,
+            "profile_id": LIFT_EVIDENCE_PROFILE_ID,
+            "threshold_set_id": LIFT_EVIDENCE_THRESHOLD_SET_ID,
+            "assignment_status": "OWNED" if robot_id else "UNASSIGNED",
+            "related_robot_ids": [],
+            "task_id_ref": task_id,
+            "expected_item_id": expected_item_id,
+            "expected_marker_ids": list(expected_marker_ids),
+            "detected_marker_ids": sorted(set(detected_marker_ids)),
+            "detected_marker_id": detected_marker_ids[0] if len(set(detected_marker_ids)) == 1 else None,
+            "marker_dictionary": "DICT_4X4_50",
+            "vision_zone_id": vision_zone_id,
+            "location_id": location_id,
+            "zone_resolution_source": zone_resolution_source,
+            "operation": operation,
+            "expected_count": expected_item_count,
+            "expected_item_count": expected_item_count,
+            "observed_count": observed_count,
+            "accepted_frames": accepted_frames,
+            "total_frames": total_frames,
+            "command_satisfying": event_type in {"ITEM_PICKED", "ITEM_PLACED"},
+        },
+    }
+    validate_vision_monitor_event(payload)
+    return payload
+
+
+def _lift_load_response(
+    *,
+    payload: LiftLoadEvaluateRequest,
+    operation: str,
+    vision_zone_id: str | None,
+    result: str,
+    reason_code: str,
+    event: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "schema_version": "vision-lift-load-evaluate.v1",
+        "monitor_id": "lift_evidence",
+        "source": payload.source,
+        "robot_id": payload.robot_id,
+        "task_id": payload.task_id,
+        "command_id": payload.command_id,
+        "operation": operation,
+        "vision_zone_id": vision_zone_id,
+        "result": result,
+        "reason_code": reason_code,
+        "event": event,
+    }
+
+
+def _zone_config_for_lift_evidence() -> ZoneRoiConfig | None:
+    path = Path(get_settings().vision_zone_roi_config_path)
+    if not path.is_absolute():
+        path = REPO_ROOT / path
+    try:
+        return load_zone_roi_config_cached(str(path), True)
+    except (OSError, ValueError) as exc:
+        _runtime_context().logger.warning("invalid lift evidence ZoneROI config: %s", exc)
+        return None
+
+
+def _resolve_lift_evidence_zone(
+    config: ZoneRoiConfig,
+    *,
+    vision_zone_id: str | None,
+    location_id: str | None,
+) -> tuple[ZoneRoi | None, str | None, str | None]:
+    """Resolve caller zone identity without treating Main IDs as AI zone IDs.
+
+    `vision_zone_id` is an explicit AI Server ZoneROI id. `location_id` is only
+    usable through `ZoneRoiConfig.location_aliases`, because Main DB/location ids
+    are not finalized in this repo.
+    """
+
+    if vision_zone_id:
+        return find_zone_by_id(config, vision_zone_id), vision_zone_id, "vision_zone_id"
+    if not location_id:
+        return None, None, None
+    aliases = config.location_aliases or {}
+    mapped_zone_id = aliases.get(location_id)
+    if not mapped_zone_id:
+        return None, None, "unmapped_location_id"
+    return find_zone_by_id(config, mapped_zone_id), mapped_zone_id, "location_aliases"
+
+
+def _is_item_marker_id(marker_id: str) -> bool:
+    """Return whether an ArUco marker id is in the item marker namespace.
+
+    0..19 are reserved for map/zone/spare reference markers. The currently
+    recommended MVP candidates are a stable subset of 20..29, but accepting the
+    whole 20..49 namespace keeps this endpoint compatible with future Main-owned
+    marker/item mapping without changing the public contract.
+    """
+
+    if not marker_id.startswith("ARUCO_4X4_50_"):
+        return False
+    try:
+        marker_int = int(marker_id.rsplit("_", 1)[-1])
+    except ValueError:
+        return False
+    return 20 <= marker_int <= 49
+
+
+def _frame_marker_ids_in_zone(
+    *,
+    frame: StoredFrame,
+    zone: ZoneRoi,
+    expected_marker_ids: set[str],
+) -> tuple[int, int, list[str], list[str]]:
+    if frame.decoded_bgr is None:
+        return 0, 0, [], []
+    expected_hits: list[str] = []
+    any_item_hits: list[str] = []
+    for detection in detect_markers(frame.decoded_bgr):
+        bbox = detection.bbox_xyxy
+        x = (bbox[0] + bbox[2]) / 2.0
+        y = (bbox[1] + bbox[3]) / 2.0
+        if not zone_contains_pixel(
+            zone,
+            x=x,
+            y=y,
+            image_width=frame.image_width,
+            image_height=frame.image_height,
+        ):
+            continue
+        if _is_item_marker_id(detection.marker_id):
+            any_item_hits.append(detection.marker_id)
+        if detection.marker_id in expected_marker_ids:
+            expected_hits.append(detection.marker_id)
+    return len(expected_hits), len(any_item_hits), expected_hits, any_item_hits
+
+
+async def _latest_frame_burst(
+    *,
+    source: str,
+    burst_frames: int,
+    sample_interval_ms: int,
+    max_frame_age_s: float,
+) -> tuple[list[StoredFrame], StoredFrame | None]:
+    frames: list[StoredFrame] = []
+    seen_frame_seq: set[int] = set()
+    latest_seen: StoredFrame | None = None
+    attempts = max(burst_frames, burst_frames * 3)
+    for attempt in range(attempts):
+        frame = _runtime_context().frame_store.latest(source)
+        if frame is not None:
+            latest_seen = frame
+            if frame.frame_seq not in seen_frame_seq and _frame_age_s(frame) <= max_frame_age_s:
+                frames.append(frame)
+                seen_frame_seq.add(frame.frame_seq)
+                if len(frames) >= burst_frames:
+                    break
+        if sample_interval_ms > 0 and attempt < attempts - 1:
+            await async_sleep(sample_interval_ms / 1000.0)
+    return frames, latest_seen
+
+
+async def lift_load_evaluate(payload: LiftLoadEvaluateRequest) -> dict[str, Any]:
+    operation = _normalize_lift_operation(payload.operation)
+    if payload.source != "global_cam_01":
+        raise HTTPException(status_code=400, detail="lift-load evidence requires source global_cam_01")
+    if payload.robot_id not in {"tb3_1", "tb3_2"}:
+        raise HTTPException(status_code=400, detail="lift-load evidence requires robot_id tb3_1 or tb3_2")
+    expected_marker_ids = _expected_marker_ids(payload)
+    expected_marker_set = set(expected_marker_ids)
+    vision_zone_id = payload.vision_zone_id
+    zone_resolution_source: str | None = None
+    observed_at = _now_iso()
+
+    def no_decision(reason_code: str, *, confidence: float | None = None, observed_count: int | None = None) -> dict[str, Any]:
+        event = _build_lift_load_monitor_event(
+            source=payload.source,
+            robot_id=payload.robot_id,
+            task_id=payload.task_id,
+            command_id=payload.command_id,
+            operation=operation,
+            result="NO_DECISION",
+            reason_code=reason_code,
+            confidence=confidence,
+            observed_at=observed_at,
+            expected_item_id=payload.expected_item_id,
+            expected_marker_ids=expected_marker_ids,
+            expected_item_count=payload.expected_item_count,
+            detected_marker_ids=[],
+            vision_zone_id=vision_zone_id,
+            location_id=payload.location_id,
+            zone_resolution_source=zone_resolution_source,
+            accepted_frames=0,
+            total_frames=0,
+            observed_count=observed_count,
+        )
+        return _lift_load_response(
+            payload=payload,
+            operation=operation,
+            vision_zone_id=vision_zone_id,
+            result="NO_DECISION",
+            reason_code=reason_code,
+            event=event,
+        )
+
+    if not payload.vision_zone_id and not payload.location_id:
+        return no_decision("POLICY_NOT_APPLICABLE")
+    zone_config = _zone_config_for_lift_evidence()
+    if zone_config is None or zone_config.source != payload.source:
+        return no_decision("POLICY_NOT_APPLICABLE")
+    zone, resolved_zone_id, zone_resolution_source = _resolve_lift_evidence_zone(
+        zone_config,
+        vision_zone_id=payload.vision_zone_id,
+        location_id=payload.location_id,
+    )
+    vision_zone_id = resolved_zone_id
+    if zone is None:
+        return no_decision("POLICY_NOT_APPLICABLE")
+    if not zone.natural_item_location:
+        return no_decision("POLICY_NOT_APPLICABLE")
+
+    frames, latest_seen = await _latest_frame_burst(
+        source=payload.source,
+        burst_frames=payload.burst_frames,
+        sample_interval_ms=payload.sample_interval_ms,
+        max_frame_age_s=payload.max_frame_age_s,
+    )
+    if not frames:
+        reason = "SOURCE_STALE" if latest_seen is not None else "NO_RELEVANT_DETECTION"
+        return no_decision(reason)
+
+    per_frame_expected_counts: list[int] = []
+    per_frame_item_counts: list[int] = []
+    expected_hits_all: list[str] = []
+    item_hits_all: list[str] = []
+    for frame in frames:
+        expected_count_in_frame, item_count_in_frame, expected_hits, item_hits = await run_in_threadpool(
+            _frame_marker_ids_in_zone,
+            frame=frame,
+            zone=zone,
+            expected_marker_ids=expected_marker_set,
+        )
+        per_frame_expected_counts.append(expected_count_in_frame)
+        per_frame_item_counts.append(item_count_in_frame)
+        expected_hits_all.extend(expected_hits)
+        item_hits_all.extend(item_hits)
+
+    expected_count = int(payload.expected_item_count)
+    min_pass_frames = payload.min_pass_frames or (3 if payload.burst_frames >= 5 else max(1, min(2, payload.burst_frames)))
+    judgement = evaluate_lift_load_marker_burst(
+        per_frame_expected_counts=per_frame_expected_counts,
+        per_frame_item_counts=per_frame_item_counts,
+        expected_count=expected_count,
+        operation=operation,
+        min_pass_frames=min_pass_frames,
+        requested_frames=payload.burst_frames,
+    )
+
+    event = _build_lift_load_monitor_event(
+        source=payload.source,
+        robot_id=payload.robot_id,
+        task_id=payload.task_id,
+        command_id=payload.command_id,
+        operation=operation,
+        result=judgement["result"],
+        reason_code=judgement["reason_code"],
+        confidence=judgement["confidence"],
+        observed_at=observed_at,
+        expected_item_id=payload.expected_item_id,
+        expected_marker_ids=expected_marker_ids,
+        expected_item_count=expected_count,
+        detected_marker_ids=item_hits_all or expected_hits_all,
+        vision_zone_id=vision_zone_id,
+        location_id=payload.location_id,
+        zone_resolution_source=zone_resolution_source,
+        accepted_frames=judgement["accepted_frames"],
+        total_frames=judgement["total_frames"],
+        observed_count=judgement["observed_count"],
+    )
+    return _lift_load_response(
+        payload=payload,
+        operation=operation,
+        vision_zone_id=vision_zone_id,
+        result=judgement["result"],
+        reason_code=judgement["reason_code"],
+        event=event,
+    )
+
+
 async def ingest_synthetic_frame(payload: SyntheticFrameRequest) -> dict[str, Any]:
     """Generate and ingest a synthetic ArUco frame for robot-free Lane B validation.
 
@@ -2091,6 +2533,7 @@ def register_vision_routes(
     app.get('/api/v1/vision/monitors/{monitor_id}/state', responses={200: _json_response_openapi("Vision monitor state", _vision_monitor_state_response_schema()), 400: ERROR_RESPONSE_OPENAPI})(route(vision_monitor_state))
     app.put('/api/v1/vision/monitors/{monitor_id}/state', responses={200: _json_response_openapi("Vision monitor state", _vision_monitor_state_response_schema()), 400: ERROR_RESPONSE_OPENAPI, 422: ERROR_RESPONSE_OPENAPI})(route(update_vision_monitor_state))
     app.get('/api/v1/vision/hazards/person/latest', responses={200: _json_response_openapi("Latest advisory person hazard monitor event", _person_hazard_latest_response_schema()), 400: ERROR_RESPONSE_OPENAPI})(route(person_hazard_latest))
+    app.post('/api/v1/vision/evidence/lift-load/evaluate', responses={200: _json_response_openapi("One-shot fixed ZoneROI ArUco lift-load evidence evaluation", _lift_load_evaluate_response_schema()), 400: ERROR_RESPONSE_OPENAPI, 422: ERROR_RESPONSE_OPENAPI})(route(lift_load_evaluate))
     app.get('/api/v1/vision/debug/sources', responses={200: _json_response_openapi('Lane B source/frame/overlay debug snapshot', _debug_sources_response_schema()), 400: ERROR_RESPONSE_OPENAPI})(route(vision_debug_sources))
     app.post('/api/v1/vision/frame', responses={200: _json_response_openapi('Latest-frame ingest debug response', _frame_ingest_response_schema()), 400: ERROR_RESPONSE_OPENAPI, 422: ERROR_RESPONSE_OPENAPI})(route(ingest_frame))
     app.post('/api/v1/vision/frame/process', responses={200: _json_response_openapi('Latest-frame ingest plus immediate overlay processing response', _frame_process_response_schema()), 400: ERROR_RESPONSE_OPENAPI, 422: ERROR_RESPONSE_OPENAPI})(route(ingest_and_process_frame))

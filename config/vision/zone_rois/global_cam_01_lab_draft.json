@@ -63,6 +63,12 @@
       12
     ]
   },
+  "location_aliases": {
+    "inbound": "inbound_static_item_zone",
+    "outbound": "outbound_static_item_zone",
+    "storage_1": "storage_upper_static_item_zone",
+    "storage_2": "storage_lower_static_item_zone"
+  },
   "zones": [
     {
       "zone_id": "inbound_static_item_zone",

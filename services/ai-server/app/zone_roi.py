@@ -29,6 +29,7 @@ class ZoneRoiConfig:
     source: str
     coordinate_space: str
     zones: tuple[ZoneRoi, ...]
+    location_aliases: dict[str, str] | None = None
     status: str = ""
 
 
@@ -98,6 +99,18 @@ def _parse_normalized_polygon(value: Any, *, path: str) -> tuple[Point, ...]:
     return tuple(points)
 
 
+def _parse_location_aliases(value: Any, *, path: str) -> dict[str, str]:
+    if value is None:
+        return {}
+    aliases = _require_mapping(value, path=path)
+    parsed: dict[str, str] = {}
+    for alias, zone_id in aliases.items():
+        if not isinstance(alias, str) or not alias.strip():
+            raise ValueError(f"{path} keys must be non-empty strings")
+        parsed[alias.strip()] = _require_string(zone_id, path=f"{path}.{alias}")
+    return parsed
+
+
 def _zone_label(zone_id: str, raw_label: str) -> str:
     if raw_label and raw_label.isascii():
         return raw_label
@@ -145,11 +158,17 @@ def load_zone_roi_config(path: str | Path, *, enabled: bool = True) -> ZoneRoiCo
                 notes=_optional_string(zone.get("notes")),
             )
         )
+    location_aliases = _parse_location_aliases(data.get("location_aliases"), path="location_aliases")
+    zone_ids = {zone.zone_id for zone in zones}
+    for alias, target_zone_id in location_aliases.items():
+        if target_zone_id not in zone_ids:
+            raise ValueError(f"location_aliases.{alias} references unknown zone_id: {target_zone_id}")
     return ZoneRoiConfig(
         enabled=enabled,
         source=source,
         coordinate_space=coordinate_space,
         zones=tuple(zones),
+        location_aliases=location_aliases,
         status=_optional_string(data.get("status")),
     )
 
@@ -161,6 +180,63 @@ def load_zone_roi_config_cached(path: str, enabled: bool) -> ZoneRoiConfig:
 
 def _polygon_to_pixels(polygon: tuple[Point, ...], *, image_width: int, image_height: int) -> list[list[float]]:
     return [[float(x * image_width), float(y * image_height)] for x, y in polygon]
+
+
+def _point_on_segment(x: float, y: float, a: Point, b: Point, *, eps: float = 1e-9) -> bool:
+    ax, ay = a
+    bx, by = b
+    cross = (x - ax) * (by - ay) - (y - ay) * (bx - ax)
+    if abs(cross) > eps:
+        return False
+    return min(ax, bx) - eps <= x <= max(ax, bx) + eps and min(ay, by) - eps <= y <= max(ay, by) + eps
+
+
+def _point_in_polygon(x: float, y: float, polygon: tuple[Point, ...]) -> bool:
+    """Return whether a normalized/image-space point is inside a polygon.
+
+    Uses the standard ray-casting rule. Points on horizontal/vertical edges are
+    treated as inside by the endpoint callers because ZoneROI is operator-tuned
+    evidence geometry, not a safety exclusion boundary.
+    """
+
+    inside = False
+    count = len(polygon)
+    j = count - 1
+    for i in range(count):
+        xi, yi = polygon[i]
+        xj, yj = polygon[j]
+        if _point_on_segment(x, y, polygon[j], polygon[i]):
+            return True
+        if ((yi > y) != (yj > y)) and (
+            x <= (xj - xi) * (y - yi) / ((yj - yi) or 1e-12) + xi
+        ):
+            inside = not inside
+        j = i
+    return inside
+
+
+def zone_contains_pixel(
+    zone: ZoneRoi,
+    *,
+    x: float,
+    y: float,
+    image_width: int,
+    image_height: int,
+) -> bool:
+    """Return whether an image pixel coordinate lies inside a ZoneROI."""
+
+    if image_width <= 0 or image_height <= 0:
+        return False
+    nx = float(x) / float(image_width)
+    ny = float(y) / float(image_height)
+    return _point_in_polygon(nx, ny, zone.polygon_normalized)
+
+
+def find_zone_by_id(config: ZoneRoiConfig, zone_id: str) -> ZoneRoi | None:
+    for zone in config.zones:
+        if zone.zone_id == zone_id:
+            return zone
+    return None
 
 
 def _label_anchor_xy(polygon_xy: list[list[float]], *, image_width: int, image_height: int) -> list[float]:

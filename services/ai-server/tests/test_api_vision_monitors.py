@@ -1,5 +1,11 @@
-from fastapi.testclient import TestClient
+import asyncio
+import cv2
+from time import perf_counter
 
+from fastapi.testclient import TestClient
+import numpy as np
+
+from app.api import vision as vision_api
 from app.factory import create_app
 from app.runtime_state import create_runtime_context
 from app.vision_monitor_profiles import (
@@ -170,6 +176,47 @@ def _flatten(value):
             yield from _flatten(child)
     else:
         yield value
+
+
+def _marker_image(marker_id: int, marker_size: int = 160) -> np.ndarray:
+    aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+    if hasattr(cv2.aruco, "generateImageMarker"):
+        return cv2.aruco.generateImageMarker(aruco_dict, marker_id, marker_size)
+    marker = np.zeros((marker_size, marker_size), dtype=np.uint8)
+    cv2.aruco.drawMarker(aruco_dict, marker_id, marker_size, marker, 1)
+    return marker
+
+
+def _global_frame_with_marker(
+    marker_id: int,
+    *,
+    center_norm: tuple[float, float] = (0.31, 0.85),
+    marker_size: int = 160,
+) -> np.ndarray:
+    image = np.full((1080, 1920, 3), 255, dtype=np.uint8)
+    marker = cv2.cvtColor(_marker_image(marker_id, marker_size=marker_size), cv2.COLOR_GRAY2BGR)
+    center_x = int(center_norm[0] * image.shape[1])
+    center_y = int(center_norm[1] * image.shape[0])
+    x = max(0, min(image.shape[1] - marker_size, center_x - marker_size // 2))
+    y = max(0, min(image.shape[0] - marker_size, center_y - marker_size // 2))
+    image[y : y + marker_size, x : x + marker_size] = marker
+    return image
+
+
+def _global_frame_with_markers(
+    markers: list[tuple[int, tuple[float, float]]],
+    *,
+    marker_size: int = 80,
+) -> np.ndarray:
+    image = np.full((1080, 1920, 3), 255, dtype=np.uint8)
+    for marker_id, center_norm in markers:
+        marker = cv2.cvtColor(_marker_image(marker_id, marker_size=marker_size), cv2.COLOR_GRAY2BGR)
+        center_x = int(center_norm[0] * image.shape[1])
+        center_y = int(center_norm[1] * image.shape[0])
+        x = max(0, min(image.shape[1] - marker_size, center_x - marker_size // 2))
+        y = max(0, min(image.shape[0] - marker_size, center_y - marker_size // 2))
+        image[y : y + marker_size, x : x + marker_size] = marker
+    return image
 
 
 def test_person_hazard_latest_returns_no_active_monitor_until_drive_monitor_enabled():
@@ -394,12 +441,354 @@ def test_person_hazard_latest_rejects_robot_source_mismatch():
     assert "requires source tb3_1_picam" in response.json()["error"]["message"]
 
 
-def test_monitor_and_person_hazard_routes_have_explicit_openapi_response_schemas():
+def test_lift_load_evaluate_passes_expected_aruco_in_requested_zone():
+    context = create_runtime_context()
+    client = TestClient(create_app(runtime_context=context))
+    context.frame_store.put_decoded(
+        source="global_cam_01",
+        image_bgr=_global_frame_with_marker(20, center_norm=(0.31, 0.85)),
+    )
+
+    response = client.post(
+        "/api/v1/vision/evidence/lift-load/evaluate",
+        json={
+            "source": "global_cam_01",
+            "robot_id": "tb3_1",
+            "task_id": 303,
+            "command_id": 3,
+            "operation": "PICK_UP",
+            "expected_item_id": "item-red",
+            "expected_marker_id": 20,
+            "expected_item_count": 1,
+            "vision_zone_id": "inbound_static_item_zone",
+            "burst_frames": 1,
+            "min_pass_frames": 1,
+            "sample_interval_ms": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    event = body["event"]
+    assert body["schema_version"] == "vision-lift-load-evaluate.v1"
+    assert body["result"] == "PASS"
+    assert body["reason_code"] == "EXPECTED_ITEM_COUNT_MATCH_AND_STABLE"
+    assert body["operation"] == "PICKUP"
+    assert body["vision_zone_id"] == "inbound_static_item_zone"
+    assert event["event_type"] == "ITEM_PICKED"
+    assert event["trusted"] is False
+    assert event["confidence"] == 1.0
+    assert event["data_json"]["expected_count"] == 1
+    assert event["data_json"]["expected_item_count"] == 1
+    assert event["data_json"]["observed_count"] == 1
+    assert event["data_json"]["detected_marker_id"] == "ARUCO_4X4_50_20"
+    assert event["data_json"]["vision_zone_id"] == "inbound_static_item_zone"
+    assert "bbox_xyxy" not in set(_flatten(event))
+    assert "polygon" not in set(_flatten(event))
+    assert "HOLD" not in set(_flatten(event))
+
+
+def test_lift_load_evaluate_default_burst_is_uncertain_with_only_one_frame():
+    context = create_runtime_context()
+    client = TestClient(create_app(runtime_context=context))
+    context.frame_store.put_decoded(
+        source="global_cam_01",
+        image_bgr=_global_frame_with_marker(20, center_norm=(0.31, 0.85)),
+    )
+
+    response = client.post(
+        "/api/v1/vision/evidence/lift-load/evaluate",
+        json={
+            "source": "global_cam_01",
+            "robot_id": "tb3_1",
+            "operation": "PICK_UP",
+            "expected_marker_id": 20,
+            "vision_zone_id": "inbound_static_item_zone",
+            "sample_interval_ms": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"] == "UNCERTAIN"
+    assert body["reason_code"] == "LOW_CONFIDENCE"
+    assert body["event"]["confidence"] == 0.2
+    assert body["event"]["data_json"]["accepted_frames"] == 1
+    assert body["event"]["data_json"]["total_frames"] == 1
+
+
+def test_lift_load_evaluate_resolves_location_id_only_through_zone_alias_config():
+    context = create_runtime_context()
+    client = TestClient(create_app(runtime_context=context))
+    context.frame_store.put_decoded(
+        source="global_cam_01",
+        image_bgr=_global_frame_with_marker(20, center_norm=(0.31, 0.85)),
+    )
+
+    response = client.post(
+        "/api/v1/vision/evidence/lift-load/evaluate",
+        json={
+            "source": "global_cam_01",
+            "robot_id": "tb3_1",
+            "operation": "PICK_UP",
+            "expected_marker_id": 20,
+            "location_id": "inbound",
+            "burst_frames": 1,
+            "min_pass_frames": 1,
+            "sample_interval_ms": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"] == "PASS"
+    assert body["vision_zone_id"] == "inbound_static_item_zone"
+    assert body["event"]["data_json"]["location_id"] == "inbound"
+    assert body["event"]["data_json"]["zone_resolution_source"] == "location_aliases"
+
+
+def test_lift_load_evaluate_does_not_treat_unmapped_location_id_as_zone_id():
+    context = create_runtime_context()
+    client = TestClient(create_app(runtime_context=context))
+    context.frame_store.put_decoded(
+        source="global_cam_01",
+        image_bgr=_global_frame_with_marker(20, center_norm=(0.31, 0.85)),
+    )
+
+    response = client.post(
+        "/api/v1/vision/evidence/lift-load/evaluate",
+        json={
+            "source": "global_cam_01",
+            "robot_id": "tb3_1",
+            "operation": "PICK_UP",
+            "expected_marker_id": 20,
+            "location_id": "main-db-location-not-yet-mapped",
+            "burst_frames": 1,
+            "sample_interval_ms": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"] == "NO_DECISION"
+    assert body["reason_code"] == "POLICY_NOT_APPLICABLE"
+    assert body["vision_zone_id"] is None
+    assert body["event"]["data_json"]["location_id"] == "main-db-location-not-yet-mapped"
+    assert body["event"]["data_json"]["zone_resolution_source"] == "unmapped_location_id"
+
+
+def test_lift_load_burst_sampling_yields_event_loop_between_attempts():
+    async def run_check() -> tuple[float, list, object]:
+        start = perf_counter()
+        burst_task = asyncio.create_task(
+            vision_api._latest_frame_burst(
+                source="source_without_frames_for_async_regression",
+                burst_frames=3,
+                sample_interval_ms=50,
+                max_frame_age_s=2.0,
+            )
+        )
+        await asyncio.sleep(0.01)
+        elapsed_before_tick = perf_counter() - start
+        frames, latest_seen = await burst_task
+        return elapsed_before_tick, frames, latest_seen
+
+    elapsed_before_tick, frames, latest_seen = asyncio.run(run_check())
+
+    assert elapsed_before_tick < 0.1
+    assert frames == []
+    assert latest_seen is None
+
+
+def test_lift_load_evaluate_fails_when_different_item_marker_is_in_zone():
+    context = create_runtime_context()
+    client = TestClient(create_app(runtime_context=context))
+    context.frame_store.put_decoded(
+        source="global_cam_01",
+        image_bgr=_global_frame_with_marker(22, center_norm=(0.31, 0.85)),
+    )
+
+    response = client.post(
+        "/api/v1/vision/evidence/lift-load/evaluate",
+        json={
+            "source": "global_cam_01",
+            "robot_id": "tb3_2",
+            "task_id": 304,
+            "command_id": 4,
+            "operation": "DROP_OFF",
+            "expected_marker_id": 20,
+            "expected_item_count": 1,
+            "vision_zone_id": "inbound_static_item_zone",
+            "burst_frames": 1,
+            "min_pass_frames": 1,
+            "sample_interval_ms": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    event = body["event"]
+    assert body["result"] == "FAIL"
+    assert body["reason_code"] == "EXPECTED_ITEM_COUNT_MISMATCH"
+    assert body["operation"] == "DROPOFF"
+    assert event["event_type"] == "LIFT_LOAD_EVIDENCE"
+    assert event["data_json"]["detected_marker_ids"] == ["ARUCO_4X4_50_22"]
+    assert event["data_json"]["observed_count"] == 1
+    assert event["data_json"]["command_satisfying"] is False
+
+
+def test_lift_load_evaluate_reports_all_item_markers_when_expected_and_unexpected_are_mixed():
+    context = create_runtime_context()
+    client = TestClient(create_app(runtime_context=context))
+    context.frame_store.put_decoded(
+        source="global_cam_01",
+        image_bgr=_global_frame_with_markers(
+            [
+                (20, (0.29, 0.85)),
+                (22, (0.34, 0.85)),
+            ]
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/vision/evidence/lift-load/evaluate",
+        json={
+            "source": "global_cam_01",
+            "robot_id": "tb3_1",
+            "operation": "PICK_UP",
+            "expected_marker_id": 20,
+            "expected_item_count": 1,
+            "vision_zone_id": "inbound_static_item_zone",
+            "burst_frames": 1,
+            "min_pass_frames": 1,
+            "sample_interval_ms": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"] == "FAIL"
+    assert body["reason_code"] == "EXPECTED_ITEM_COUNT_MISMATCH"
+    assert body["event"]["data_json"]["observed_count"] == 2
+    assert body["event"]["data_json"]["detected_marker_ids"] == [
+        "ARUCO_4X4_50_20",
+        "ARUCO_4X4_50_22",
+    ]
+    assert body["event"]["data_json"]["detected_marker_id"] is None
+
+
+def test_lift_load_evaluate_ignores_non_natural_reference_zone():
+    context = create_runtime_context()
+    client = TestClient(create_app(runtime_context=context))
+    context.frame_store.put_decoded(
+        source="global_cam_01",
+        image_bgr=_global_frame_with_marker(20, center_norm=(0.30, 0.62)),
+    )
+
+    response = client.post(
+        "/api/v1/vision/evidence/lift-load/evaluate",
+        json={
+            "source": "global_cam_01",
+            "robot_id": "tb3_1",
+            "operation": "PICK_UP",
+            "expected_marker_id": 20,
+            "vision_zone_id": "charging_reference_zone",
+            "burst_frames": 1,
+            "sample_interval_ms": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"] == "NO_DECISION"
+    assert body["reason_code"] == "POLICY_NOT_APPLICABLE"
+    assert body["event"]["event_type"] == "NO_DECISION"
+
+
+def test_lift_load_evaluate_rejects_reserved_map_marker_as_item_id():
+    client = _client()
+
+    response = client.post(
+        "/api/v1/vision/evidence/lift-load/evaluate",
+        json={
+            "source": "global_cam_01",
+            "robot_id": "tb3_1",
+            "operation": "PICK_UP",
+            "expected_marker_id": 6,
+            "vision_zone_id": "inbound_static_item_zone",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "0..19 are reserved" in response.json()["error"]["message"]
+
+
+def test_lift_load_evaluate_rejects_unknown_request_fields():
+    client = _client()
+
+    response = client.post(
+        "/api/v1/vision/evidence/lift-load/evaluate",
+        json={
+            "source": "global_cam_01",
+            "robot_id": "tb3_1",
+            "operation": "PICK_UP",
+            "expected_marker_idd": 20,
+            "vision_zone_id": "inbound_static_item_zone",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_lift_load_evaluate_rejects_min_pass_frames_greater_than_burst_frames():
+    client = _client()
+
+    response = client.post(
+        "/api/v1/vision/evidence/lift-load/evaluate",
+        json={
+            "source": "global_cam_01",
+            "robot_id": "tb3_1",
+            "operation": "PICK_UP",
+            "expected_marker_id": 20,
+            "vision_zone_id": "inbound_static_item_zone",
+            "burst_frames": 1,
+            "min_pass_frames": 2,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_lift_load_evaluate_returns_no_decision_when_global_frame_is_missing():
+    client = _client()
+
+    response = client.post(
+        "/api/v1/vision/evidence/lift-load/evaluate",
+        json={
+            "source": "global_cam_01",
+            "robot_id": "tb3_1",
+            "operation": "PICK_UP",
+            "expected_marker_id": 20,
+            "vision_zone_id": "inbound_static_item_zone",
+            "burst_frames": 1,
+            "sample_interval_ms": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["result"] == "NO_DECISION"
+    assert body["reason_code"] == "NO_RELEVANT_DETECTION"
+    assert body["event"]["data_json"]["detected_marker_ids"] == []
+
+
+def test_monitor_person_hazard_and_lift_load_routes_have_explicit_openapi_response_schemas():
     schema = create_app(runtime_context=create_runtime_context()).openapi()
 
     monitor_list_schema = schema["paths"]["/api/v1/vision/monitors"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
     monitor_state_schema = schema["paths"]["/api/v1/vision/monitors/{monitor_id}/state"]["put"]["responses"]["200"]["content"]["application/json"]["schema"]
     hazard_schema = schema["paths"]["/api/v1/vision/hazards/person/latest"]["get"]["responses"]["200"]["content"]["application/json"]["schema"]
+    lift_load_schema = schema["paths"]["/api/v1/vision/evidence/lift-load/evaluate"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
 
     assert monitor_list_schema["additionalProperties"] is False
     assert monitor_list_schema["properties"]["monitors"]["minItems"] == 4
@@ -407,3 +796,15 @@ def test_monitor_and_person_hazard_routes_have_explicit_openapi_response_schemas
     assert monitor_state_schema["properties"]["monitor"]["description"].startswith("Process-local")
     assert hazard_schema["properties"]["event"]["anyOf"][0]["type"] == "null"
     assert hazard_schema["properties"]["event"]["anyOf"][1]["properties"]["trusted"]["const"] is False
+    assert lift_load_schema["additionalProperties"] is False
+    assert lift_load_schema["properties"]["schema_version"]["const"] == "vision-lift-load-evaluate.v1"
+    assert lift_load_schema["properties"]["monitor_id"]["const"] == "lift_evidence"
+
+    request_ref = schema["paths"]["/api/v1/vision/evidence/lift-load/evaluate"]["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+    request_schema = schema["components"]["schemas"][request_ref.rsplit("/", 1)[-1]]
+    assert request_schema["required"] == ["robot_id", "operation"]
+    assert request_schema["additionalProperties"] is False
+    assert request_schema["properties"]["source"]["const"] == "global_cam_01"
+    assert request_schema["properties"]["robot_id"]["enum"] == ["tb3_1", "tb3_2"]
+    assert request_schema["properties"]["operation"]["enum"] == ["PICK_UP", "PICKUP", "DROP_OFF", "DROPOFF"]
+    assert request_schema["properties"]["expected_item_count"]["minimum"] == 1

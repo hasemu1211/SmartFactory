@@ -897,6 +897,118 @@
         }
       }
     },
+    "/api/v1/operator/runtime/status": {
+      "get": {
+        "summary": "Operator Runtime Status",
+        "operationId": "operator_runtime_status_api_v1_operator_runtime_status_get",
+        "parameters": [
+          {
+            "name": "x-sf-operator-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sf-Operator-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Operator Runtime Status Api V1 Operator Runtime Status Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/operator/runtime/low-load/restart": {
+      "post": {
+        "summary": "Operator Low Load Restart",
+        "operationId": "operator_low_load_restart_api_v1_operator_runtime_low_load_restart_post",
+        "parameters": [
+          {
+            "name": "dry_run",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Dry Run"
+            }
+          },
+          {
+            "name": "x-sf-operator-token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Sf-Operator-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeRestartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/vision/streams": {
       "get": {
         "summary": "Vision Streams",
@@ -3115,6 +3227,674 @@
         }
       }
     },
+    "/api/v1/vision/evidence/lift-load/evaluate": {
+      "post": {
+        "summary": "Lift Load Evaluate",
+        "operationId": "lift_load_evaluate_api_v1_vision_evidence_lift_load_evaluate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LiftLoadEvaluateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "One-shot fixed ZoneROI ArUco lift-load evidence evaluation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "schema_version": {
+                      "type": "string",
+                      "const": "vision-lift-load-evaluate.v1"
+                    },
+                    "monitor_id": {
+                      "type": "string",
+                      "const": "lift_evidence"
+                    },
+                    "source": {
+                      "type": "string",
+                      "const": "global_cam_01"
+                    },
+                    "robot_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "enum": [
+                        "tb3_1",
+                        "tb3_2",
+                        null
+                      ]
+                    },
+                    "task_id": {
+                      "type": [
+                        "integer",
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "command_id": {
+                      "type": [
+                        "integer",
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "operation": {
+                      "type": "string",
+                      "enum": [
+                        "PICKUP",
+                        "DROPOFF"
+                      ]
+                    },
+                    "vision_zone_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "result": {
+                      "type": "string",
+                      "enum": [
+                        "PASS",
+                        "FAIL",
+                        "UNCERTAIN",
+                        "NO_DECISION"
+                      ]
+                    },
+                    "reason_code": {
+                      "type": "string"
+                    },
+                    "event": {
+                      "anyOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$schema": "https://json-schema.org/draft/2020-12/schema",
+                          "$id": "https://smartfactory.local/contracts/vision-monitor-event.v1.schema.json",
+                          "$defs": {
+                            "compact_value": {
+                              "anyOf": [
+                                {
+                                  "type": "null"
+                                },
+                                {
+                                  "type": "boolean"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "not": {
+                                    "enum": [
+                                      "E_STOP",
+                                      "HOLD",
+                                      "STOP_COMMAND",
+                                      "MOTION_CANCELLED"
+                                    ]
+                                  },
+                                  "type": "string"
+                                },
+                                {
+                                  "items": {
+                                    "$ref": "#/$defs/compact_value"
+                                  },
+                                  "type": "array"
+                                },
+                                {
+                                  "$ref": "#/$defs/compact_object"
+                                }
+                              ]
+                            },
+                            "compact_object": {
+                              "additionalProperties": {
+                                "$ref": "#/$defs/compact_value"
+                              },
+                              "propertyNames": {
+                                "not": {
+                                  "enum": [
+                                    "bbox",
+                                    "bbox_xyxy",
+                                    "mask",
+                                    "mask_rle",
+                                    "polygon",
+                                    "raw_detections",
+                                    "detections",
+                                    "E_STOP",
+                                    "HOLD",
+                                    "STOP_COMMAND",
+                                    "MOTION_CANCELLED"
+                                  ]
+                                }
+                              },
+                              "type": "object"
+                            },
+                            "compact_data_json": {
+                              "properties": {
+                                "result": {
+                                  "type": "string",
+                                  "enum": [
+                                    "ADVISORY",
+                                    "CANDIDATE",
+                                    "PASS",
+                                    "FAIL",
+                                    "UNCERTAIN",
+                                    "NO_DECISION",
+                                    "NO_ACTIVE_MONITOR",
+                                    "IGNORED"
+                                  ]
+                                },
+                                "reason_code": {
+                                  "type": "string"
+                                },
+                                "policy_version": {
+                                  "type": "string"
+                                },
+                                "profile_id": {
+                                  "type": "string"
+                                },
+                                "threshold_set_id": {
+                                  "type": "string"
+                                },
+                                "assignment_status": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ],
+                                  "enum": [
+                                    "OWNED",
+                                    "AMBIGUOUS",
+                                    "UNASSIGNED",
+                                    "NOT_APPLICABLE",
+                                    null
+                                  ]
+                                },
+                                "related_robot_ids": {
+                                  "items": {
+                                    "type": "string",
+                                    "enum": [
+                                      "tb3_1",
+                                      "tb3_2"
+                                    ]
+                                  },
+                                  "type": "array",
+                                  "uniqueItems": true
+                                },
+                                "task_id_ref": {
+                                  "type": [
+                                    "integer",
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "source_event_id": {
+                                  "type": [
+                                    "string",
+                                    "null"
+                                  ]
+                                },
+                                "ai_judgement": {
+                                  "anyOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "$ref": "#/$defs/compact_object"
+                                    }
+                                  ]
+                                }
+                              },
+                              "additionalProperties": {
+                                "$ref": "#/$defs/compact_value"
+                              },
+                              "propertyNames": {
+                                "not": {
+                                  "enum": [
+                                    "bbox",
+                                    "bbox_xyxy",
+                                    "mask",
+                                    "mask_rle",
+                                    "polygon",
+                                    "raw_detections",
+                                    "detections",
+                                    "E_STOP",
+                                    "HOLD",
+                                    "STOP_COMMAND",
+                                    "MOTION_CANCELLED"
+                                  ]
+                                }
+                              },
+                              "type": "object",
+                              "required": [
+                                "result",
+                                "reason_code",
+                                "policy_version",
+                                "profile_id",
+                                "threshold_set_id"
+                              ]
+                            }
+                          },
+                          "allOf": [
+                            {
+                              "if": {
+                                "properties": {
+                                  "result": {
+                                    "const": "NO_ACTIVE_MONITOR"
+                                  }
+                                },
+                                "required": [
+                                  "result"
+                                ]
+                              },
+                              "then": {
+                                "properties": {
+                                  "event_type": {
+                                    "const": "NO_ACTIVE_MONITOR"
+                                  },
+                                  "reason_code": {
+                                    "const": "NO_ACTIVE_MONITOR"
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "if": {
+                                "properties": {
+                                  "result": {
+                                    "const": "NO_DECISION"
+                                  }
+                                },
+                                "required": [
+                                  "result"
+                                ]
+                              },
+                              "then": {
+                                "properties": {
+                                  "event_type": {
+                                    "const": "NO_DECISION"
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "if": {
+                                "properties": {
+                                  "event_type": {
+                                    "const": "HUMAN_DETECTED"
+                                  }
+                                },
+                                "required": [
+                                  "event_type"
+                                ]
+                              },
+                              "then": {
+                                "properties": {
+                                  "result": {
+                                    "const": "ADVISORY"
+                                  },
+                                  "reason_code": {
+                                    "const": "HUMAN_DETECTED"
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "if": {
+                                "properties": {
+                                  "event_type": {
+                                    "const": "DROPPED_ITEM_CANDIDATE"
+                                  }
+                                },
+                                "required": [
+                                  "event_type"
+                                ]
+                              },
+                              "then": {
+                                "properties": {
+                                  "result": {
+                                    "enum": [
+                                      "ADVISORY",
+                                      "CANDIDATE"
+                                    ]
+                                  },
+                                  "source": {
+                                    "const": "global_cam_01"
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "if": {
+                                "properties": {
+                                  "event_type": {
+                                    "enum": [
+                                      "ITEM_PICKED",
+                                      "ITEM_PLACED"
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "event_type"
+                                ]
+                              },
+                              "then": {
+                                "properties": {
+                                  "result": {
+                                    "const": "PASS"
+                                  }
+                                }
+                              }
+                            },
+                            {
+                              "if": {
+                                "properties": {
+                                  "result": {
+                                    "const": "UNCERTAIN"
+                                  }
+                                },
+                                "required": [
+                                  "result"
+                                ]
+                              },
+                              "then": {
+                                "properties": {
+                                  "event_type": {
+                                    "enum": [
+                                      "LIFT_LOAD_UNCERTAIN",
+                                      "NO_DECISION"
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          ],
+                          "properties": {
+                            "schema_version": {
+                              "type": "string",
+                              "const": "vision-monitor-event.v1"
+                            },
+                            "event_id": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "event_type": {
+                              "type": "string",
+                              "enum": [
+                                "HUMAN_DETECTED",
+                                "DROPPED_ITEM_CANDIDATE",
+                                "ITEM_PICKED",
+                                "ITEM_PLACED",
+                                "LIFT_LOAD_EVIDENCE",
+                                "LIFT_LOAD_UNCERTAIN",
+                                "NO_DECISION",
+                                "NO_ACTIVE_MONITOR",
+                                "IGNORED"
+                              ]
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": [
+                                "global_cam_01",
+                                "tb3_1_picam",
+                                "tb3_2_picam"
+                              ]
+                            },
+                            "robot_id": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "enum": [
+                                "tb3_1",
+                                "tb3_2",
+                                null
+                              ]
+                            },
+                            "task_id": {
+                              "type": [
+                                "integer",
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "command_id": {
+                              "type": [
+                                "integer",
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "result": {
+                              "type": "string",
+                              "enum": [
+                                "ADVISORY",
+                                "CANDIDATE",
+                                "PASS",
+                                "FAIL",
+                                "UNCERTAIN",
+                                "NO_DECISION",
+                                "NO_ACTIVE_MONITOR",
+                                "IGNORED"
+                              ]
+                            },
+                            "severity": {
+                              "type": "string",
+                              "enum": [
+                                "INFO",
+                                "LOW",
+                                "MEDIUM",
+                                "HIGH",
+                                "CRITICAL"
+                              ]
+                            },
+                            "confidence": {
+                              "type": [
+                                "number",
+                                "null"
+                              ],
+                              "maximum": 1.0,
+                              "minimum": 0.0
+                            },
+                            "reason_code": {
+                              "type": "string",
+                              "enum": [
+                                "HUMAN_DETECTED",
+                                "TARGET_ITEM_OUTSIDE_DYNAMIC_CARRIER_ROI",
+                                "TARGET_ITEM_INSIDE_DYNAMIC_CARRIER_ROI",
+                                "EXPECTED_ITEM_VISIBLE_IN_DYNAMIC_CARRIER_ROI",
+                                "EXPECTED_ITEM_MISSING_IN_DYNAMIC_CARRIER_ROI",
+                                "EXPECTED_ITEM_COUNT_MATCH_AND_STABLE",
+                                "EXPECTED_ITEM_COUNT_MISMATCH",
+                                "LOW_CONFIDENCE",
+                                "LOW_PIXEL_BUDGET",
+                                "IGNORED_ALLOWED_ZONE",
+                                "NO_ACTIVE_MONITOR",
+                                "NO_RELEVANT_DETECTION",
+                                "ROI_CONFLICT",
+                                "UNCERTAIN_ROI_CONFLICT",
+                                "AMBIGUOUS_DYNAMIC_CARRIER_ROI",
+                                "MODEL_UNAVAILABLE",
+                                "SOURCE_STALE",
+                                "POLICY_NOT_APPLICABLE"
+                              ]
+                            },
+                            "trusted": {
+                              "type": "boolean",
+                              "const": false
+                            },
+                            "observed_at": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "image_url": {
+                              "type": [
+                                "string",
+                                "null"
+                              ],
+                              "minLength": 1,
+                              "pattern": "^/api/v1/(vision|evidence)/[A-Za-z0-9_./?=&%:-]+$"
+                            },
+                            "policy_version": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "profile_id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "threshold_set_id": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "data_json": {
+                              "$ref": "#/$defs/compact_data_json"
+                            }
+                          },
+                          "additionalProperties": false,
+                          "type": "object",
+                          "required": [
+                            "schema_version",
+                            "event_id",
+                            "event_type",
+                            "source",
+                            "robot_id",
+                            "task_id",
+                            "command_id",
+                            "result",
+                            "severity",
+                            "confidence",
+                            "reason_code",
+                            "trusted",
+                            "observed_at",
+                            "image_url",
+                            "policy_version",
+                            "profile_id",
+                            "threshold_set_id",
+                            "data_json"
+                          ],
+                          "title": "SmartFactory VisionMonitorEvent v1",
+                          "description": "Compact Main-facing AI Server monitor/evidence payload. This contract is advisory-only and intentionally excludes bbox/mask/raw detections and any control-action output."
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "schema_version",
+                    "monitor_id",
+                    "source",
+                    "robot_id",
+                    "task_id",
+                    "command_id",
+                    "operation",
+                    "vision_zone_id",
+                    "result",
+                    "reason_code",
+                    "event"
+                  ],
+                  "title": "Response Lift Load Evaluate Api V1 Vision Evidence Lift Load Evaluate Post"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "SmartFactory API error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "details": {
+                          "items": {},
+                          "type": "array"
+                        },
+                        "request_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "additionalProperties": false,
+                      "type": "object",
+                      "required": [
+                        "code",
+                        "message",
+                        "details",
+                        "request_id"
+                      ]
+                    }
+                  },
+                  "additionalProperties": false,
+                  "type": "object",
+                  "required": [
+                    "error"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/vision/debug/sources": {
       "get": {
         "summary": "Vision Debug Sources",
@@ -3517,6 +4297,10 @@
                       "type": "integer",
                       "minimum": 0.0
                     },
+                    "overlay_event_count": {
+                      "type": "integer",
+                      "minimum": 0.0
+                    },
                     "evidence_action": {
                       "type": "string"
                     },
@@ -3576,6 +4360,12 @@
                       ]
                     },
                     "events": {
+                      "items": {
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "overlay_events": {
                       "items": {
                         "type": "object"
                       },
@@ -8426,6 +9216,229 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "LiftLoadEvaluateRequest": {
+        "properties": {
+          "source": {
+            "type": "string",
+            "const": "global_cam_01",
+            "title": "Source",
+            "default": "global_cam_01"
+          },
+          "robot_id": {
+            "type": "string",
+            "enum": [
+              "tb3_1",
+              "tb3_2"
+            ],
+            "title": "Robot Id"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
+          },
+          "command_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Command Id"
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "PICK_UP",
+              "PICKUP",
+              "DROP_OFF",
+              "DROPOFF"
+            ],
+            "title": "Operation"
+          },
+          "expected_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Item Id"
+          },
+          "expected_marker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Marker Id"
+          },
+          "expected_marker_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Marker Ids"
+          },
+          "expected_item_count": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Expected Item Count",
+            "default": 1
+          },
+          "location_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Id"
+          },
+          "vision_zone_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vision Zone Id"
+          },
+          "burst_frames": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Burst Frames",
+            "default": 5
+          },
+          "min_pass_frames": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 10.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Pass Frames"
+          },
+          "sample_interval_ms": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 0.0,
+            "title": "Sample Interval Ms",
+            "default": 80
+          },
+          "max_frame_age_s": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Max Frame Age S",
+            "default": 2.0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "robot_id",
+          "operation"
+        ],
+        "title": "LiftLoadEvaluateRequest",
+        "description": "Main-facing one-shot lift/load evidence request.\n\nMain owns task/command/location identity. AI Server only maps the requested\nZoneROI plus expected ArUco marker observations into compact evidence."
+      },
+      "RuntimeRestartRequest": {
+        "properties": {
+          "profile": {
+            "type": "string",
+            "title": "Profile",
+            "default": "lab-gopro-tb3-low-load"
+          },
+          "params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Params"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          },
+          "git_pull": {
+            "type": "boolean",
+            "title": "Git Pull",
+            "default": false
+          },
+          "require_clean_git": {
+            "type": "boolean",
+            "title": "Require Clean Git",
+            "default": true
+          },
+          "delay_s": {
+            "type": "number",
+            "maximum": 10.0,
+            "minimum": 0.1,
+            "title": "Delay S",
+            "default": 1.0
+          }
+        },
+        "type": "object",
+        "title": "RuntimeRestartRequest",
+        "description": "Lab-operator request to restart the local low-load Vision runtime."
       },
       "SyntheticFrameRequest": {
         "properties": {

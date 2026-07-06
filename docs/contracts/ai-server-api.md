@@ -397,6 +397,87 @@ event:
 `null`. For transport errors, timeouts, and non-2xx responses, `ok` is `false`
 and `error` contains a short diagnostic string.
 
+### `POST /api/v1/vision/evidence/lift-load/evaluate`
+
+Purpose: Main calls this once at a pick/drop operation boundary to obtain
+compact lift/load evidence from the currently running `global_cam_01` stream.
+The first MVP implementation uses fixed ZoneROI plus OpenCV ArUco item-marker
+burst evaluation. It does not require the legacy lift segmentation model.
+
+Request example:
+
+```json
+{
+  "source": "global_cam_01",
+  "robot_id": "tb3_1",
+  "task_id": 303,
+  "command_id": 3,
+  "operation": "PICK_UP",
+  "expected_item_id": "main-owned-item-id",
+  "expected_marker_id": 20,
+  "expected_item_count": 1,
+  "vision_zone_id": "inbound_static_item_zone",
+  "burst_frames": 5,
+  "min_pass_frames": 3,
+  "sample_interval_ms": 80
+}
+```
+
+Boundary notes:
+
+- `source` must be `global_cam_01`.
+- `robot_id` must be `tb3_1` or `tb3_2`.
+- `operation` accepts Main-facing `PICK_UP`/`DROP_OFF`; compatibility aliases
+  `PICKUP`/`DROPOFF` are also accepted. The response returns normalized
+  `PICKUP`/`DROPOFF`.
+- `vision_zone_id` is the AI Server fixed ZoneROI id. `location_id` is accepted
+  only when `config/vision/zone_rois/*.json` contains an explicit
+  `location_aliases` mapping to a `vision_zone_id`; unknown Main/domain
+  location ids return `NO_DECISION/POLICY_NOT_APPLICABLE`.
+- Item marker ids `0~19` are reserved for map/zone/spare reference markers.
+  If `expected_marker_id(s)` is omitted, AI Server accepts the currently
+  validated candidate set `20,22,23,24,27,29`.
+- Response/event payloads remain compact: no bbox, raw detections, polygons,
+  masks, or control actions.
+
+Response wrapper example:
+
+```json
+{
+  "schema_version": "vision-lift-load-evaluate.v1",
+  "monitor_id": "lift_evidence",
+  "source": "global_cam_01",
+  "robot_id": "tb3_1",
+  "task_id": 303,
+  "command_id": 3,
+  "operation": "PICKUP",
+  "vision_zone_id": "inbound_static_item_zone",
+  "result": "PASS",
+  "reason_code": "EXPECTED_ITEM_COUNT_MATCH_AND_STABLE",
+  "event": {
+    "schema_version": "vision-monitor-event.v1",
+    "event_type": "ITEM_PICKED",
+    "source": "global_cam_01",
+    "robot_id": "tb3_1",
+    "task_id": 303,
+    "command_id": 3,
+    "result": "PASS",
+    "trusted": false,
+    "data_json": {
+      "expected_item_id": "main-owned-item-id",
+      "expected_marker_ids": ["ARUCO_4X4_50_20"],
+      "detected_marker_id": "ARUCO_4X4_50_20",
+      "marker_dictionary": "DICT_4X4_50",
+      "vision_zone_id": "inbound_static_item_zone",
+      "expected_item_count": 1,
+      "observed_count": 1,
+      "accepted_frames": 3,
+      "total_frames": 5
+    }
+  }
+}
+```
+
 ### Compatibility/internal seam: `POST /api/v1/lift-roi/evaluate`
 
 Purpose: evaluate caller-provided detector/segmenter candidates against a

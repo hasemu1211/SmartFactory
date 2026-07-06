@@ -197,6 +197,48 @@ def _person_hazard_latest_response_schema() -> dict[str, Any]:
     }
 
 
+@lru_cache(maxsize=1)
+def _lift_load_evaluate_response_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "schema_version",
+            "monitor_id",
+            "source",
+            "robot_id",
+            "task_id",
+            "command_id",
+            "operation",
+            "vision_zone_id",
+            "result",
+            "reason_code",
+            "event",
+        ],
+        "properties": {
+            "schema_version": {"type": "string", "const": "vision-lift-load-evaluate.v1"},
+            "monitor_id": {"type": "string", "const": "lift_evidence"},
+            "source": {"type": "string", "const": "global_cam_01"},
+            "robot_id": {"type": ["string", "null"], "enum": ["tb3_1", "tb3_2", None]},
+            "task_id": {"type": ["integer", "string", "null"]},
+            "command_id": {"type": ["integer", "string", "null"]},
+            "operation": {"type": "string", "enum": ["PICKUP", "DROPOFF"]},
+            "vision_zone_id": {"type": ["string", "null"]},
+            "result": {
+                "type": "string",
+                "enum": ["PASS", "FAIL", "UNCERTAIN", "NO_DECISION"],
+            },
+            "reason_code": {"type": "string"},
+            "event": {
+                "anyOf": [
+                    {"type": "null"},
+                    _vision_monitor_event_openapi_schema(),
+                ],
+            },
+        },
+    }
+
+
 def _json_response_openapi(description: str, schema: dict[str, Any]) -> dict[str, Any]:
     return {
         "description": description,
