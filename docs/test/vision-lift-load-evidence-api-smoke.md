@@ -27,7 +27,7 @@ MVP 기본 정책:
 
 ```bash
 cd ~/SmartFactory
-git pull --ff-only
+git pull --ff-only origin feature/ai-server-marker-detection
 ./scripts/vision/sf_lab.sh down
 ./scripts/vision/sf_lab.sh low-load
 ```
@@ -261,3 +261,137 @@ curl -sS -X POST "$AI/api/v1/vision/evidence/lift-load/evaluate" \
 | `PASS`인데 confidence가 낮음 | 5프레임 중 일부만 잡힘. MVP는 1프레임 hit면 PASS지만, confidence는 증거 강도 참고값. |
 | HTTP `400` | source/robot/marker 범위 같은 명시 계약 위반. |
 | HTTP `422` | JSON schema 위반, 필수값 누락, 알 수 없는 extra field 등. |
+
+## 9. 2026-07-06 laptop live smoke result
+
+- Runtime: `sf_lab.sh low-load`
+- AI base URL: `http://127.0.0.1:8100`
+- Source: `global_cam_01`
+- API under test: `POST /api/v1/vision/evidence/lift-load/evaluate`
+- Evidence files: `.run/vision/lift-load-api-smoke/*20260706_153103*`, `.run/vision/lift-load-api-smoke/*20260706_153334*`
+
+### 9.1 Preflight
+
+AI Server health returned `status=ok` and `model_status=loaded`.
+The global camera overlay metadata exposed all expected ZoneROI entries:
+
+- `inbound_static_item_zone`
+- `outbound_static_item_zone`
+- `storage_upper_static_item_zone`
+- `storage_lower_static_item_zone`
+- `charging_reference_zone`
+
+During this run, `charging_reference_zone` was confirmed as:
+
+```text
+natural_item_location=false
+role=robot_charging_reference_zone
+```
+
+### 9.2 Outbound dual-marker negative observation
+
+Physical/live setup: marker `27` and marker `29` were both visible around the outbound area.
+The test called the API with:
+
+```json
+{
+  "operation": "DROP_OFF",
+  "expected_marker_id": 29,
+  "expected_item_count": 1,
+  "vision_zone_id": "outbound_static_item_zone",
+  "burst_frames": 5,
+  "min_pass_frames": 1
+}
+```
+
+Observed over 5 calls:
+
+| case | PASS | FAIL | common detected markers | note |
+| --- | ---: | ---: | --- | --- |
+| direct `vision_zone_id=outbound_static_item_zone` | 3 | 2 | `ARUCO_4X4_50_27`, `ARUCO_4X4_50_29` | PASS occurred when at least one burst frame counted only the expected item. |
+
+Representative PASS:
+
+```text
+result=PASS
+reason_code=EXPECTED_ITEM_COUNT_MATCH_AND_STABLE
+accepted_frames=1~2 / 5
+observed_count=1
+detected_marker_ids=[ARUCO_4X4_50_27, ARUCO_4X4_50_29]
+```
+
+Representative FAIL:
+
+```text
+result=FAIL
+reason_code=EXPECTED_ITEM_COUNT_MISMATCH
+accepted_frames=0 / 5
+observed_count=2
+detected_marker_ids=[ARUCO_4X4_50_27, ARUCO_4X4_50_29]
+```
+
+Interpretation: the API can see both item candidates, but the MVP policy `min_pass_frames=1` can still PASS if any sampled frame satisfies the expected count. Therefore this test is not a stable fail-closed dual-item negative under the current policy.
+
+### 9.3 `location_id=outbound` alias observation
+
+The same live condition was tested with `location_id` instead of direct `vision_zone_id`:
+
+```json
+{
+  "operation": "DROP_OFF",
+  "expected_marker_id": 29,
+  "expected_item_count": 1,
+  "location_id": "outbound",
+  "burst_frames": 5,
+  "min_pass_frames": 1
+}
+```
+
+Observed over 5 calls:
+
+| case | PASS | FAIL | resolved zone | zone resolution source |
+| --- | ---: | ---: | --- | --- |
+| `location_id=outbound` | 3 | 2 | `outbound_static_item_zone` | `location_aliases` |
+
+Conclusion: alias resolution works correctly. The PASS/FAIL split matches the direct-zone test, so the instability is caused by burst/count policy, not by `location_id` mapping.
+
+### 9.4 Charging zone policy test
+
+The non-item/reference zone was tested with:
+
+```json
+{
+  "operation": "PICK_UP",
+  "expected_marker_id": 29,
+  "expected_item_count": 1,
+  "vision_zone_id": "charging_reference_zone"
+}
+```
+
+Observed over 3 calls:
+
+| result | count | reason_code | command_satisfying |
+| --- | ---: | --- | --- |
+| `NO_DECISION` | 3 | `POLICY_NOT_APPLICABLE` | `false` |
+
+Conclusion: `charging_reference_zone` correctly fails closed as a non-natural item location. It is not treated as item pickup/dropoff evidence.
+
+### 9.5 Live smoke conclusion
+
+Confirmed:
+
+- The lift-load evidence endpoint is reachable in low-load runtime.
+- `location_id=outbound` resolves to `outbound_static_item_zone` through explicit aliases.
+- The charging/reference zone is excluded from normal item evidence.
+- The API returns compact Main-consumable results without motion commands or inventory writes.
+
+Risk / policy finding:
+
+- Under `min_pass_frames=1`, a dual-marker zone can produce mixed PASS/FAIL results across repeated calls.
+- If Main requires strict single-item safety, the next policy iteration should treat any non-expected accepted item marker in the requested ZoneROI during the burst as `FAIL` or `UNCERTAIN`, even if one frame satisfies the expected marker/count condition.
+
+Optional remaining validation, not required for the current smoke goal:
+
+- Unknown `location_id` should return `NO_DECISION/POLICY_NOT_APPLICABLE`.
+- Reserved marker ids `0..19` should return HTTP `400`.
+- Invalid `source` or `robot_id` should return validation errors.
