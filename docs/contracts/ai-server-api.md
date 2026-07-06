@@ -17,6 +17,15 @@ Main-side endpoint names are treated as fixed. AI Server may keep older internal
 | Dropped-item latest | `GET /api/v1/vision/hazards/dropped-item/latest?source=global_cam_01&robot_id={robot_id}&since_event_id={event_id}` | RALPLAN implementation target. |
 | Lift/load evidence | `POST /api/v1/vision/evidence/lift-load/evaluate` | May reuse the existing `/api/v1/lift-roi/evaluate*` internals, but Main should not be required to call those legacy paths. |
 
+2026-07-06 local planning update: the MVP physical item for Feature 2/3 is now an ArUco fiducial card itself, not a separate unmarked part. Therefore the first Main-facing lift/load implementation should use fixed ZoneROI + ArUco burst evidence before requiring a custom `target_item` YOLO model.
+
+- `DICT_4X4_50` remains the initial marker dictionary.
+- Existing map/zone marker IDs `0~12` are reserved; item candidates should use IDs `20~29` and select the most stable IDs after real-camera validation.
+- The printed marker square itself should be `40mm x 40mm`; do not reduce the inner marker to 34~36mm for the MVP candidate sheet.
+- `expected_item_id`, `location_id`, and command evidence naming remain Main-owned/open contract values. AI Server should keep a mapping layer from Main IDs to accepted marker IDs and `vision_zone_id`, rather than inventing durable DB IDs.
+- Dropped-item watch remains disabled/log-only or `NO_DECISION` by default until ArUco detection reliability and either Main pose/DynamicCarrierROI context or visual robot-distance logic are validated.
+- Main-facing payloads still stay compact: marker details may appear as `data_json.detected_marker_id`/`marker_dictionary`, but bbox/mask/polygon and control actions remain excluded by default.
+
 Operation naming follows Main at the boundary: `PICK_UP` and `DROP_OFF`. If internal lift ROI code uses `PICKUP`/`DROPOFF`, AI Server must normalize the Main-facing aliases before policy evaluation. AI Server remains evidence/advisory only: it must not emit control decisions such as `HOLD`, `E_STOP`, or `BLOCKED` in Main-facing payloads.
 
 `person_drive` monitor state is source/robot scoped even though the public path remains `PUT/GET /api/v1/vision/monitors/person_drive/state`: Main enables `tb3_1_picam` and `tb3_2_picam` independently when both robots are in DRIVE, then polls `GET /api/v1/vision/hazards/person/latest?robot_id=tb3_1` and `...?robot_id=tb3_2` independently. `GET /api/v1/vision/monitors/person_drive/state?robot_id={robot_id}` returns the per-robot state.

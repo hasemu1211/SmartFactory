@@ -451,3 +451,59 @@ Feature 3은 반드시 Main이 `robot_id`와 `task_id`를 지정해서 호출한
    - `UNCERTAIN`은 command 진행 근거를 만족하지 않는다.
 
 따라서 DB 구조 자체는 현재 RALPLAN을 막지 않지만, Main DB adapter contract test가 필요하다.
+
+## 15) 2026-07-06 보강: ArUco item MVP와 Main 매핑 오픈 계약
+
+이 문서의 6~8장은 원래 `target_item` YOLO 학습과 `DynamicCarrierROI`를 더 강하게 전제했다. 최신 논의 기준으로 MVP는 아래처럼 수정한다.
+
+### 15.1 최종 MVP item은 ArUco card 자체
+
+- 별도 부품을 찾기 어렵고 파레트에는 marker를 붙일 여유가 부족하므로, **40mm x 40mm ArUco card를 item 자체**로 사용한다.
+- 검출률을 우선하므로 marker 인쇄 정사각형 자체를 `40mm x 40mm`로 맞춘다. 내부 marker를 34~36mm로 줄이지 않는다.
+- 현재 AI Server ArUco detector와 맞추기 위해 우선 `DICT_4X4_50`을 유지한다.
+- 기존 map/zone marker `0~12`는 재사용하지 않는다.
+- 제안 ID 정책:
+  - `0~12`: map/zone marker reserved
+  - `13~19`: spare map marker reserved
+  - `20~29`: item candidate pool
+  - `30~49`: spare/future
+- ID 20~29를 출력/검증한 뒤, global cam과 ZoneROI crop에서 안정적인 약 6개를 실제 MVP item ID 후보로 선택한다.
+
+### 15.2 Feature 3이 다음 구현 우선순위
+
+픽업/드롭 증거 API는 `robot_id + task_id + command_id + operation + expected_item_id + location/zone`을 입력받고, global cam의 fixed ZoneROI high-res/full-frame crop에서 ArUco item을 3~5 frame burst로 판단한다.
+
+- PASS: 기대 marker가 요청 zone에서 안정적으로 관측됨.
+- FAIL: 기대 marker가 명확히 없음.
+- UNCERTAIN/NO_DECISION: zone 매핑 없음, frame stale, marker ID 불일치, 여러 marker 충돌, 관측 간헐적.
+
+이 경로는 continuous Main pose나 DynamicCarrierROI 없이도 시작할 수 있으므로 현재 다음 단계에 가장 적합하다.
+
+### 15.3 Feature 2 dropped-watch는 phase 2/log-only
+
+낙하물 감시는 기존처럼 바로 DynamicCarrierROI에 의존해 자동 판단하지 않는다. 다음 조건이 만족되기 전까지는 disabled/log-only 또는 `NO_DECISION`이 기본이다.
+
+후보 확장 방식:
+
+1. Main이 timestamped robot pose/lift state를 안정적으로 제공하면 `pose + homography -> DynamicCarrierROI` 비교를 사용한다.
+2. pose 연계가 어렵다면 robot/carrier를 별도 학습해서, ArUco item이 map/danger 영역 안에서 모든 robot과 충분히 떨어져 N회 관측될 때만 `DROPPED_ITEM_CANDIDATE`를 만든다.
+
+둘 다 Main의 최종 HOLD/E-stop을 대체하지 않는다.
+
+### 15.4 Main과 반드시 맞춰야 할 오픈 계약
+
+이 로컬 repo에는 Main의 최종 domain ID가 확정되어 있지 않다. AI Server는 아래를 임의 확정하지 말고 mapping layer로 열어둔다.
+
+- Main `item_id` 또는 품목명 -> AI accepted ArUco marker set.
+- Main `location_id`/floor/zone -> AI `vision_zone_id`.
+- Main command/evidence naming: 예시로 `PICK_UP -> ITEM_PICKED`, `DROP_OFF -> ITEM_PLACED`를 쓰지만 Main 확정 필요.
+- `task_id`/`command_id`는 AI가 생성하지 않고 Main pass-through로 저장한다.
+- `UNCERTAIN`을 command 진행 실패로 볼지, 재촬영/수동검수로 볼지는 Main 정책 확인이 필요하다.
+
+### 15.5 다음 작업 순서
+
+1. ArUco item 후보 20~29 출력물 생성.
+2. global cam/ZoneROI에서 후보별 검출률 테스트 후 6개 내외 선정.
+3. Main 전달용 매핑 표 초안 작성: `expected_item_id`, `vision_zone_id`, evidence event type.
+4. Feature 3 `lift-load/evaluate` API를 fixed ZoneROI + ArUco burst로 구현.
+5. dropped-watch는 검출률과 Main pose/robot detector 가능성을 본 뒤 phase 2로 결정.
