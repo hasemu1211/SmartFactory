@@ -261,3 +261,82 @@ id{marker_id}_{zone_id}_{center|edge|glare|floor}_{raw|overlay}.jpg
 코드 기준으로는 low-load에서 ZoneROI overlay가 켜질 준비가 되어 있다. 다만 실제 카메라 배치/조명/GoPro 재장착 후 overlay가 화면상 맞는지는 live에서 확인해야 한다.
 
 이 테스트의 목적은 모델 튜닝이 아니라, ArUco item MVP가 global cam + ZoneROI evidence API에 충분히 안정적인지 판단하는 것이다. 여기서 안정 ID가 선정되면 다음 구현은 `POST /api/v1/vision/evidence/lift-load/evaluate`를 fixed ZoneROI + ArUco burst로 만드는 것이다.
+
+## 10. 2026-07-06 live validation result
+
+- Date/time: 2026-07-06 13:51 KST
+- Laptop branch/commit: `feature/ai-server-marker-detection` / `6688e2f`
+- Profile: `lab-gopro-tb3-low-load`
+- Camera/source: GoPro global camera / `global_cam_01`
+- Runtime: `Smartfactory:3.4` low-load SF process
+- Print/input: candidate ArUco cards from `20~29`, visually selected subset `20,22,23,24,27,29`
+- Evidence files, local only and not committed:
+  - `.run/vision/aruco-item-validation/sample_20260706_135112.jsonl`
+  - `.run/vision/aruco-item-validation/sample_20260706_135112_raw.jpg`
+  - `.run/vision/aruco-item-validation/sample_20260706_135112_overlay.jpg`
+  - `.run/vision/aruco-item-validation/quick_check_20260706_134212_overlay.jpg`
+
+### 10.1 Runtime/API status
+
+Live checks passed:
+
+- AI Server `/api/v1/health`: `status=ok`, marker detector loaded, `global_cam_01` online.
+- Vision Stream Gateway `/api/v1/vision/bridge/status`: `ok=true`, `global_cam_01` online.
+- Overlay metadata: `zone_roi` count `5`, `map_roi` count `1` on valid samples.
+- Operator overlay image showed MapROI, ZoneROI, and ArUco labels together.
+
+Important API note: `/api/v1/vision/overlay/metadata` validates `limit <= 50`. A `limit=100` probe returns validation error and should not be counted as a detector failure.
+
+### 10.2 Observed marker result
+
+The operator placed the selected candidate cards across item zones and outside/reference areas. A 12-sample metadata probe over roughly 6 seconds was taken. Three samples returned empty/timeout-like metadata windows, while the valid samples consistently carried MapROI and ZoneROI overlays. Treat the table below as a smoke/placement validation, not a final per-zone statistical run.
+
+| marker_id | observed_count / 12 probes | valid-frame interpretation | live note | preliminary grade |
+| --- | ---: | --- | --- | --- |
+| 20 | 9/12 | stable on valid frames | visible in storage area, correct ID | A |
+| 22 | 9/12 | stable on valid frames | visible outside/upper floor area, correct ID | A |
+| 24 | 9/12 | stable on valid frames | visible in outbound area, correct ID | A |
+| 23 | 8/12 | mostly stable | visible in storage 2, correct ID | A-/B+ |
+| 27 | 7/12 | position/distance sensitive | close-range detection works; farther placement drops more often | B / tentative pass |
+| 29 | 6/12 | most distance sensitive | close-range detection works; latest metadata may drop when far | B- / tentative pass |
+
+No unexpected item-candidate IDs outside the selected set were observed in the sample. Reserved map/zone/reference markers were also detected, as expected, including `1,3,4,5,6,10,11,12` and one spare/reserved-like `17`; these must remain excluded from the accepted item marker set.
+
+### 10.3 Zone and placement observations
+
+- MapROI and five ZoneROI overlays were visible in the operator overlay.
+- Static zone labels were visible: outbound, inbound, storage 1, storage 2, and charging/reference.
+- The operator also placed markers outside normal item zones; marker detection still works there, so the next API must explicitly require a valid `vision_zone_id` match for PASS.
+- The inbound area is the main caution zone. It is farther/smaller in the current global-camera geometry and should be treated as the worst zone for small ArUco cards.
+- IDs `27` and `29` are not intrinsically bad: the operator confirmed they are detected at closer placement. Their dropouts are consistent with distance/placement geometry rather than ID confusion.
+
+### 10.4 Candidate decision
+
+Recommended MVP accepted candidate set:
+
+```text
+20, 22, 23, 24, 27, 29
+```
+
+Recommended confidence tiers:
+
+- Primary/stable: `20,22,23,24`
+- Tentative but usable with placement caution: `27,29`
+
+For the first fixed ZoneROI + ArUco burst implementation, do not require a single-frame hit. Use a short burst and accept if the expected marker appears in enough valid frames within the requested zone. This is especially important for inbound and for IDs `27`/`29` when placed farther from the camera.
+
+Suggested initial burst policy for implementation:
+
+- Capture/evaluate `3~5` frames from `global_cam_01` full-frame or zone crop.
+- PASS when expected marker appears in the requested `vision_zone_id` in at least `2/3` or `3/5` valid frames.
+- UNCERTAIN when frames are stale/empty, zone is unmapped, expected marker is intermittently visible below threshold, or multiple accepted item IDs appear in the same requested zone.
+- FAIL only when valid frames are available and the expected marker is clearly absent or a different accepted marker consistently appears in the requested zone.
+
+### 10.5 Impact on next implementation
+
+Feature 3 can proceed with fixed ZoneROI + ArUco burst evidence using the selected six IDs. The Main-facing mapping should remain open/configurable:
+
+- `expected_item_id` -> accepted ArUco marker IDs, initially one of `20,22,23,24,27,29`.
+- `location_id` -> `vision_zone_id`, limited to natural item zones for PASS.
+- `charging_reference_zone` and zone-outside floor detections must not produce normal item PASS.
+- Dropped-item watch remains phase 2/log-only until zone matching, robot pose/distance context, or robot detector logic is validated.
