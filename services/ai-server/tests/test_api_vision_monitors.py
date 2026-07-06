@@ -488,7 +488,7 @@ def test_lift_load_evaluate_passes_expected_aruco_in_requested_zone():
     assert "HOLD" not in set(_flatten(event))
 
 
-def test_lift_load_evaluate_default_burst_is_uncertain_with_only_one_frame():
+def test_lift_load_evaluate_default_burst_passes_with_one_frame_hit():
     context = create_runtime_context()
     client = TestClient(create_app(runtime_context=context))
     context.frame_store.put_decoded(
@@ -510,8 +510,8 @@ def test_lift_load_evaluate_default_burst_is_uncertain_with_only_one_frame():
 
     assert response.status_code == 200
     body = response.json()
-    assert body["result"] == "UNCERTAIN"
-    assert body["reason_code"] == "LOW_CONFIDENCE"
+    assert body["result"] == "PASS"
+    assert body["reason_code"] == "EXPECTED_ITEM_COUNT_MATCH_AND_STABLE"
     assert body["event"]["confidence"] == 0.2
     assert body["event"]["data_json"]["accepted_frames"] == 1
     assert body["event"]["data_json"]["total_frames"] == 1
@@ -808,3 +808,4 @@ def test_monitor_person_hazard_and_lift_load_routes_have_explicit_openapi_respon
     assert request_schema["properties"]["robot_id"]["enum"] == ["tb3_1", "tb3_2"]
     assert request_schema["properties"]["operation"]["enum"] == ["PICK_UP", "PICKUP", "DROP_OFF", "DROPOFF"]
     assert request_schema["properties"]["expected_item_count"]["minimum"] == 1
+    assert request_schema["properties"]["min_pass_frames"]["default"] == 1

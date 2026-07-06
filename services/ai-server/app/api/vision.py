@@ -284,7 +284,7 @@ class LiftLoadEvaluateRequest(BaseModel):
     location_id: str | None = None
     vision_zone_id: str | None = None
     burst_frames: int = Field(default=5, ge=1, le=10)
-    min_pass_frames: int | None = Field(default=None, ge=1, le=10)
+    min_pass_frames: int = Field(default=1, ge=1, le=10)
     sample_interval_ms: int = Field(default=80, ge=0, le=500)
     max_frame_age_s: float = Field(default=2.0, ge=0)
 
@@ -2352,7 +2352,7 @@ async def lift_load_evaluate(payload: LiftLoadEvaluateRequest) -> dict[str, Any]
         item_hits_all.extend(item_hits)
 
     expected_count = int(payload.expected_item_count)
-    min_pass_frames = payload.min_pass_frames or (3 if payload.burst_frames >= 5 else max(1, min(2, payload.burst_frames)))
+    min_pass_frames = payload.min_pass_frames
     judgement = evaluate_lift_load_marker_burst(
         per_frame_expected_counts=per_frame_expected_counts,
         per_frame_item_counts=per_frame_item_counts,

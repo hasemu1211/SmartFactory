@@ -26,10 +26,12 @@ Example:
   "expected_item_count": 1,
   "vision_zone_id": "inbound_static_item_zone",
   "burst_frames": 5,
-  "min_pass_frames": 3,
+  "min_pass_frames": 1,
   "sample_interval_ms": 80
 }
 ```
+
+Default MVP policy: AI samples up to `burst_frames=5` distinct latest frames, and `min_pass_frames=1` means one valid expected-marker hit is enough for `PASS`. `event.confidence` still reports the observed ratio, e.g. `0.2` for 1/5.
 
 ## 2. Required / recommended fields
 
@@ -101,7 +103,7 @@ Wrapper:
       "vision_zone_id": "inbound_static_item_zone",
       "expected_item_count": 1,
       "observed_count": 1,
-      "accepted_frames": 3,
+      "accepted_frames": 1,
       "total_frames": 5,
       "command_satisfying": true
     }
@@ -113,9 +115,9 @@ Wrapper:
 
 | AI result | Main interpretation suggestion |
 | --- | --- |
-| `PASS` | Evidence says expected item count/marker was stable enough in the requested zone. Main may satisfy/record command evidence. |
+| `PASS` | Evidence says expected item count/marker was observed at least once in the requested ZoneROI burst. Main may satisfy/record command evidence. |
 | `FAIL` | AI saw enough evidence to say expected item/count condition did not match. Main should not auto-complete without operator/business rule. |
-| `UNCERTAIN` | Not enough stable evidence. Main should retry, ask operator, or keep task pending. |
+| `UNCERTAIN` | Not enough usable evidence even after the internal burst. Main should retry, ask operator, or keep task pending. |
 | `NO_DECISION` | Missing/unsupported context: no frame, stale source, unmapped zone, non-natural zone, invalid config. Main should not treat as success/failure. |
 
 AI Server remains evidence-only. It does not issue `HOLD`, `E_STOP`, motion commands, DB writes, or inventory truth changes.
@@ -126,7 +128,7 @@ AI Server remains evidence-only. It does not issue `HOLD`, `E_STOP`, motion comm
 - `source` is fixed to `global_cam_01`.
 - `robot_id` must be `tb3_1` or `tb3_2`.
 - `expected_marker_id` must be `20..49`; map/zone markers `0..19` are rejected.
-- `min_pass_frames` must be `<= burst_frames`.
+- `min_pass_frames` defaults to `1` and must be `<= burst_frames`.
 - Response/event excludes bbox, mask, polygon, raw detections, and control actions.
 - If config/frame/mapping is unavailable, API fails closed as `NO_DECISION`.
 

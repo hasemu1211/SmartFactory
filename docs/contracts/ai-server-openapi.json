@@ -9354,17 +9354,11 @@
             "default": 5
           },
           "min_pass_frames": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 10.0,
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Min Pass Frames"
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Min Pass Frames",
+            "default": 1
           },
           "sample_interval_ms": {
             "type": "integer",

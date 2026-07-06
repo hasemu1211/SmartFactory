@@ -418,12 +418,14 @@ Request example:
   "expected_item_count": 1,
   "vision_zone_id": "inbound_static_item_zone",
   "burst_frames": 5,
-  "min_pass_frames": 3,
+  "min_pass_frames": 1,
   "sample_interval_ms": 80
 }
 ```
 
 Boundary notes:
+
+Default MVP policy: the endpoint samples up to `burst_frames=5` distinct latest frames and uses `min_pass_frames=1`, so one valid expected-marker hit is enough for `PASS`; `event.confidence` remains the accepted-frame ratio.
 
 - `source` must be `global_cam_01`.
 - `robot_id` must be `tb3_1` or `tb3_2`.
@@ -471,7 +473,7 @@ Response wrapper example:
       "vision_zone_id": "inbound_static_item_zone",
       "expected_item_count": 1,
       "observed_count": 1,
-      "accepted_frames": 3,
+      "accepted_frames": 1,
       "total_frames": 5
     }
   }
