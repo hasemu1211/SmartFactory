@@ -6,13 +6,18 @@ This script intentionally validates both valid and invalid fixtures:
 - files named vision-event.invalid.*.json must fail either JSON Schema or policy checks
 - files named lift-roi-evidence.valid.*.json must pass JSON Schema and policy checks
 - files named lift-roi-evidence.invalid.*.json must fail either JSON Schema or policy checks
+- files named evidence-evaluation.valid.*.json must pass JSON Schema and policy checks
+- files named evidence-evaluation.invalid.*.json must fail either JSON Schema or policy checks
 """
 from __future__ import annotations
 
+from datetime import date
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
 
 try:
     import jsonschema
@@ -22,11 +27,14 @@ except ImportError as exc:  # pragma: no cover
 ROOT = Path(__file__).resolve().parents[2]
 VISION_EVENT_SCHEMA_PATH = ROOT / "docs/contracts/vision-event.schema.json"
 LIFT_ROI_EVIDENCE_SCHEMA_PATH = ROOT / "docs/contracts/lift-roi-evidence.schema.json"
+EVIDENCE_EVALUATION_SCHEMA_PATH = ROOT / "docs/contracts/evidence-evaluation.v1.schema.json"
 FIXTURE_DIR = ROOT / "docs/contracts/fixtures"
 SOURCE_REGISTRY_SNAPSHOT_PATH = ROOT / "docs/contracts/generated/source-registry.snapshot.json"
 SOURCE_REGISTRY_FIXTURE_PATH = FIXTURE_DIR / "source-registry.valid.json"
 MARKER_CLASSES = {"aruco_marker", "qr_marker", "apriltag_marker"}
 DETECTION_CLASSES = {"person", "obstacle", "box", "dropped_item", "pallet", "unknown"}
+EVIDENCE_IMAGE_ROUTE_PREFIX = "/api/v1/evidence/images/"
+EVIDENCE_IMAGE_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 class PolicyError(ValueError):
     """Raised when a fixture passes JSON Schema but violates MVP1 event policy."""
 
@@ -150,13 +158,119 @@ def validate_lift_roi_evidence(path: Path, schema: dict[str, Any]) -> None:
     validate_lift_roi_policy(payload)
 
 
+def validate_evidence_evaluation_policy(payload: dict[str, Any]) -> None:
+    if payload.get("trusted") is not False:
+        raise PolicyError("evidence evaluation trusted must remain false")
+
+    judgement = payload.get("data_json", {}).get("ai_judgement", {})
+    for key in ("verification_status", "validity", "reason_code"):
+        if judgement.get(key) != payload.get(key):
+            raise PolicyError(f"data_json.ai_judgement.{key} must match top-level {key}")
+
+    status = payload.get("verification_status")
+    validity = payload.get("validity")
+    if status == "PASS" and validity != "VALID_CANDIDATE":
+        raise PolicyError("PASS evidence evaluation must be VALID_CANDIDATE")
+    if status == "UNCERTAIN" and validity != "NEEDS_REVIEW":
+        raise PolicyError("UNCERTAIN evidence evaluation must be NEEDS_REVIEW")
+    if payload.get("reason_code") in {"LOW_PIXEL_BUDGET", "LOW_QUALITY_EVIDENCE"}:
+        if status != "UNCERTAIN" or validity != "NEEDS_REVIEW":
+            raise PolicyError(
+                "quality-review evidence evaluation must be UNCERTAIN/NEEDS_REVIEW"
+            )
+
+    image_uri = payload.get("image_uri")
+    if image_uri is not None:
+        validate_evidence_image_uri_policy(image_uri)
+
+
+def validate_evidence_image_route_segments_policy(
+    *,
+    source: str,
+    view: str,
+    date_part: str,
+    filename: str,
+) -> tuple[str, str, str, str]:
+    decoded: dict[str, str] = {}
+    for name, value in {
+        "source": source,
+        "view": view,
+        "date": date_part,
+        "filename": filename,
+    }.items():
+        segment = unquote(str(value))
+        if (
+            not segment
+            or segment in {".", ".."}
+            or "/" in segment
+            or "\\" in segment
+        ):
+            raise PolicyError(f"evidence image {name} contains unsafe path segment")
+        decoded[name] = segment
+
+    decoded_date = decoded["date"]
+    if not EVIDENCE_IMAGE_DATE_RE.fullmatch(decoded_date):
+        raise PolicyError("evidence image date must use YYYY-MM-DD")
+    try:
+        date.fromisoformat(decoded_date)
+    except ValueError as exc:
+        raise PolicyError("evidence image date must be valid YYYY-MM-DD") from exc
+
+    return decoded["source"], decoded["view"], decoded_date, decoded["filename"]
+
+
+def validate_evidence_image_uri_policy(image_uri: str) -> None:
+    parsed = urlparse(image_uri)
+    if parsed.scheme or parsed.netloc:
+        raise PolicyError("evidence evaluation image_uri must be a server-generated API path")
+    if parsed.query or parsed.fragment:
+        raise PolicyError("evidence evaluation image_uri must not include query or fragment")
+    if not image_uri.startswith("/"):
+        raise PolicyError("evidence evaluation image_uri must be an API path")
+    route_path = parsed.path
+
+    if "/api/v1/evidence/files/" in route_path:
+        raise PolicyError("evidence evaluation image_uri must not use stale /evidence/files route")
+    if not route_path.startswith(EVIDENCE_IMAGE_ROUTE_PREFIX):
+        raise PolicyError("evidence evaluation image_uri must start with /api/v1/evidence/images/")
+
+    route_suffix = route_path[len(EVIDENCE_IMAGE_ROUTE_PREFIX) :]
+    parts = route_suffix.split("/")
+    if len(parts) != 4 or any(not part for part in parts):
+        raise PolicyError(
+            "evidence evaluation image_uri must use /api/v1/evidence/images/{source}/{view}/{date}/{filename}"
+        )
+    validate_evidence_image_route_segments_policy(
+        source=parts[0],
+        view=parts[1],
+        date_part=parts[2],
+        filename=parts[3],
+    )
+
+
+def validate_evidence_evaluation(path: Path, schema: dict[str, Any]) -> None:
+    payload = load_json(path)
+    validator = jsonschema.Draft202012Validator(schema, format_checker=jsonschema.FormatChecker())
+    validator.validate(payload)
+    validate_evidence_evaluation_policy(payload)
+
+
 def validate_source_registry_surfaces(failures: list[str], vision_schema: dict[str, Any], lift_roi_schema: dict[str, Any]) -> None:
     if not SOURCE_BY_ID:
         failures.append("source registry snapshot is missing or empty")
         return
     source_ids = SOURCE_REGISTRY.get("source_ids")
-    if source_ids != list(SOURCE_BY_ID):
-        failures.append("source registry source_ids do not match sources order")
+    all_source_ids = SOURCE_REGISTRY.get("all_source_ids")
+    expected_all_source_ids = list(SOURCE_BY_ID)
+    expected_enabled_source_ids = [
+        source_id
+        for source_id, source in SOURCE_BY_ID.items()
+        if source.get("enabled") is True
+    ]
+    if all_source_ids != expected_all_source_ids:
+        failures.append("source registry all_source_ids do not match sources order")
+    if source_ids != expected_enabled_source_ids:
+        failures.append("source registry source_ids do not match enabled sources order")
     if vision_schema.get("properties", {}).get("source", {}).get("enum") != source_ids:
         failures.append("VisionEvent source enum does not match source registry")
     if lift_roi_schema.get("properties", {}).get("source", {}).get("enum") != source_ids:
@@ -200,6 +314,7 @@ def validate_fixture_set(
 def main() -> int:
     vision_event_schema = load_json(VISION_EVENT_SCHEMA_PATH)
     lift_roi_schema = load_json(LIFT_ROI_EVIDENCE_SCHEMA_PATH)
+    evidence_evaluation_schema = load_json(EVIDENCE_EVALUATION_SCHEMA_PATH)
     failures: list[str] = []
 
     validate_source_registry_surfaces(failures, vision_event_schema, lift_roi_schema)
@@ -218,6 +333,14 @@ def main() -> int:
         valid_glob="lift-roi-evidence.valid.*.json",
         invalid_glob="lift-roi-evidence.invalid.*.json",
         validate_fn=validate_lift_roi_evidence,
+        failures=failures,
+    )
+    validate_fixture_set(
+        contract_name="EvidenceEvaluation",
+        schema=evidence_evaluation_schema,
+        valid_glob="evidence-evaluation.valid.*.json",
+        invalid_glob="evidence-evaluation.invalid.*.json",
+        validate_fn=validate_evidence_evaluation,
         failures=failures,
     )
 

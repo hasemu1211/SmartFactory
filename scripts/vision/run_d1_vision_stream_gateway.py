@@ -22,6 +22,7 @@ from typing import Any
 
 BOUNDARY = "frame"
 DEFAULT_SOURCES = {
+    "global_cam_01": "http://127.0.0.1:8100",
     "tb3_1_picam": "http://127.0.0.1:18090",
     "tb3_2_picam": "http://127.0.0.1:18091",
 }
@@ -70,6 +71,71 @@ def _clamp_fps(value: str | None) -> float:
     return max(1.0, min(30.0, fps))
 
 
+def _csv_set(value: str) -> set[str]:
+    return {item.strip() for item in value.split(",") if item.strip()}
+
+
+def _env_ai_mjpeg_sources() -> set[str]:
+    explicit = os.environ.get("VISION_STREAM_AI_MJPEG_SOURCES")
+    if explicit is not None and explicit.strip():
+        return _csv_set(explicit)
+    global_source = os.environ.get("VISION_GLOBAL_SOURCE_ID", "global_cam_01").strip() or "global_cam_01"
+    return {global_source}
+
+
+def _validate_ai_mjpeg_sources(
+    ai_mjpeg_sources: set[str],
+    upstreams: dict[str, str],
+    *,
+    ai_server_url: str,
+) -> None:
+    unknown = sorted(ai_mjpeg_sources.difference(upstreams))
+    if unknown:
+        raise ValueError(
+            "VISION_STREAM_AI_MJPEG_SOURCES contains source(s) not present in "
+            f"VISION_STREAM_SOURCE_UPSTREAMS_JSON: {', '.join(unknown)}"
+        )
+    mismatched = sorted(source for source in ai_mjpeg_sources if upstreams[source].rstrip("/") != ai_server_url.rstrip("/"))
+    if mismatched:
+        raise ValueError(
+            "VISION_STREAM_AI_MJPEG_SOURCES source(s) must use AI_SERVER_URL as upstream: "
+            f"{', '.join(mismatched)}"
+        )
+
+
+def _overlay_upstream_url(
+    *,
+    upstream_base_url: str,
+    ai_mjpeg_sources: set[str],
+    source: str,
+    view: str,
+    max_fps: float,
+) -> str:
+    """Build the correct internal URL behind the public overlay stream route.
+
+    The public gateway has a stable Main-facing contract:
+      /api/v1/vision/overlay/stream?source=<id>&view=<view>&max_fps=<fps>
+
+    Internally, GoPro/global-style sources in VISION_STREAM_AI_MJPEG_SOURCES
+    are served by source/view-aware MJPEG endpoints, while TurtleBot PiCam
+    sources are served by per-domain overlay bridge sidecars.  The bridge
+    sidecars do not expose /api/v1/vision/stream/{source}.mjpeg, so routing
+    every source through the AI Server path causes robot camera 404s and
+    prevents WebRTC publishers from becoming ready.
+    """
+    upstream_base = upstream_base_url.rstrip("/")
+    fps_text = f"{max_fps:g}"
+    if source in ai_mjpeg_sources:
+        return (
+            f"{upstream_base}/api/v1/vision/stream/{urllib.parse.quote(source, safe='')}.mjpeg?"
+            + urllib.parse.urlencode({"view": view, "max_fps": fps_text})
+        )
+    return (
+        f"{upstream_base}/api/v1/vision/overlay/stream?"
+        + urllib.parse.urlencode({"source": source, "max_fps": fps_text})
+    )
+
+
 def _json_get(url: str, *, timeout: float = 2.0) -> tuple[int, dict[str, Any] | None, str | None]:
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:  # noqa: S310 - local/LAN configured upstreams
@@ -89,6 +155,10 @@ class VisionStreamGatewayHandler(BaseHTTPRequestHandler):
     @property
     def ai_server_url(self) -> str:
         return self.server.ai_server_url  # type: ignore[attr-defined]
+
+    @property
+    def ai_mjpeg_sources(self) -> set[str]:
+        return self.server.ai_mjpeg_sources  # type: ignore[attr-defined]
 
     def log_message(self, fmt: str, *args: Any) -> None:  # keep stdout concise
         if os.environ.get("VISION_STREAM_GATEWAY_ACCESS_LOG", "false").lower() == "true":
@@ -171,6 +241,15 @@ class VisionStreamGatewayHandler(BaseHTTPRequestHandler):
                         source_entry = candidate
                         break
             if source_entry is None:
+                status_code, data, error = _json_get(
+                    f"{base}/api/v1/vision/streams?" + urllib.parse.urlencode({"source": source})
+                )
+                if data:
+                    for candidate in data.get("sources", []):
+                        if candidate.get("source") == source or candidate.get("source_id") == source:
+                            source_entry = candidate
+                            break
+            if source_entry is None:
                 ok = False
                 sources.append(
                     {
@@ -218,9 +297,13 @@ class VisionStreamGatewayHandler(BaseHTTPRequestHandler):
         if source is None:
             return
         max_fps = html.escape((query.get("max_fps") or ["30"])[0])
-        stream_path = f"/api/v1/vision/{stream_kind}/stream?source={urllib.parse.quote(source)}&max_fps={max_fps}"
+        view = html.escape((query.get("view") or ["full"])[0].strip() or "full")
+        stream_path = (
+            f"/api/v1/vision/{stream_kind}/stream?"
+            f"source={urllib.parse.quote(source)}&view={urllib.parse.quote(view)}&max_fps={max_fps}"
+        )
         source_links = "".join(
-            f'<li><a href="/api/v1/vision/overlay/view?source={html.escape(s)}">{html.escape(s)}</a></li>'
+            f'<li><a href="/api/v1/vision/overlay/view?source={html.escape(s)}&view={view}">{html.escape(s)}</a></li>'
             for s in sorted(self.upstreams)
         )
         body = f"""<!doctype html>
@@ -232,7 +315,7 @@ body {{ font-family: system-ui, sans-serif; margin: 18px; }}
 </style></head>
 <body>
 <h1>SmartFactory Vision Stream Gateway</h1>
-<p>source={html.escape(source)} kind={html.escape(stream_kind)}</p>
+<p>source={html.escape(source)} view={view} kind={html.escape(stream_kind)}</p>
 <img src="{stream_path}" style="max-width: 100%; height: auto; border: 1px solid #ccc" />
 <div class="clock">Local realtime: <span id="live-clock">--:--:--</span></div>
 <div class="hint">Overlay image time updates on each received frame; this page clock keeps ticking even if frames pause.</div>
@@ -258,9 +341,13 @@ setInterval(updateClock, 250);
         if source is None:
             return
         max_fps = _clamp_fps((query.get("max_fps") or ["30"])[0])
-        upstream_url = (
-            f"{self.upstreams[source]}/api/v1/vision/overlay/stream?"
-            + urllib.parse.urlencode({"source": source, "max_fps": f"{max_fps:g}"})
+        view = (query.get("view") or ["full"])[0].strip() or "full"
+        upstream_url = _overlay_upstream_url(
+            upstream_base_url=self.upstreams[source],
+            ai_mjpeg_sources=self.ai_mjpeg_sources,
+            source=source,
+            view=view,
+            max_fps=max_fps,
         )
         self._proxy_mjpeg_response(upstream_url)
 
@@ -345,6 +432,12 @@ class VisionStreamGatewayServer(ThreadingHTTPServer):
         super().__init__(server_address, handler_cls)
         self.source_upstreams = _env_source_upstreams()
         self.ai_server_url = os.environ.get("AI_SERVER_URL", "http://127.0.0.1:8100").rstrip("/")
+        self.ai_mjpeg_sources = _env_ai_mjpeg_sources()
+        _validate_ai_mjpeg_sources(
+            self.ai_mjpeg_sources,
+            self.source_upstreams,
+            ai_server_url=self.ai_server_url,
+        )
 
 
 def main() -> None:
@@ -354,6 +447,7 @@ def main() -> None:
     print(
         "SmartFactory Vision Stream Gateway ready: "
         f"http={host}:{port}, sources={server.source_upstreams}, "
+        f"ai_mjpeg_sources={sorted(server.ai_mjpeg_sources)}, "
         "read_only=True, motion_command_allowed=False",
         flush=True,
     )

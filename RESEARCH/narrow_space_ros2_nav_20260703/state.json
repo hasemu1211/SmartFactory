@@ -1,0 +1,49 @@
+{
+  "session_id": "narrow_space_ros2_nav_20260703",
+  "topic": "ROS2/Nav2 narrow-space low-latency navigation research for TurtleBot3-like lift AMR",
+  "created_at": "2026-07-03T14:20:00+09:00",
+  "updated_at": "2026-07-03T14:20:00+09:00",
+  "status": "PHASE_6_QA",
+  "current_phase": 6,
+  "requirements": {
+    "focus": [
+      "low-latency ROS2/DDS communication",
+      "accurate localization and mapping",
+      "footprint/costmap/safety for cm-clearance driving",
+      "SmartFactory drive-team action list"
+    ],
+    "output_format": "drive-team technical report",
+    "audience": "drive/navigation developers",
+    "sources": {
+      "preferred": [
+        "official ROS2/Nav2/Robotis docs",
+        "local robot probe",
+        "SmartFactory local docs"
+      ],
+      "min_quality": "B for external technical facts"
+    }
+  },
+  "progress": {
+    "phase_1": "completed",
+    "phase_2": "completed",
+    "phase_3": "completed",
+    "phase_4": "completed",
+    "phase_5": "completed",
+    "phase_6": "completed",
+    "phase_7": "pending"
+  },
+  "sources_count": 26,
+  "artifacts": {
+    "report": "docs/technical/narrow-space-ros2-nav2-drive-research-2026-07-03.md"
+  },
+  "errors": [],
+  "verification": {
+    "passed": true,
+    "signature": "4fcfbe6a7e64bfd70e5b67f73ff7334ad38d3cb7b72f6dd0faaa8747b00abd68",
+    "verified_count": 1,
+    "unresolved_count": 0,
+    "refuted_count": 0,
+    "checked_at": "2026-07-03T05:10:36.925165+00:00",
+    "checker": "validate_ledger.py"
+  }
+}

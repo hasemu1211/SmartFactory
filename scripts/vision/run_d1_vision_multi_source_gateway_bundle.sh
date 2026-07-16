@@ -60,28 +60,49 @@ set_defaults() {
   fi
 
   export VISION_MODEL_WORKER_ENABLED="${VISION_MODEL_WORKER_ENABLED:-true}"
+  # Lightweight default for Main/MJPEG smoke and TurtleBot comparator runs.
+  # GoPro segment-overlay proof is an explicit override profile:
+  #   VISION_MODEL_TASK=segment
+  #   VISION_MODEL_PATH=/home/codelab/yolo_test/yolov8s-seg.pt
+  #   VISION_MODEL_IMGSZ=640
   export VISION_MODEL_PATH="${VISION_MODEL_PATH:-${ROOT_DIR}/yolov8n.pt}"
   export VISION_MODEL_TASK="${VISION_MODEL_TASK:-detect}"
   export VISION_MODEL_DEVICE="${VISION_MODEL_DEVICE:-0}"
   export VISION_MODEL_IMGSZ="${VISION_MODEL_IMGSZ:-224}"
   export VISION_MODEL_CONF="${VISION_MODEL_CONF:-0.35}"
-  export VISION_MODEL_CLASS_MAP_JSON="${VISION_MODEL_CLASS_MAP_JSON:-{\"bottle\":\"box\",\"person\":\"person\"}}"
+  if [ -z "${VISION_MODEL_CLASS_MAP_JSON:-}" ]; then
+    export VISION_MODEL_CLASS_MAP_JSON='{"bottle":"box","person":"person"}'
+  else
+    export VISION_MODEL_CLASS_MAP_JSON
+  fi
   export VISION_MODEL_UNMAPPED_CLASS="${VISION_MODEL_UNMAPPED_CLASS:-unknown}"
 
   export VISION_SOURCE_1_ID="${VISION_SOURCE_1_ID:-tb3_1_picam}"
+  export VISION_SOURCE_1_ENABLED="${VISION_SOURCE_1_ENABLED:-true}"
   export VISION_SOURCE_1_DOMAIN="${VISION_SOURCE_1_DOMAIN:-2}"
   export VISION_SOURCE_1_TOPIC="${VISION_SOURCE_1_TOPIC:-/camera/image_raw/compressed}"
   export VISION_SOURCE_1_INTERNAL_PORT="${VISION_SOURCE_1_INTERNAL_PORT:-18090}"
 
   export VISION_SOURCE_2_ID="${VISION_SOURCE_2_ID:-tb3_2_picam}"
+  export VISION_SOURCE_2_ENABLED="${VISION_SOURCE_2_ENABLED:-true}"
   export VISION_SOURCE_2_DOMAIN="${VISION_SOURCE_2_DOMAIN:-5}"
   export VISION_SOURCE_2_TOPIC="${VISION_SOURCE_2_TOPIC:-/camera/image_raw/compressed}"
   export VISION_SOURCE_2_INTERNAL_PORT="${VISION_SOURCE_2_INTERNAL_PORT:-18091}"
+
+  export VISION_GLOBAL_SOURCE_ID="${VISION_GLOBAL_SOURCE_ID:-global_cam_01}"
+  export VISION_GLOBAL_UPSTREAM_URL="${VISION_GLOBAL_UPSTREAM_URL:-${AI_SERVER_URL}}"
+  export VISION_STREAM_AI_MJPEG_SOURCES="${VISION_STREAM_AI_MJPEG_SOURCES:-${VISION_GLOBAL_SOURCE_ID}}"
 
   export VISION_GATEWAY_REQUEST_TIMEOUT_SEC="${VISION_GATEWAY_REQUEST_TIMEOUT_SEC:-1.2}"
   export VISION_GATEWAY_FRAME_PROCESS_PATH="${VISION_GATEWAY_FRAME_PROCESS_PATH:-/api/v1/vision/frame/process}"
   export VISION_GATEWAY_PERIOD_SEC="${VISION_GATEWAY_PERIOD_SEC:-0.033333}"
   export VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC="${VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC:-0.02}"
+  VISION_GATEWAY_REQUEST_TIMEOUT_SEC="$(sf_ros_double "${VISION_GATEWAY_REQUEST_TIMEOUT_SEC}")"
+  VISION_GATEWAY_PERIOD_SEC="$(sf_ros_double "${VISION_GATEWAY_PERIOD_SEC}")"
+  VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC="$(sf_ros_double "${VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC}")"
+  export VISION_GATEWAY_REQUEST_TIMEOUT_SEC
+  export VISION_GATEWAY_PERIOD_SEC
+  export VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC
   export VISION_GATEWAY_IMAGE_QOS_RELIABILITY="${VISION_GATEWAY_IMAGE_QOS_RELIABILITY:-reliable}"
   export VISION_GATEWAY_IMAGE_QOS_DEPTH="${VISION_GATEWAY_IMAGE_QOS_DEPTH:-1}"
   export VISION_GATEWAY_OVERLAY_PUB_QOS_RELIABILITY="${VISION_GATEWAY_OVERLAY_PUB_QOS_RELIABILITY:-reliable}"
@@ -101,7 +122,7 @@ set_defaults() {
 
   export VISION_STREAM_GATEWAY_HOST="${VISION_STREAM_GATEWAY_HOST:-0.0.0.0}"
   export VISION_STREAM_GATEWAY_PORT="${VISION_STREAM_GATEWAY_PORT:-8090}"
-  export VISION_STREAM_SOURCE_UPSTREAMS_JSON="${VISION_STREAM_SOURCE_UPSTREAMS_JSON:-{\"${VISION_SOURCE_1_ID}\":\"http://127.0.0.1:${VISION_SOURCE_1_INTERNAL_PORT}\",\"${VISION_SOURCE_2_ID}\":\"http://127.0.0.1:${VISION_SOURCE_2_INTERNAL_PORT}\"}}"
+  export VISION_STREAM_SOURCE_UPSTREAMS_JSON="${VISION_STREAM_SOURCE_UPSTREAMS_JSON:-{\"${VISION_GLOBAL_SOURCE_ID}\":\"${VISION_GLOBAL_UPSTREAM_URL}\",\"${VISION_SOURCE_1_ID}\":\"http://127.0.0.1:${VISION_SOURCE_1_INTERNAL_PORT}\",\"${VISION_SOURCE_2_ID}\":\"http://127.0.0.1:${VISION_SOURCE_2_INTERNAL_PORT}\"}}"
 }
 
 check_prereqs() {
@@ -116,6 +137,9 @@ check_prereqs() {
   if [ "${VISION_MODEL_WORKER_ENABLED}" = "true" ] && [ ! -f "${VISION_MODEL_PATH}" ]; then
     echo "ERROR: VISION_MODEL_PATH does not exist: ${VISION_MODEL_PATH}" >&2
     return 1
+  fi
+  if [ "${VISION_MODEL_WORKER_ENABLED}" = "true" ] && [ -n "${VISION_MODEL_SOURCE_CONFIG_JSON:-}" ]; then
+    sf_validate_vision_model_source_config_json "${VISION_MODEL_SOURCE_CONFIG_JSON}"
   fi
   python3 -m py_compile "${ROOT_DIR}/scripts/vision/run_d1_vision_stream_gateway.py"
   (
@@ -149,10 +173,13 @@ D1 Main-compatible multi-source gateway bundle
   ai_server: ${AI_SERVER_HOST}:${AI_SERVER_PORT}
   public_host: ${public_host}
   public_gateway: ${VISION_STREAM_GATEWAY_HOST}:${VISION_STREAM_GATEWAY_PORT}
-  source1: ${VISION_SOURCE_1_ID}, domain=${VISION_SOURCE_1_DOMAIN}, topic=${VISION_SOURCE_1_TOPIC}, internal_port=${VISION_SOURCE_1_INTERNAL_PORT}
-  source2: ${VISION_SOURCE_2_ID}, domain=${VISION_SOURCE_2_DOMAIN}, topic=${VISION_SOURCE_2_TOPIC}, internal_port=${VISION_SOURCE_2_INTERNAL_PORT}
+  source1: ${VISION_SOURCE_1_ID}, enabled=${VISION_SOURCE_1_ENABLED}, domain=${VISION_SOURCE_1_DOMAIN}, topic=${VISION_SOURCE_1_TOPIC}, internal_port=${VISION_SOURCE_1_INTERNAL_PORT}
+  source2: ${VISION_SOURCE_2_ID}, enabled=${VISION_SOURCE_2_ENABLED}, domain=${VISION_SOURCE_2_DOMAIN}, topic=${VISION_SOURCE_2_TOPIC}, internal_port=${VISION_SOURCE_2_INTERNAL_PORT}
+  global_source: ${VISION_GLOBAL_SOURCE_ID}, upstream=${VISION_GLOBAL_UPSTREAM_URL}, ingest=HTTP /api/v1/vision/frame/process
+  ai_mjpeg_sources: ${VISION_STREAM_AI_MJPEG_SOURCES}
   qos: image_sub=${VISION_GATEWAY_IMAGE_QOS_RELIABILITY}, overlay_pub=${VISION_GATEWAY_OVERLAY_PUB_QOS_RELIABILITY}, overlay_sub=${VISION_STREAM_OVERLAY_SUB_QOS_RELIABILITY}
   pipeline: async=${VISION_GATEWAY_ASYNC_PIPELINE}, inline_process=${VISION_GATEWAY_PROCESS_FRAME_INLINE}, frame_process_path=${VISION_GATEWAY_FRAME_PROCESS_PATH}, period=${VISION_GATEWAY_PERIOD_SEC}s, output_period=${VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC}s, retry_failed=${VISION_GATEWAY_RETRY_FAILED_FRAME}
+  model_source_config: ${VISION_MODEL_SOURCE_CONFIG_JSON:-<none>}
   upstreams: ${VISION_STREAM_SOURCE_UPSTREAMS_JSON}
 
 Main/GUI recommended stable base URLs (hostname-first):
@@ -166,8 +193,11 @@ Vision -> Main callback settings:
   WMS_EMIT_ENABLED=${WMS_EMIT_ENABLED:-false}
   Overlay ${VISION_SOURCE_1_ID}: http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_SOURCE_1_ID}&max_fps=${VISION_STREAM_MAX_FPS}
   Overlay ${VISION_SOURCE_2_ID}: http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_SOURCE_2_ID}&max_fps=${VISION_STREAM_MAX_FPS}
+  Overlay ${VISION_GLOBAL_SOURCE_ID} full:     http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_GLOBAL_SOURCE_ID}&view=full&max_fps=${VISION_STREAM_MAX_FPS}
+  Overlay ${VISION_GLOBAL_SOURCE_ID} lift_roi: http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/overlay/stream?source=${VISION_GLOBAL_SOURCE_ID}&view=lift_roi&max_fps=${VISION_STREAM_MAX_FPS}
   Raw ${VISION_SOURCE_1_ID}:     http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=${VISION_SOURCE_1_ID}&max_fps=${VISION_STREAM_MAX_FPS}
   Raw ${VISION_SOURCE_2_ID}:     http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=${VISION_SOURCE_2_ID}&max_fps=${VISION_STREAM_MAX_FPS}
+  Raw ${VISION_GLOBAL_SOURCE_ID}:     http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/frame/stream?source=${VISION_GLOBAL_SOURCE_ID}&max_fps=${VISION_STREAM_MAX_FPS}
   Status:            http://${public_host}:${VISION_STREAM_GATEWAY_PORT}/api/v1/vision/bridge/status
 
 Detected LAN fallback evidence (configure explicitly only if hostname resolution fails):
@@ -314,6 +344,13 @@ start_public_gateway() {
   echo "[multi-gateway] public-gateway pid=${PIDS[-1]}"
 }
 
+is_truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|y|Y|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 main() {
   case "${1:-}" in
     --help|-h) usage; exit 0 ;;
@@ -331,8 +368,16 @@ main() {
 
   start_ai_server
   wait_for_ai_server
-  start_source_pair "${VISION_SOURCE_1_ID}" "${VISION_SOURCE_1_DOMAIN}" "${VISION_SOURCE_1_TOPIC}" "${VISION_SOURCE_1_INTERNAL_PORT}"
-  start_source_pair "${VISION_SOURCE_2_ID}" "${VISION_SOURCE_2_DOMAIN}" "${VISION_SOURCE_2_TOPIC}" "${VISION_SOURCE_2_INTERNAL_PORT}"
+  if is_truthy "${VISION_SOURCE_1_ENABLED}"; then
+    start_source_pair "${VISION_SOURCE_1_ID}" "${VISION_SOURCE_1_DOMAIN}" "${VISION_SOURCE_1_TOPIC}" "${VISION_SOURCE_1_INTERNAL_PORT}"
+  else
+    echo "[multi-gateway] source disabled: ${VISION_SOURCE_1_ID}"
+  fi
+  if is_truthy "${VISION_SOURCE_2_ENABLED}"; then
+    start_source_pair "${VISION_SOURCE_2_ID}" "${VISION_SOURCE_2_DOMAIN}" "${VISION_SOURCE_2_TOPIC}" "${VISION_SOURCE_2_INTERNAL_PORT}"
+  else
+    echo "[multi-gateway] source disabled: ${VISION_SOURCE_2_ID}"
+  fi
   start_public_gateway
 
   echo "[multi-gateway] running. Ctrl-C stops all local child processes."

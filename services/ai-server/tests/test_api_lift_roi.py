@@ -1,6 +1,8 @@
 """Lift ROI evidence API tests."""
 
-from api_test_helpers import InstanceMask, blank_png_bytes, client, main_module, np
+import json
+
+from api_test_helpers import InstanceMask, blank_png_bytes, client, get_settings, main_module, np
 
 def test_lift_roi_evaluate_returns_contract_valid_pickup_evidence():
     response = client.post(
@@ -204,7 +206,13 @@ def test_lift_roi_pickup_gate_blocks_lift_success_when_vision_count_is_insuffici
     assert verification["status"] == "CANDIDATE"
     assert verification["reason"] == "load_count_mismatch"
 
-def test_lift_roi_evaluate_image_fails_closed_when_model_is_not_configured():
+def test_lift_roi_evaluate_image_fails_closed_when_model_is_not_configured(monkeypatch):
+    settings = get_settings()
+    main_module._parse_vision_model_source_config.cache_clear()
+    monkeypatch.setattr(settings, "vision_model_worker_enabled", True)
+    monkeypatch.setattr(settings, "vision_model_path", "")
+    monkeypatch.setattr(settings, "vision_model_source_config_json", "")
+
     response = client.post(
         "/api/v1/lift-roi/evaluate-image",
         data={
@@ -236,6 +244,11 @@ def test_lift_roi_evaluate_image_uses_segmentation_mask_when_model_is_available(
                 ),
             )
 
+    settings = get_settings()
+    main_module._parse_vision_model_source_config.cache_clear()
+    monkeypatch.setattr(settings, "vision_model_worker_enabled", True)
+    monkeypatch.setattr(settings, "vision_model_path", "fake-default-seg.pt")
+    monkeypatch.setattr(settings, "vision_model_task", "segment")
     monkeypatch.setattr(main_module, "_get_lift_roi_segmenter", lambda **_: FakeSegmenter())
 
     response = client.post(
@@ -261,3 +274,82 @@ def test_lift_roi_evaluate_image_uses_segmentation_mask_when_model_is_available(
     assert item["overlap_ratio"] == 1.0
     assert body["verification"] == {"status": "CONFIRMED", "reason": "pickup_verified"}
     assert body["metadata"]["model"] == "fake-seg"
+
+
+def test_lift_roi_evaluate_image_routes_global_source_to_segment_model(monkeypatch):
+    settings = get_settings()
+    main_module._parse_vision_model_source_config.cache_clear()
+    monkeypatch.setattr(settings, "vision_model_worker_enabled", True)
+    monkeypatch.setattr(settings, "vision_model_path", "fallback-picam-det.pt")
+    monkeypatch.setattr(settings, "vision_model_task", "detect")
+    monkeypatch.setattr(settings, "vision_model_imgsz", 320)
+    monkeypatch.setattr(settings, "vision_model_class_map_json", '{"person":"person"}')
+    monkeypatch.setattr(
+        settings,
+        "vision_model_source_config_json",
+        json.dumps(
+            {
+                "global_cam_01": {
+                    "model_path": "global-pallet-seg.pt",
+                    "task": "segment",
+                    "imgsz": 640,
+                    "class_map": {"pallet": "pallet", "box": "box"},
+                },
+                "tb3_1_picam": {
+                    "model_path": "picam-person-det.pt",
+                    "task": "detect",
+                    "imgsz": 320,
+                    "class_map": {"person": "person"},
+                },
+            }
+        ),
+    )
+    calls = []
+
+    class FakeSegmenter:
+        detector_name = "fake-global-pallet-seg"
+
+        def detect(self, image):
+            calls.append({"image_shape": image.shape})
+            mask = np.zeros(image.shape[:2], dtype=bool)
+            mask[60:100, 80:130] = True
+            return (
+                InstanceMask(
+                    class_name="pallet",
+                    bbox_xyxy=(10.0, 10.0, 190.0, 150.0),
+                    confidence=0.93,
+                    mask=mask,
+                    track_id="seg-1",
+                    detector=self.detector_name,
+                ),
+            )
+
+    def fake_model_factory(**kwargs):
+        calls.append(kwargs)
+        return FakeSegmenter()
+
+    monkeypatch.setattr(main_module, "_get_lift_roi_segmenter", fake_model_factory)
+
+    response = client.post(
+        "/api/v1/lift-roi/evaluate-image",
+        data={
+            "source": "global_cam_01",
+            "operation": "PICKUP",
+            "task_id": "TASK-GLOBAL-SEG",
+            "expected_count": "1",
+            "stable_frames": "3",
+            "count_stable": "true",
+            "lift_up": "true",
+            "roi_json": '{"roi_id":"GLOBAL_LIFT_ROI","kind":"LIFT","polygon_xy":[[50,40],[150,40],[150,120],[50,120]]}',
+        },
+        files={"image": ("frame.png", blank_png_bytes(width=200, height=160), "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert calls[0]["model_path"] == "global-pallet-seg.pt"
+    assert calls[0]["task"] == "segment"
+    assert calls[0]["image_size"] == 640
+    assert calls[0]["class_map_json"] == '{"box": "box", "pallet": "pallet"}'
+    body = response.json()
+    assert body["load"]["accepted_items"][0]["class_name"] == "pallet"
+    assert body["metadata"]["model"] == "fake-global-pallet-seg"

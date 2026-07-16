@@ -1,0 +1,99 @@
+[
+  {
+    "claim_id": "clm_001",
+    "text": "SmartFactory low-load profile maps to lab-gopro-tb3-low-load and currently advertises WebRTC paths for global_cam_01/full, tb3_1_picam/full, and tb3_2_picam/full while disabling global_cam_01/lift_roi WebRTC.",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_local_sf_lab_check",
+      "src_local_low_load_profile"
+    ],
+    "counter_search": "Local check and profile agree; no conflicting local config found in sf_lab.sh low-load mapping.",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_002",
+    "text": "Under low-load, the public MediaMTX paths are configured as Vision-PC compositor publisher paths rather than sidecar-internal MJPEG-derived ffmpeg publishers.",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_local_sidecar_print",
+      "src_local_sidecar_docs"
+    ],
+    "counter_search": "Sidecar --print-config reports transport_origin=vision_pc_compositor_publisher; sidecar docs identify raw_frame_compositor_h264_webrtc as current primary and MJPEG as fallback.",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_003",
+    "text": "For broad browser WebRTC compatibility with H264, avoid H264 streams containing B-frames and prefer constrained/baseline-style low-latency encoding parameters.",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_mediamtx_webrtc",
+      "src_mdn_webrtc_codecs",
+      "src_rfc7742"
+    ],
+    "counter_search": "MediaMTX, MDN, and RFC 7742 all align on WebRTC H264 constrained/baseline requirements; no conflicting primary source found.",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_004",
+    "text": "GStreamer can publish to MediaMTX as RTSP, MPEG-TS over UDP, or WHIP/WebRTC, but MediaMTX recommends GStreamer acting as an RTSP client for publishing.",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_mediamtx_intro",
+      "src_mediamtx_gstreamer"
+    ],
+    "counter_search": "MediaMTX introduction lists supported publish/read protocols; GStreamer page explicitly lists RTSP/MPEG-TS/WHIP and names RTSP client as recommended.",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_005",
+    "text": "ROS compressed_image_transport / compressed image paths are JPEG/PNG still-frame compression, so they are operationally simpler but less bandwidth/quality efficient than inter-frame video codecs like H264 at the same visual target.",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_ros_index_compressed",
+      "src_clearpath_compression"
+    ],
+    "counter_search": "ROS Index says compressed_image_transport sends JPEG/PNG; Clearpath notes JPEG compresses each frame independently. This supports the inter-frame-codec efficiency comparison as an engineering inference.",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": false,
+    "status": "verified",
+    "status_reason": "ok"
+  },
+  {
+    "claim_id": "clm_006",
+    "text": "MediaMTX native rpiCamera is attractive for Raspberry Pi camera low-latency streaming, but it is not a drop-in recommendation for the current robot until OS/libcamera compatibility is validated, because MediaMTX documents Raspberry Pi OS requirements and the probed robot is Ubuntu 24.04 aarch64.",
+    "risk": "normal",
+    "claim_type": "descriptive",
+    "source_ids": [
+      "src_mediamtx_rpi",
+      "src_local_robot_ssh"
+    ],
+    "counter_search": "MediaMTX rpiCamera docs list Raspberry Pi OS versions; local robot SSH showed Ubuntu 24.04 aarch64. No evidence that current Ubuntu robot has MediaMTX rpiCamera support validated.",
+    "counter_refuted": false,
+    "conflicting": false,
+    "primary_source": true,
+    "status": "verified",
+    "status_reason": "ok"
+  }
+]

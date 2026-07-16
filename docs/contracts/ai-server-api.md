@@ -1,14 +1,38 @@
 # SmartFactory AI Server API Contract v1
 
-- Status: Draft contract for MVP1 implementation planning; AI Server endpoints below reflect the 2026-06-16 local implementation plus the 2026-06-18 Main/Nav/Vision contract v3 hostname-first endpoint alignment.
-- Date: 2026-06-18
+- Status: Draft/local implementation contract. The AI Server endpoints below reflect the 2026-06-16 local implementation, the 2026-06-18 Main/Nav/Vision contract v3 hostname-first endpoint alignment, and the 2026-06-29 lab WebRTC-primary implementation update. Live Confluence `API` page version 72 still documents MJPEG as the cross-team published primary stream; treat this local WebRTC-primary section as implementation-ready/pending-publish until that live API page is updated.
+- Date: 2026-06-30
 - Goal: make AI Server, Main Server/WMS-lite, and GUI work mergeable by API contract before implementation.
 - Canonical payload schemas: `docs/contracts/vision-event.schema.json`, `docs/contracts/lift-roi-evidence.schema.json`
 - Generated OpenAPI snapshot: `docs/contracts/ai-server-openapi.json`
 
+
+## 2026-06-30 Main-facing AI API alignment
+
+Main-side endpoint names are treated as fixed. AI Server may keep older internal/compatibility endpoints for fixtures, synthetic tests, and implementation reuse, but the public Main-facing API surface for the three new AI functions is:
+
+| Function | Main-facing endpoint | Internal/compatibility note |
+| --- | --- | --- |
+| Person hazard latest | `GET /api/v1/vision/hazards/person/latest?robot_id={robot_id}&since_event_id={event_id}` | Existing person monitor/latest implementation should conform to this response shape. |
+| Dropped-item latest | `GET /api/v1/vision/hazards/dropped-item/latest?source=global_cam_01&robot_id={robot_id}&since_event_id={event_id}` | RALPLAN implementation target. |
+| Lift/load evidence | `POST /api/v1/vision/evidence/lift-load/evaluate` | May reuse the existing `/api/v1/lift-roi/evaluate*` internals, but Main should not be required to call those legacy paths. |
+
+2026-07-06 local planning update: the MVP physical item for Feature 2/3 is now an ArUco fiducial card itself, not a separate unmarked part. Therefore the first Main-facing lift/load implementation should use fixed ZoneROI + ArUco burst evidence before requiring a custom `target_item` YOLO model.
+
+- `DICT_4X4_50` remains the initial marker dictionary.
+- Existing map/zone marker IDs `0~12` are reserved; item candidates should use IDs `20~29` and select the most stable IDs after real-camera validation.
+- The printed marker square itself should be `40mm x 40mm`; do not reduce the inner marker to 34~36mm for the MVP candidate sheet.
+- `expected_item_id`, `location_id`, and command evidence naming remain Main-owned/open contract values. AI Server should keep a mapping layer from Main IDs to accepted marker IDs and `vision_zone_id`, rather than inventing durable DB IDs.
+- Dropped-item watch remains disabled/log-only or `NO_DECISION` by default until ArUco detection reliability and either Main pose/DynamicCarrierROI context or visual robot-distance logic are validated.
+- Main-facing payloads still stay compact: marker details may appear as `data_json.detected_marker_id`/`marker_dictionary`, but bbox/mask/polygon and control actions remain excluded by default.
+
+Operation naming follows Main at the boundary: `PICK_UP` and `DROP_OFF`. If internal lift ROI code uses `PICKUP`/`DROPOFF`, AI Server must normalize the Main-facing aliases before policy evaluation. AI Server remains evidence/advisory only: it must not emit control decisions such as `HOLD`, `E_STOP`, or `BLOCKED` in Main-facing payloads.
+
+`person_drive` monitor state is source/robot scoped even though the public path remains `PUT/GET /api/v1/vision/monitors/person_drive/state`: Main enables `tb3_1_picam` and `tb3_2_picam` independently when both robots are in DRIVE, then polls `GET /api/v1/vision/hazards/person/latest?robot_id=tb3_1` and `...?robot_id=tb3_2` independently. `GET /api/v1/vision/monitors/person_drive/state?robot_id={robot_id}` returns the per-robot state.
+
 ## Contract decision v3 / non-lock-in note
 
-Confluence `API` page version 70 is the canonical cross-team Main/Nav/Vision contract snapshot for this update. Main-facing production video is the single HTTP/MJPEG Vision Stream Gateway at hostname-first `LMS_VISION_STREAM_BASE_URL=http://smartfactory-vision.local:8090`, selected by `source`; an explicitly configured `VISION_STREAM_FALLBACK_BASE_URL=http://<vision-lan-ip>:8090` may be used only when hostname resolution or health checks fail. ROS, DDS, rosbridge, and domain bridges are internal sidecar/operator/prototype implementation details unless a future ADR promotes a different public stream plane. The public Main-facing gateway is ROS-free; this is not a permanent ban on ROS-aware Vision/AI components behind the gateway when safety and architecture gates approve them. Vision remains evidence/advisory only; Main owns task/inventory/DB truth, and Nav/Movement owns motion/safety execution truth.
+Confluence `API` page version 72 is still the 2026-06-19 cross-team published Main/Nav/Vision contract snapshot and names HTTP/MJPEG as the Main-facing primary stream. The 2026-06-29 local implementation update keeps the same media-only/no-control boundary but promotes public browser video to burned-overlay WebRTC primary when the compositor/MediaMTX path is healthy. Until the live Confluence API page is republished, treat this WebRTC-primary contract as a pending implementation handoff, not as the published cross-team source of truth. The source-selected HTTP/MJPEG Vision Stream Gateway at hostname-first `LMS_VISION_STREAM_BASE_URL=http://smartfactory-vision.local:8090` remains the required fallback/diagnostic plane; an explicitly configured `VISION_STREAM_FALLBACK_BASE_URL=http://<vision-lan-ip>:8090` may be used only when hostname resolution or health checks fail. ROS, DDS, rosbridge, and domain bridges are internal sidecar/operator/prototype implementation details. Vision remains evidence/advisory only; Main owns task/inventory/DB truth, and Nav/Movement owns motion/safety execution truth.
 
 Semantic ingest target remains `POST /api/v1/vision/events`; `POST /api/v1/camera/events` is only a temporary audit fallback until Main implements `/vision/events` with agreed dedup/idempotency behavior. Main-bound `task_id` target type is `integer|null`; decimal strings may be parsed during migration, but non-decimal task references require a future versioned field/ADR.
 
@@ -131,8 +155,7 @@ Response `200`:
 
 `model_status` is retained as a backward-compatible marker/base-service status.
 Use `models.marker` and `models.lift_roi` for model-specific readiness.
-`models.lift_roi.status=disabled` means `/api/v1/lift-roi/evaluate-image` will
-fail closed with HTTP `503` until `VISION_MODEL_PATH` is configured.
+`models.lift_roi.status=disabled` means the internal `/api/v1/lift-roi/evaluate-image` path and any Main-facing lift-load wrapper that depends on it must fail closed with HTTP `503` until `VISION_MODEL_PATH` is configured.
 
 ### `GET /api/v1/sources`
 
@@ -374,12 +397,94 @@ event:
 `null`. For transport errors, timeouts, and non-2xx responses, `ok` is `false`
 and `error` contains a short diagnostic string.
 
-### `POST /api/v1/lift-roi/evaluate`
+### `POST /api/v1/vision/evidence/lift-load/evaluate`
+
+Purpose: Main calls this once at a pick/drop operation boundary to obtain
+compact lift/load evidence from the currently running `global_cam_01` stream.
+The first MVP implementation uses fixed ZoneROI plus OpenCV ArUco item-marker
+burst evaluation. It does not require the legacy lift segmentation model.
+
+Request example:
+
+```json
+{
+  "source": "global_cam_01",
+  "robot_id": "tb3_1",
+  "task_id": 303,
+  "command_id": 3,
+  "operation": "PICK_UP",
+  "expected_item_id": "main-owned-item-id",
+  "expected_marker_id": 20,
+  "expected_item_count": 1,
+  "vision_zone_id": "inbound_static_item_zone",
+  "burst_frames": 5,
+  "min_pass_frames": 1,
+  "sample_interval_ms": 80
+}
+```
+
+Boundary notes:
+
+Default MVP policy: the endpoint samples up to `burst_frames=5` distinct latest frames and uses `min_pass_frames=1`, so one valid expected-marker hit is enough for `PASS` only when no extra item marker/count is observed in the requested ZoneROI during the burst; `event.confidence` remains the accepted-frame ratio.
+
+- `source` must be `global_cam_01`.
+- `robot_id` must be `tb3_1` or `tb3_2`.
+- `operation` accepts Main-facing `PICK_UP`/`DROP_OFF`; compatibility aliases
+  `PICKUP`/`DROPOFF` are also accepted. The response returns normalized
+  `PICKUP`/`DROPOFF`.
+- `vision_zone_id` is the AI Server fixed ZoneROI id. `location_id` is accepted
+  only when `config/vision/zone_rois/*.json` contains an explicit
+  `location_aliases` mapping to a `vision_zone_id`; unknown Main/domain
+  location ids return `NO_DECISION/POLICY_NOT_APPLICABLE`.
+- Item marker ids `0~19` are reserved for map/zone/spare reference markers.
+  If `expected_marker_id(s)` is omitted, AI Server accepts the currently
+  validated candidate set `20,22,23,24,27,29`.
+- Response/event payloads remain compact: no bbox, raw detections, polygons,
+  masks, or control actions.
+
+Response wrapper example:
+
+```json
+{
+  "schema_version": "vision-lift-load-evaluate.v1",
+  "monitor_id": "lift_evidence",
+  "source": "global_cam_01",
+  "robot_id": "tb3_1",
+  "task_id": 303,
+  "command_id": 3,
+  "operation": "PICKUP",
+  "vision_zone_id": "inbound_static_item_zone",
+  "result": "PASS",
+  "reason_code": "EXPECTED_ITEM_COUNT_MATCH_AND_STABLE",
+  "event": {
+    "schema_version": "vision-monitor-event.v1",
+    "event_type": "ITEM_PICKED",
+    "source": "global_cam_01",
+    "robot_id": "tb3_1",
+    "task_id": 303,
+    "command_id": 3,
+    "result": "PASS",
+    "trusted": false,
+    "data_json": {
+      "expected_item_id": "main-owned-item-id",
+      "expected_marker_ids": ["ARUCO_4X4_50_20"],
+      "detected_marker_id": "ARUCO_4X4_50_20",
+      "marker_dictionary": "DICT_4X4_50",
+      "vision_zone_id": "inbound_static_item_zone",
+      "expected_item_count": 1,
+      "observed_count": 1,
+      "accepted_frames": 1,
+      "total_frames": 5
+    }
+  }
+}
+```
+
+### Compatibility/internal seam: `POST /api/v1/lift-roi/evaluate`
 
 Purpose: evaluate caller-provided detector/segmenter candidates against a
 configured lift or target-slot ROI and return a contract-valid
-`LiftRoiEvidence v1` payload. This endpoint is implemented as the stable seam
-for synthetic tests, offline fixtures, and future model providers.
+`LiftRoiEvidence v1` payload. This endpoint is kept as the stable internal/compatibility seam for synthetic tests, offline fixtures, and future model providers. Main-facing task evidence should use `POST /api/v1/vision/evidence/lift-load/evaluate`; that wrapper may reuse this implementation internally.
 
 Canonical response schema: `docs/contracts/lift-roi-evidence.schema.json`.
 
@@ -388,6 +493,8 @@ Contract v2 transition note: current `LiftRoiEvidence v1` accepts `task_id` as
 Vision may parse decimal-string values such as `"12"` before emitting to Main;
 non-decimal task identifiers are not canonical Main `task_id` values and require
 a future versioned `task_ref`/schema ADR.
+
+Operation naming note: this internal seam historically accepts `PICKUP`/`DROPOFF`; the Main-facing lift-load endpoint accepts `PICK_UP`/`DROP_OFF` and normalizes to the internal names.
 
 Request shape:
 
@@ -474,7 +581,7 @@ This contract allows either bbox-only detection or instance segmentation:
 - `evidence_type=instance_mask`: ROI overlap is computed from the instance mask;
   the contract stores only summary fields such as `mask_area_px`, not raw masks.
 
-### `POST /api/v1/lift-roi/evaluate-image`
+### Compatibility/internal seam: `POST /api/v1/lift-roi/evaluate-image`
 
 Purpose: evaluate lift ROI evidence from an uploaded image using the configured
 optional detector/segmenter runtime. Instance masks are preferred when the model
@@ -485,7 +592,7 @@ Request: `multipart/form-data`
 | Field | Required | Description |
 | --- | --- | --- |
 | `source` | yes | source ID to evaluate as |
-| `operation` | yes | `PICKUP`, `DROPOFF`, or `MONITOR` |
+| `operation` | yes | Internal names `PICKUP`, `DROPOFF`, or `MONITOR`. Main-facing aliases `PICK_UP`/`DROP_OFF` must be normalized before using this seam. |
 | `roi_json` | yes | JSON object with `roi_id`, `kind`, and `polygon_xy` |
 | `image` | yes | image file |
 | `task_id` | no | WMS task correlation ID or null |
@@ -517,12 +624,29 @@ when the configured vision model cannot run.
 
 ## Lane B stream and overlay APIs
 
-Main-facing production browser video is the source-selected HTTP/MJPEG Vision
-Stream Gateway on `:8090`. ROS/rosbridge remains an internal allowlisted
-operator/prototype transport unless a later ADR promotes it. The following
-endpoints support robot-free synthetic validation, GUI integration experiments,
-and the current Main-facing gateway; Main must not depend on ROS or rosbridge
-for production stream access.
+Main-facing production browser video is burned-overlay WebRTC primary when
+the Vision-PC compositor and MediaMTX sidecar are healthy. The source-selected
+HTTP/MJPEG Vision Stream Gateway on `:8090` remains the required
+fallback/diagnostic plane. ROS/rosbridge remains an internal allowlisted
+operator/prototype transport. The following endpoints support robot-free
+synthetic validation, GUI integration experiments, and the current Main-facing
+gateway; Main must not depend on ROS or rosbridge for production stream access.
+
+Canonical WebRTC path IDs are view-qualified MediaMTX paths, not raw AI Server
+source IDs. For the current full-view robot PiCam streams, Main should use:
+
+```text
+http://smartfactory-vision.local:8889/tb3_1_picam_full/
+http://smartfactory-vision.local:8889/tb3_2_picam_full/
+```
+
+`tb3_1_picam` and `tb3_2_picam` remain the canonical API `source` values for
+health, monitor, detection, and evidence calls. Main should discover production
+stream URLs from `GET /api/v1/vision/streams` when possible, specifically the
+per-source `stream_transports[]` entry with `kind=webrtc` and `sidecar.browser_url`.
+Do not infer `http://<vision-host>:8889/{source}/`; that raw-source path is not
+the current WebRTC contract because a source can expose multiple views such as
+`full`, `lift_roi`, or future cropped views.
 
 ### `POST /api/v1/vision/synthetic/frame`
 
@@ -762,8 +886,10 @@ Response `200` excerpt:
 {
   "generated_at": "2026-06-15T09:00:03+09:00",
   "requested_source": "tb3_1_picam",
-  "primary_stream_plane": "http_mjpeg_gateway",
+  "primary_stream_plane": "webrtc",
+  "fallback_stream_plane": "http_mjpeg_gateway",
   "stream_base_url": "http://<vision-host>:8090",
+  "fallback_stream_base_url": "http://<vision-host>:8090",
   "debug_only": false,
   "motion_command_allowed": false,
   "internal_rosbridge": {
@@ -842,7 +968,8 @@ Response `200` excerpt:
       },
       "rosbridge_subscription_hints": {
         "scope": "internal_operator_prototype_only",
-        "main_facing_video_transport": "http_mjpeg_gateway",
+        "main_facing_video_transport": "webrtc",
+        "main_facing_fallback_video_transport": "http_mjpeg_gateway",
         "recommended_image_topic": "/sf/vision/sources/tb3_1_picam/image/compressed",
         "recommended_overlay_topic": "/sf/vision/sources/tb3_1_picam/overlay/compressed",
         "legacy_browser_topic": "/mission/tb3_1/camera/compressed",
@@ -913,7 +1040,7 @@ Response `200` excerpt:
 }
 ```
 
-If `source` is provided, `sources` contains only that source. Response-level `summary` is computed over the returned rows only; with `source` filtering it summarizes that one source. `overlay_lag_count` counts sources where an overlay exists but has not caught up to the latest frame, `synced_overlay_count` counts sources whose latest overlay matches the latest frame, and `stale_overlay_count` counts stale visual overlays. Source entries now advertise `metrics_path=/api/v1/metrics?source=...` and `ros_handoff_source_path=/api/v1/vision/ros/topics?source=...` so GUI/debug callers can stay source-scoped across discovery, metrics, and ROS handoff. They also include `latest_frame_seq`, `latest_overlay_frame_seq`, `overlay_lag_frames`, and `overlay_visual_state` so a dashboard can see whether the debug overlay has caught up to the latest frame without opening `/vision/debug/sources`. `topic_exposure_policy`, `topic_exposure_summary`, per-source `topic_exposure`, and `rosbridge_subscription_hints` mirror the ROS/rosbridge allowlist preflight for internal/operator/prototype clients only; Main-facing video should use `stream_base_url` and the source-selected HTTP/MJPEG gateway. Top-level `debug_only=false` on `/api/v1/vision/streams` applies only to the public Main-facing HTTP/MJPEG gateway. `motion_command_allowed=false` and `control_topics_published=[]` mirror `/api/v1/vision/ros/topics` so stream discovery also exposes the no-motion/no-control boundary; ROS handoff/debug endpoints remain `debug_only=true`. Top-level `runtime_policy` mirrors `/api/v1/vision/ros/topics` and states that HTTP handlers must not start, spin, or publish through ROS2. Per-source `ros_ingest_readiness` mirrors the read-only future ROS image subscriber preflight from `/api/v1/vision/ros/topics`; `summary.ros_ingest_contract_ready_count`, `summary.ros_ingest_runtime_subscriber_active_count`, and `summary.ros_ingest_status_counts` are computed over returned source rows. Per-source `ros_publish_readiness` mirrors the read-only future overlay compressed-image publisher preflight from `/api/v1/vision/ros/topics`; `summary.ros_publish_ready_count`, `summary.ros_publish_payload_available_count`, `summary.ros_publish_payload_blocked_count`, and `summary.ros_publish_status_counts` are computed over returned source rows. Per-source `evidence_event_publish_readiness` mirrors the read-only future `/sf/vision/events` publish preflight from `/api/v1/vision/ros/topics`, and `summary.evidence_event_publish_ready_count` counts returned sources that currently have a latest schema-valid `VisionEvent` eligible for future publish. Unknown source returns `400`.
+If `source` is provided, `sources` contains only that source. Response-level `summary` is computed over the returned rows only; with `source` filtering it summarizes that one source. `overlay_lag_count` counts sources where an overlay exists but has not caught up to the latest frame, `synced_overlay_count` counts sources whose latest overlay matches the latest frame, and `stale_overlay_count` counts stale visual overlays. Source entries now advertise `metrics_path=/api/v1/metrics?source=...` and `ros_handoff_source_path=/api/v1/vision/ros/topics?source=...` so GUI/debug callers can stay source-scoped across discovery, metrics, and ROS handoff. They also include `latest_frame_seq`, `latest_overlay_frame_seq`, `overlay_lag_frames`, and `overlay_visual_state` so a dashboard can see whether the debug overlay has caught up to the latest frame without opening `/vision/debug/sources`. `topic_exposure_policy`, `topic_exposure_summary`, per-source `topic_exposure`, and `rosbridge_subscription_hints` mirror the ROS/rosbridge allowlist preflight for internal/operator/prototype clients only; Main-facing video should use WebRTC when `webrtc_policy`/offer health gates are ready and keep `fallback_stream_base_url` for the source-selected HTTP/MJPEG gateway. Top-level `debug_only=false` on `/api/v1/vision/streams` applies to the public Main-facing stream contract, not to ROS/rosbridge. `motion_command_allowed=false` and `control_topics_published=[]` mirror `/api/v1/vision/ros/topics` so stream discovery also exposes the no-motion/no-control boundary; ROS handoff/debug endpoints remain `debug_only=true`. Top-level `runtime_policy` mirrors `/api/v1/vision/ros/topics` and states that HTTP handlers must not start, spin, or publish through ROS2. Per-source `ros_ingest_readiness` mirrors the read-only future ROS image subscriber preflight from `/api/v1/vision/ros/topics`; `summary.ros_ingest_contract_ready_count`, `summary.ros_ingest_runtime_subscriber_active_count`, and `summary.ros_ingest_status_counts` are computed over returned source rows. Per-source `ros_publish_readiness` mirrors the read-only future overlay compressed-image publisher preflight from `/api/v1/vision/ros/topics`; `summary.ros_publish_ready_count`, `summary.ros_publish_payload_available_count`, `summary.ros_publish_payload_blocked_count`, and `summary.ros_publish_status_counts` are computed over returned source rows. Per-source `evidence_event_publish_readiness` mirrors the read-only future `/sf/vision/events` publish preflight from `/api/v1/vision/ros/topics`, and `summary.evidence_event_publish_ready_count` counts returned sources that currently have a latest schema-valid `VisionEvent` eligible for future publish. Unknown source returns `400`.
 
 ### `GET /api/v1/vision/ros/topics`
 
@@ -921,9 +1048,9 @@ Purpose: return a read-only ROS2/domain-bridge handoff matrix for Lane B/C
 planning. This endpoint does not start ROS2 and does not publish/subscribe at
 request time. It exists so GUI/Main/ROS developers can align on physical input
 topics, preserved legacy browser topics, and planned normalized `/sf/...` topics
-before Lane C. Main-facing browser streaming now uses the public `:8090`
-HTTP/MJPEG gateway; rosbridge is internal allowlisted operator/prototype
-infrastructure only.
+before Lane C. Main-facing browser streaming now uses burned-overlay WebRTC
+primary with public `:8090` HTTP/MJPEG fallback; rosbridge is internal
+allowlisted operator/prototype infrastructure only.
 
 Query parameters:
 
@@ -937,8 +1064,10 @@ Response `200` excerpt:
 {
   "generated_at": "2026-06-15T09:00:07+09:00",
   "requested_source": "tb3_1_picam",
-  "primary_stream_plane": "http_mjpeg_gateway",
+  "primary_stream_plane": "webrtc",
+  "fallback_stream_plane": "http_mjpeg_gateway",
   "stream_base_url": "http://<vision-host>:8090",
+  "fallback_stream_base_url": "http://<vision-host>:8090",
   "debug_only": true,
   "internal_rosbridge": {
     "scope": "operator_prototype_only",
@@ -951,7 +1080,7 @@ Response `200` excerpt:
   "topic_exposure_policy": {
     "policy": "explicit_allowlist_only",
     "rosbridge_exposes_all_topics": false,
-    "browser_primary_transport": "http_mjpeg_gateway",
+    "browser_primary_transport": "webrtc",
     "allowed_message_types": [
       "sensor_msgs/msg/CompressedImage",
       "smartfactory_msgs/msg/VisionEvent or JSON bridge payload"
@@ -1260,8 +1389,9 @@ Purpose: return a one-shot Lane B readiness snapshot for one source or all
 configured sources. This lets GUI/Main developers check whether a source has a
 latest frame, a latest overlay, overlay/frame lag, ROS ingest/publish preflight,
 stream metrics, and debug paths without opening the MJPEG stream. It is also
-a source-aware readiness companion for the public `:8090` HTTP/MJPEG gateway;
-rosbridge details are internal allowlisted operator/prototype hints only.
+a source-aware readiness companion for the WebRTC-primary stream contract and
+the public `:8090` HTTP/MJPEG fallback; rosbridge details are internal
+allowlisted operator/prototype hints only.
 
 Query parameters:
 
@@ -1275,8 +1405,10 @@ Response `200` excerpt:
 {
   "generated_at": "2026-06-15T09:00:06+09:00",
   "requested_source": "tb3_1_picam",
-  "primary_stream_plane": "http_mjpeg_gateway",
+  "primary_stream_plane": "webrtc",
+  "fallback_stream_plane": "http_mjpeg_gateway",
   "stream_base_url": "http://<vision-host>:8090",
+  "fallback_stream_base_url": "http://<vision-host>:8090",
   "debug_only": true,
   "summary": {
     "sources_total": 1,
@@ -1336,7 +1468,8 @@ Response `200` excerpt:
       },
       "rosbridge_subscription_hints": {
         "scope": "internal_operator_prototype_only",
-        "main_facing_video_transport": "http_mjpeg_gateway",
+        "main_facing_video_transport": "webrtc",
+        "main_facing_fallback_video_transport": "http_mjpeg_gateway",
         "allowed_browser_topics": [
           "/mission/tb3_1/camera/compressed",
           "/sf/vision/sources/tb3_1_picam/image/compressed",
@@ -1413,7 +1546,7 @@ Response `200` excerpt:
 
 `overlay_lag_frames > 0` means a newer latest frame exists but the latest overlay
 still belongs to an older frame. A worker tick can reconcile this in debug mode.
-`requested_source` echoes the optional source filter. `topic_exposure_policy`, `topic_exposure_summary`, per-source `topic_exposure`, and `rosbridge_subscription_hints` mirror `/api/v1/vision/ros/topics` and `/api/v1/vision/streams` for internal/operator/prototype diagnostics; Main-facing video should use `stream_base_url` and the source-selected HTTP/MJPEG gateway rather than rosbridge. `topic_exposure_summary` is computed over returned `sources`; when `source` is provided it summarizes that one source only. `summary` is also computed over returned `sources`; when `source` is provided it summarizes that one source only. `health_status_counts`, `ros_ingest_status_counts`, and `ros_publish_status_counts` provide dashboard-friendly breakdowns of the same returned rows. `ros_ingest_readiness` and `ros_publish_readiness` mirror the per-source ROS image subscriber and overlay publisher preflight from `/api/v1/vision/ros/topics?source=...`; they are read-only and do not start ROS2 or publish overlays. `ros_publish_readiness.publish_payload_preview` tells whether a future background publisher may publish the cached compressed overlay image for that source. `evidence_event_publish_readiness` mirrors `/api/v1/vision/ros/topics` and tells whether that source currently has a latest `VisionEvent` eligible for future `/sf/vision/events` publishing. `summary.ros_ingest_contract_ready_count`, `summary.ros_publish_payload_available_count`, and `summary.evidence_event_publish_ready_count` count returned sources whose ingest contract, overlay payload, or evidence event is ready/eligible. Errors: `400` unknown source.
+`requested_source` echoes the optional source filter. `topic_exposure_policy`, `topic_exposure_summary`, per-source `topic_exposure`, and `rosbridge_subscription_hints` mirror `/api/v1/vision/ros/topics` and `/api/v1/vision/streams` for internal/operator/prototype diagnostics; Main-facing video should use WebRTC when ready and the source-selected HTTP/MJPEG fallback rather than rosbridge. `topic_exposure_summary` is computed over returned `sources`; when `source` is provided it summarizes that one source only. `summary` is also computed over returned `sources`; when `source` is provided it summarizes that one source only. `health_status_counts`, `ros_ingest_status_counts`, and `ros_publish_status_counts` provide dashboard-friendly breakdowns of the same returned rows. `ros_ingest_readiness` and `ros_publish_readiness` mirror the per-source ROS image subscriber and overlay publisher preflight from `/api/v1/vision/ros/topics?source=...`; they are read-only and do not start ROS2 or publish overlays. `ros_publish_readiness.publish_payload_preview` tells whether a future background publisher may publish the cached compressed overlay image for that source. `evidence_event_publish_readiness` mirrors `/api/v1/vision/ros/topics` and tells whether that source currently has a latest `VisionEvent` eligible for future `/sf/vision/events` publishing. `summary.ros_ingest_contract_ready_count`, `summary.ros_publish_payload_available_count`, and `summary.evidence_event_publish_ready_count` count returned sources whose ingest contract, overlay payload, or evidence event is ready/eligible. Errors: `400` unknown source.
 
 ### `POST /api/v1/vision/frame`
 
@@ -1929,8 +2062,8 @@ Model candidate behavior:
 
 - Model candidates are emitted as schema-valid `VisionEvent v1` with `event_kind=CANDIDATE`.
 - They are overlaid on the cached overlay image and can then be republished by `vision_frame_gateway` to `/sf/vision/sources/<source>/overlay/compressed`.
-- The production/high-FPS Main/GUI overlay video path is the source-selected read-only `:8090` HTTP/MJPEG gateway. ROS overlay topics and rosbridge/stream bridges remain internal operator/prototype transports unless a future ADR promotes them.
-- `GET /api/v1/vision/frame/latest/image` and `GET /api/v1/vision/overlay/latest/image` remain snapshot/debug surfaces; stream endpoints behind the public `:8090` gateway are the acceptance path for Main-facing video.
+- The production/high-FPS Main/GUI overlay video path is burned-overlay WebRTC primary with the source-selected read-only `:8090` HTTP/MJPEG gateway as fallback. ROS overlay topics and rosbridge/stream bridges remain internal operator/prototype transports.
+- `GET /api/v1/vision/frame/latest/image` and `GET /api/v1/vision/overlay/latest/image` remain snapshot/debug surfaces; public WebRTC plus `:8090` MJPEG fallback stream endpoints are the acceptance path for Main-facing video.
 
 Recommended pretrained run command:
 

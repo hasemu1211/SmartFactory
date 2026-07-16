@@ -51,6 +51,105 @@ def test_overlay_latest_returns_404_before_any_frame():
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "NOT_FOUND"
 
+
+def test_overlay_metadata_returns_canvas_layer_events_without_image_bytes():
+    main_module.store.reset()
+    main_module.source_health.reset()
+    main_module.frame_store.reset()
+    main_module.overlay_cache.reset()
+    with main_module._overlay_images_lock:
+        main_module._overlay_images.clear()
+
+    ingest = client.post(
+        "/api/v1/vision/synthetic/frame",
+        json={"source": "tb3_1_picam", "marker_id": 7},
+    )
+    assert ingest.status_code == 200
+
+    response = client.get(
+        "/api/v1/vision/overlay/metadata",
+        params={"source": "tb3_1_picam", "view": "full", "limit": 5},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["requested_source"] == "tb3_1_picam"
+    assert body["requested_view"] == "full"
+    assert body["metadata_plane"] == {
+        "kind": "vision_event_canvas_layer_diagnostic",
+        "render_target": "diagnostic_canvas_only_public_stream_is_burned_overlay",
+        "refresh_fps": 5.0,
+        "client_rendering": "diagnostic_only_not_required_for_main_streaming",
+        "recommended_for_main_streaming": False,
+        "motion_command_allowed": False,
+        "db_writes": False,
+        "evidence_truth_mutation": False,
+    }
+    assert body["overlay"]["frame_seq"] == 1
+    assert body["events"]
+    assert body["events"][0]["source"] == "tb3_1_picam"
+    assert body["events"][0]["metadata"]["frame_seq"] == body["overlay"]["frame_seq"]
+    assert "jpeg" not in body
+
+
+def test_overlay_metadata_returns_only_events_for_current_overlay_frame():
+    main_module.store.reset()
+    main_module.source_health.reset()
+    main_module.frame_store.reset()
+    main_module.overlay_cache.reset()
+    with main_module._overlay_images_lock:
+        main_module._overlay_images.clear()
+
+    first = client.post(
+        "/api/v1/vision/synthetic/frame",
+        json={"source": "tb3_1_picam", "marker_id": 7},
+    )
+    second = client.post(
+        "/api/v1/vision/synthetic/frame",
+        json={"source": "tb3_1_picam", "marker_id": 8},
+    )
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    response = client.get(
+        "/api/v1/vision/overlay/metadata",
+        params={"source": "tb3_1_picam", "view": "full", "limit": 50},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["overlay"]["frame_seq"] == 2
+    assert body["events"]
+    assert {event["metadata"]["frame_seq"] for event in body["events"]} == {
+        body["overlay"]["frame_seq"]
+    }
+
+
+def test_overlay_metadata_for_roi_view_does_not_fallback_to_full_frame_events():
+    main_module.store.reset()
+    main_module.source_health.reset()
+    main_module.frame_store.reset()
+    main_module.overlay_cache.reset()
+    with main_module._overlay_images_lock:
+        main_module._overlay_images.clear()
+
+    ingest = client.post(
+        "/api/v1/vision/synthetic/frame",
+        json={"source": "global_cam_01", "marker_id": 7},
+    )
+    assert ingest.status_code == 200
+
+    response = client.get(
+        "/api/v1/vision/overlay/metadata",
+        params={"source": "global_cam_01", "view": "lift_roi", "limit": 50},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["requested_view"] == "lift_roi"
+    assert body["events"] == []
+
+
 def test_lane_b_robot_free_e2e_surfaces_stay_consistent_across_stream_debug_ros_and_metrics():
     main_module.store.reset()
     main_module.source_health.reset()
@@ -135,8 +234,10 @@ def test_lane_b_robot_free_e2e_surfaces_stay_consistent_across_stream_debug_ros_
     debug_source = debug_body["sources"][0]
     ros_source = ros_body["sources"][0]
 
-    assert stream_body["primary_stream_plane"] == ros_body["primary_stream_plane"] == "http_mjpeg_gateway"
+    assert stream_body["primary_stream_plane"] == ros_body["primary_stream_plane"] == "webrtc"
+    assert stream_body["fallback_stream_plane"] == ros_body["fallback_stream_plane"] == "http_mjpeg_gateway"
     assert stream_body["stream_base_url"] == ros_body["stream_base_url"] == "http://<vision-host>:8090"
+    assert stream_body["fallback_stream_base_url"] == ros_body["fallback_stream_base_url"] == "http://<vision-host>:8090"
     assert stream_body["debug_only"] is False
     assert ros_body["debug_only"] is True
     assert stream_body["motion_command_allowed"] is False

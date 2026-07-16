@@ -1,110 +1,166 @@
-# SmartFactory scripts 안내서 (한국어)
+# SmartFactory scripts 사용법
 
-이 디렉토리는 SmartFactory 로컬 개발/운영 보조 스크립트의 진입점입니다. 특히 Main/Vision 연동은 임의 명령보다 이 디렉토리의 스크립트를 우선 사용하세요.
-파일시스템 ownership / 용도별 배치 기준: [`../docs/technical/project-filesystem-ownership.md`](../docs/technical/project-filesystem-ownership.md).
+이 문서는 “무엇을 할 때 어떤 스크립트를 실행하는지”만 정리한 운영자용 안내입니다.
+긴 설계 설명은 별도 `docs/` 문서를 보세요.
 
-## 현재 결론: `smartfactory-vision.local`은 자동 영구 설정이 아님
+## 기본 원칙
 
-현재 `smartfactory-vision.local`은 다음 helper 프로세스가 살아있는 동안만 임시로 mDNS 방송됩니다.
+- 장시간 실행되는 Vision live 프로세스는 tmux `Smartfactory:3:Development` 안에서 실행하세요.
+- 평소에는 `sf_lab.sh`만 쓰면 됩니다.
+- 하위 profile 디버깅이 필요할 때만 `sf_vision.sh`를 직접 씁니다.
 
-```bash
-./scripts/vision/publish_vision_mdns_alias.py
-```
-
-이 helper는 다음을 하지 않습니다.
-
-- `/etc/hosts` 수정 안 함
-- OS hostname 변경 안 함
-- 라우터 DHCP reservation 설정 안 함
-- 영구 DNS 설정 안 함
-
-따라서 “사용자가 신경 쓰지 않아도 되는 운영 상태”를 만들려면 라우터/DNS 쪽에서 고정해야 합니다.
-
-날짜가 박힌 lab DHCP/DNS handoff 세부값은
-[`docs/requests/main-vision-runtime-config-request-2026-06-19.md`](../docs/requests/main-vision-runtime-config-request-2026-06-19.md)를 보세요.
-MAC/IP 값은 외부 공개 또는 DHCP/router 변경 후 사용 전에 반드시 재확인하세요.
-
-## 빠른 실행 순서
-
-### 1. 임시 hostname 방송
-
-live 프로세스를 어느 tmux 창/패널에 둘지는 현재 runbook/session evidence를 따르세요. durable README에는 일시적인 pane/window ID를 고정하지 않습니다.
+## 가장 많이 쓰는 명령
 
 ```bash
-./scripts/vision/publish_vision_mdns_alias.py
+# 저부하 실행: GoPro full + tb3_1/tb3_2 PiCam WebRTC, lift_roi WebRTC 끔
+./scripts/vision/sf_lab.sh low-load
+
+# 전체 실행: GoPro full+lift_roi + tb3_1/tb3_2 + AI Server + MJPEG fallback + mDNS
+./scripts/vision/sf_lab.sh all
+
+# 현재 상태 확인
+./scripts/vision/sf_lab.sh status
+
+# Main/브라우저에서 열 URL 확인
+./scripts/vision/sf_lab.sh urls
+
+# 종료
+./scripts/vision/sf_lab.sh down
 ```
 
-동작 확인만 하고 싶으면:
+## 목적별로 무엇을 실행하나
+
+| 하고 싶은 일 | 실행 명령 | 설명 |
+|---|---|---|
+| 저부하 lab vision 켜기 | `./scripts/vision/sf_lab.sh low-load` | 노트북/약한 PC 권장. GoPro full + tb3_1/tb3_2 PiCam WebRTC를 켜고, lift_roi WebRTC만 끕니다. |
+| 전체 lab vision 켜기 | `./scripts/vision/sf_lab.sh all` | lift_roi WebRTC까지 필요할 때. GoPro + PiCam + AI Server + WebRTC/MJPEG fallback을 켭니다. |
+| 상태 확인 | `./scripts/vision/sf_lab.sh status` | 살아있는 프로세스, WebRTC/MJPEG 상태, GoPro/PiCam 상태를 봅니다. |
+| URL 확인 | `./scripts/vision/sf_lab.sh urls low-load` | 선택한 profile 기준으로 활성 WebRTC URL과 fallback URL을 출력합니다. |
+| 종료 | `./scripts/vision/sf_lab.sh down` | Vision 관련 live 프로세스를 내립니다. |
+| health 확인 | `./scripts/vision/sf_lab.sh api health` | AI Server health를 확인합니다. |
+| stream 계약 확인 | `./scripts/vision/sf_lab.sh api streams` | Main이 읽을 stream discovery JSON을 확인합니다. |
+| 증거 API 계획 확인 | `./scripts/vision/sf_lab.sh api evidence-plan PICKUP` | 하드웨어 없이 증거 판단 요청 형태를 봅니다. |
+| 증거 API mock 확인 | `./scripts/vision/sf_lab.sh api evidence-mock DROPOFF` | Main DB 변경 없이 mock 응답을 확인합니다. |
+| 실행 중 평가 호출 | `./scripts/vision/sf_lab.sh api evaluate-no-frame global_cam_01 lift_roi PICKUP` | 최신 프레임이 없어도 API 응답 형태를 확인합니다. |
+| 품질 평가 호출 | `./scripts/vision/sf_lab.sh api evaluate-quality global_cam_01 full` | 현재 영상 품질/평가 응답을 확인합니다. |
+
+## 로봇 Pi camera 준비
+
+Vision PC에서 `sf_lab.sh all`을 켜기 전에, 사용할 로봇 쪽 SSH 터미널에서 카메라 bringup을 켭니다.
 
 ```bash
-./scripts/vision/publish_vision_mdns_alias.py --print-only
+# tb3_1 카메라
+ROS_DOMAIN_ID=2 ros2 launch turtlebot3_bringup camera_low_bandwidth.launch.py
+
+# tb3_2 카메라를 쓸 때
+ROS_DOMAIN_ID=5 ros2 launch turtlebot3_bringup camera_low_bandwidth.launch.py
 ```
 
-### 2. Main-compatible Vision bundle 실행
+로봇 Pi에는 위 카메라 bringup 외 추가 WebRTC/AI 프로세스를 올리지 않습니다.
 
-```bash
-VISION_MODEL_WORKER_ENABLED=false ./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
-```
-
-이 bundle은 다음을 띄웁니다.
+## Main 화면 확인
 
 ```text
-0.0.0.0:8100   AI Server
-0.0.0.0:8090   public HTTP/MJPEG Vision Stream Gateway
-127.0.0.1:18090 internal tb3_1 overlay bridge
-127.0.0.1:18091 internal tb3_2 overlay bridge
+http://smartfactory-main.local:8088/operate/control
 ```
 
-기본 Main callback 설정은 다음입니다.
-
-```env
-MAIN_SERVER_URL=http://smartfactory-main.local:8088
-WMS_VISION_EVENTS_PATH=/api/v1/vision/events
-WMS_EMIT_ENABLED=false
-```
-
-`WMS_EMIT_ENABLED=false`는 안전 기본값입니다. 실제로 VisionEvent를 Main에 POST하려는 경우에만 명시적으로 `true`로 바꾸세요.
-
-### 3. 확인 URL
+Main이 받을 수 있는 주요 URL은 아래 명령으로 확인합니다.
 
 ```bash
-curl http://smartfactory-vision.local:8100/api/v1/health
-curl http://smartfactory-vision.local:8090/api/v1/vision/bridge/status
-curl http://smartfactory-main.local:8088/api/v1/vision/bridge/status
+./scripts/vision/sf_lab.sh urls
+./scripts/vision/sf_lab.sh urls low-load
+./scripts/vision/sf_lab.sh api streams
 ```
 
-로봇/카메라가 없을 때는 서비스가 `200`이어도 source 상태가 `no_frame`, `offline`, `stale`일 수 있습니다. 이것은 정상입니다.
+Main 화면에 `MJPEG·poll`이 보이면 먼저 아래만 확인하세요.
 
-## 스크립트 그룹과 실제 배치
+```bash
+./scripts/vision/sf_lab.sh status
+./scripts/vision/sf_lab.sh urls
+./scripts/vision/sf_vision.sh logs gopro-adapter
+./scripts/vision/sf_vision.sh logs webrtc-sidecar
+```
 
-이제 루트 `scripts/`에는 문서만 남깁니다. 실행 가능한 스크립트는 용도별
-하위 폴더에 직접 배치되어 있고, 현재 문서/Makefile/systemd 참조도 실제 경로를 직접 가리킵니다.
+## 하위 profile을 직접 쓸 때
 
-| 그룹 | 실행 위치 | 예시 |
-|---|---|---|
-| AI Server | `scripts/ai/` | `run_ai_server.sh`, `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh`, `test_ai_server.sh` |
-| D1 Vision / Main 연동 | `scripts/vision/` | `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `smoke_main_dashboard_gateway.sh` |
-| 계약/검증 | `scripts/validate/` | `validate_contracts.py`, `validate_deployment_assets.py` |
-| 계약 산출물 생성 | `scripts/generate/` | `generate_source_registry_surfaces.py` |
-| 보고서/Confluence 산출물 | `scripts/reports/` | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` |
-| 운영 확인 | `scripts/ops/` | `check-confluence-env.sh` |
-| 공용 shell helper | `scripts/lib/` | `vision_bundle_common.sh` |
+평소에는 필요 없습니다. profile 확인/디버깅 때만 씁니다.
 
-배치 규칙:
+```bash
+# profile 목록
+./scripts/vision/sf_vision.sh profiles
 
-- 새 문서와 자동화에는 용도별 실제 경로를 직접 사용합니다.
-- 외부 배포 호환 전환이 필요한 경우가 아니면 루트 실행 shim을 만들지 않습니다.
-- 구현 변경은 용도에 맞는 하위 폴더에서 합니다.
+# 저부하 WebRTC profile 사전 점검
+./scripts/vision/sf_vision.sh check lab-gopro-tb3-low-load
 
-## 안전 경계
+# 전체 WebRTC profile 사전 점검
+./scripts/vision/sf_vision.sh check lab-gopro-tb3-ffmpeg-first
 
-이 Vision script 세트는 다음을 하지 않아야 합니다.
+# 전체 WebRTC profile 직접 실행
+./scripts/vision/sf_vision.sh up lab-gopro-tb3-ffmpeg-first
 
-- `/cmd_vel` publish
-- Nav2 action 호출
-- teleop 실행
-- ROS parameter mutation
-- robot-side persistent service 변경
-- 전체 DDS/rosbridge graph 노출
+# 상태/스모크/로그/종료
+./scripts/vision/sf_vision.sh status
+./scripts/vision/sf_vision.sh smoke
+./scripts/vision/sf_vision.sh logs
+./scripts/vision/sf_vision.sh down
+```
 
-Vision은 evidence/advisory만 제공하고, Main/WMS와 Movement/Safety가 최종 상태와 제어를 소유합니다.
+## Make alias
+
+```bash
+make vision-lab-all
+make vision-lab-status
+make vision-lab-urls
+make vision-lab-api-plan OPERATION=PICKUP
+make vision-lab-down
+```
+
+## 기본 profile
+
+| Profile | 언제 쓰나 |
+|---|---|
+| `lab-gopro-tb3-low-load` | 저부하 권장. GoPro full + tb3_1/tb3_2 PiCam WebRTC를 실행하고, lift_roi WebRTC만 끕니다. Global full overlay에는 Map ROI와 정적 Zone ROI 튜닝 레이어를 함께 표시합니다. |
+| `lab-gopro-tb3-ffmpeg-first` | 전체 WebRTC. GoPro full + lift ROI + tb3_1/tb3_2 WebRTC, MJPEG fallback으로 실행. |
+| `lab-gopro-tb3` | WebRTC보다 기존 MJPEG 안정 경로를 우선 확인할 때. |
+| `tb3-live-webrtc` | GoPro 없이 tb3_1 PiCam만 WebRTC로 확인할 때. |
+| `local-smoke` | 하드웨어 없이 API/gateway smoke만 할 때. |
+
+## 저부하 WebRTC URL
+
+```text
+http://smartfactory-vision.local:8889/global_cam_01_full/
+http://smartfactory-vision.local:8889/tb3_1_picam_full/
+http://smartfactory-vision.local:8889/tb3_2_picam_full/
+```
+
+`global_cam_01_full`의 Zone ROI는 `config/vision/zone_rois/global_cam_01_lab_draft.json` 기반의
+operator tuning overlay입니다. Main-facing API 응답에는 raw polygon을 넣지 않고,
+낙하물 API 구현 시 같은 perception state에서 compact advisory JSON만 반환합니다.
+
+## 전체 WebRTC 추가 URL
+
+```text
+http://smartfactory-vision.local:8889/global_cam_01_lift_roi/
+```
+
+## 기본 MJPEG fallback URL
+
+```text
+http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?source=global_cam_01&view=full&max_fps=30
+http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?source=global_cam_01&view=lift_roi&max_fps=30
+http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?source=tb3_1_picam&view=full&max_fps=30
+http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?source=tb3_2_picam&view=full&max_fps=30
+```
+
+## mediamtx / ffmpeg 확인
+
+```bash
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --check
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --status
+```
+
+`mediamtx`가 PATH에 없으면 다음처럼 경로를 지정할 수 있습니다.
+
+```bash
+export MEDIAMTX_BIN=/absolute/path/to/mediamtx
+```

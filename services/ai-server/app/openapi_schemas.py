@@ -5,6 +5,7 @@ from functools import lru_cache
 from typing import Any
 
 from .config import get_settings
+from .contracts import VISION_MONITOR_EVENT_SCHEMA_PATH
 
 
 def apply_source_id_openapi_extra(schema: dict[str, Any]) -> None:
@@ -82,6 +83,162 @@ def _lift_roi_openapi_schema() -> dict[str, Any]:
     return json.loads(get_settings().lift_roi_evidence_schema_path.read_text(encoding="utf-8"))
 
 
+@lru_cache(maxsize=1)
+def _evidence_evaluation_openapi_schema() -> dict[str, Any]:
+    return json.loads(
+        get_settings().evidence_evaluation_schema_path.read_text(encoding="utf-8")
+    )
+
+
+@lru_cache(maxsize=1)
+def _vision_monitor_event_openapi_schema() -> dict[str, Any]:
+    return json.loads(VISION_MONITOR_EVENT_SCHEMA_PATH.read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=1)
+def _vision_monitor_state_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "description": (
+            "Process-local, ephemeral AI Server monitor state. Main must "
+            "reassert desired state after AI Server restart; revision is "
+            "monotonic only within the current process."
+        ),
+        "required": [
+            "monitor_id",
+            "enabled",
+            "source",
+            "robot_id",
+            "task_id",
+            "operation_state",
+            "target_fps",
+            "profile_id",
+            "policy_version",
+            "threshold_set_id",
+            "updated_at",
+            "revision",
+        ],
+        "properties": {
+            "monitor_id": {"type": "string", "enum": ["person_drive", "drop_watch", "lift_evidence"]},
+            "enabled": {"type": "boolean"},
+            "source": {"type": ["string", "null"], "enum": ["global_cam_01", "tb3_1_picam", "tb3_2_picam", None]},
+            "robot_id": {"type": ["string", "null"], "enum": ["tb3_1", "tb3_2", None]},
+            "task_id": {"type": ["integer", "string", "null"]},
+            "operation_state": {"type": "string", "enum": ["IDLE", "DRIVE", "PICKUP", "DROPOFF", "MONITOR", "UNKNOWN"]},
+            "target_fps": {"type": ["number", "null"], "exclusiveMinimum": 0},
+            "profile_id": {"type": ["string", "null"]},
+            "policy_version": {"type": "string"},
+            "threshold_set_id": {"type": ["string", "null"]},
+            "updated_at": {"type": ["string", "null"], "format": "date-time"},
+            "revision": {"type": "integer", "minimum": 0},
+        },
+    }
+
+
+@lru_cache(maxsize=1)
+def _vision_monitor_state_response_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["schema_version", "monitor"],
+        "properties": {
+            "schema_version": {"type": "string", "const": "vision-monitor-state.v1"},
+            "monitor": _vision_monitor_state_schema(),
+        },
+    }
+
+
+@lru_cache(maxsize=1)
+def _vision_monitor_states_response_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["schema_version", "monitors"],
+        "properties": {
+            "schema_version": {"type": "string", "const": "vision-monitor-state-list.v1"},
+            "monitors": {
+                "type": "array",
+                "items": _vision_monitor_state_schema(),
+                "minItems": 4,
+            },
+        },
+    }
+
+
+@lru_cache(maxsize=1)
+def _person_hazard_latest_response_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "schema_version",
+            "monitor_id",
+            "source",
+            "robot_id",
+            "result",
+            "reason_code",
+            "event",
+        ],
+        "properties": {
+            "schema_version": {"type": "string", "const": "vision-person-hazard-latest.v1"},
+            "monitor_id": {"type": "string", "const": "person_drive"},
+            "source": {"type": ["string", "null"], "enum": ["tb3_1_picam", "tb3_2_picam", None]},
+            "robot_id": {"type": ["string", "null"], "enum": ["tb3_1", "tb3_2", None]},
+            "result": {"type": "string", "enum": ["ADVISORY", "NO_ACTIVE_MONITOR", "NO_RELEVANT_DETECTION"]},
+            "reason_code": {"type": "string", "enum": ["HUMAN_DETECTED", "NO_ACTIVE_MONITOR", "NO_RELEVANT_DETECTION"]},
+            "event": {
+                "anyOf": [
+                    {"type": "null"},
+                    _vision_monitor_event_openapi_schema(),
+                ],
+            },
+        },
+    }
+
+
+@lru_cache(maxsize=1)
+def _lift_load_evaluate_response_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "schema_version",
+            "monitor_id",
+            "source",
+            "robot_id",
+            "task_id",
+            "command_id",
+            "operation",
+            "vision_zone_id",
+            "result",
+            "reason_code",
+            "event",
+        ],
+        "properties": {
+            "schema_version": {"type": "string", "const": "vision-lift-load-evaluate.v1"},
+            "monitor_id": {"type": "string", "const": "lift_evidence"},
+            "source": {"type": "string", "const": "global_cam_01"},
+            "robot_id": {"type": ["string", "null"], "enum": ["tb3_1", "tb3_2", None]},
+            "task_id": {"type": ["integer", "string", "null"]},
+            "command_id": {"type": ["integer", "string", "null"]},
+            "operation": {"type": "string", "enum": ["PICKUP", "DROPOFF"]},
+            "vision_zone_id": {"type": ["string", "null"]},
+            "result": {
+                "type": "string",
+                "enum": ["PASS", "FAIL", "UNCERTAIN", "NO_DECISION"],
+            },
+            "reason_code": {"type": "string"},
+            "event": {
+                "anyOf": [
+                    {"type": "null"},
+                    _vision_monitor_event_openapi_schema(),
+                ],
+            },
+        },
+    }
+
+
 def _json_response_openapi(description: str, schema: dict[str, Any]) -> dict[str, Any]:
     return {
         "description": description,
@@ -130,6 +287,7 @@ def _overlay_metadata_schema() -> dict[str, Any]:
         "additionalProperties": False,
         "required": [
             "source",
+            "view",
             "frame_seq",
             "frame_timestamp",
             "evidence_timestamp",
@@ -143,6 +301,7 @@ def _overlay_metadata_schema() -> dict[str, Any]:
         ],
         "properties": {
             "source": {"type": "string"},
+            "view": {"type": "string", "default": "full"},
             "frame_seq": {"type": "integer", "minimum": 1},
             "frame_timestamp": {"type": "string", "format": "date-time"},
             "evidence_timestamp": {"type": ["string", "null"], "format": "date-time"},
@@ -161,6 +320,60 @@ def _overlay_metadata_schema() -> dict[str, Any]:
                 },
             },
             "content_type": {"type": "string"},
+        },
+    }
+
+
+@lru_cache(maxsize=1)
+def _overlay_canvas_metadata_response_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "generated_at",
+            "requested_source",
+            "requested_view",
+            "sync",
+            "overlay",
+            "metadata_plane",
+            "events",
+        ],
+        "properties": {
+            "generated_at": {"type": "string", "format": "date-time"},
+            "requested_source": {"type": "string"},
+            "requested_view": {"type": "string"},
+            "sync": {"type": "object", "additionalProperties": True},
+            "overlay": _overlay_metadata_schema(),
+            "metadata_plane": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "kind",
+                    "render_target",
+                    "refresh_fps",
+                    "client_rendering",
+                    "motion_command_allowed",
+                    "db_writes",
+                    "evidence_truth_mutation",
+                ],
+                "properties": {
+                    "kind": {"const": "vision_event_canvas_layer_diagnostic", "type": "string"},
+                    "render_target": {
+                        "const": "diagnostic_canvas_only_public_stream_is_burned_overlay",
+                        "type": "string",
+                    },
+                    "refresh_fps": {"type": "number", "minimum": 0},
+                    "client_rendering": {
+                        "const": "diagnostic_only_not_required_for_main_streaming",
+                        "type": "string",
+                    },
+                    "recommended_for_main_streaming": {"const": False, "type": "boolean"},
+                    "motion_command_allowed": {"const": False, "type": "boolean"},
+                    "db_writes": {"const": False, "type": "boolean"},
+                    "evidence_truth_mutation": {"const": False, "type": "boolean"},
+                },
+            },
+            "events": {"type": "array", "items": _vision_event_openapi_schema()},
         },
     }
 
@@ -192,8 +405,10 @@ def _vision_streams_response_schema() -> dict[str, Any]:
         "properties": {
             "generated_at": {"type": "string", "format": "date-time"},
             "requested_source": {"type": ["string", "null"]},
-            "primary_stream_plane": {"const": "http_mjpeg_gateway", "type": "string"},
+            "primary_stream_plane": {"const": "webrtc", "type": "string"},
+            "fallback_stream_plane": {"const": "http_mjpeg_gateway", "type": "string"},
             "stream_base_url": {"type": "string"},
+            "fallback_stream_base_url": {"type": "string"},
             "debug_only": {"const": False, "type": "boolean"},
             "motion_command_allowed": {"const": False, "type": "boolean"},
             "control_topics_published": {
@@ -228,8 +443,10 @@ def _debug_sources_response_schema() -> dict[str, Any]:
         "required": ["generated_at", "primary_stream_plane", "sources"],
         "properties": {
             "generated_at": {"type": "string", "format": "date-time"},
-            "primary_stream_plane": {"const": "http_mjpeg_gateway", "type": "string"},
+            "primary_stream_plane": {"const": "webrtc", "type": "string"},
+            "fallback_stream_plane": {"const": "http_mjpeg_gateway", "type": "string"},
             "stream_base_url": {"type": "string"},
+            "fallback_stream_base_url": {"type": "string"},
             "sources": {"type": "array", "items": {"type": "object"}},
         },
     }
@@ -347,10 +564,12 @@ def _frame_process_response_schema() -> dict[str, Any]:
             "frame_seq": {"type": "integer", "minimum": 1},
             "event_count": {"type": "integer", "minimum": 0},
             "new_event_count": {"type": "integer", "minimum": 0},
+            "overlay_event_count": {"type": "integer", "minimum": 0},
             "evidence_action": {"type": "string"},
             "frame": _latest_frame_response_schema()["properties"]["frame"],
             "overlay": {"type": ["object", "null"]},
             "events": {"type": "array", "items": {"type": "object"}},
+            "overlay_events": {"type": "array", "items": {"type": "object"}},
             "reason": {"type": "string"},
             "ingest_context": _frame_ingest_response_schema()["properties"]["ingest_context"],
         },
@@ -385,8 +604,10 @@ def _ros_handoff_response_schema() -> dict[str, Any]:
         ],
         "properties": {
             "generated_at": {"type": "string", "format": "date-time"},
-            "primary_stream_plane": {"const": "http_mjpeg_gateway", "type": "string"},
+            "primary_stream_plane": {"const": "webrtc", "type": "string"},
+            "fallback_stream_plane": {"const": "http_mjpeg_gateway", "type": "string"},
             "stream_base_url": {"type": "string"},
+            "fallback_stream_base_url": {"type": "string"},
             "debug_only": {"const": True, "type": "boolean"},
             "motion_command_allowed": {"const": False, "type": "boolean"},
             "sources": {"type": "array", "items": {"type": "object"}},

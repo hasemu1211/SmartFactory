@@ -1,104 +1,164 @@
 # SmartFactory scripts guide
 
 Korean version: [`README.ko.md`](README.ko.md).
-Filesystem ownership / placement rules: [`../docs/technical/project-filesystem-ownership.md`](../docs/technical/project-filesystem-ownership.md).
 
-This directory contains local operator/developer entrypoints. Prefer these
-scripts over ad-hoc commands so Main/Vision integration stays reproducible.
+This is the short operator guide: what to run, when to run it, and what each command does.
+Detailed architecture notes live under `docs/`.
 
-## Current Main/Vision quick start
+## Basic rules
 
-### 1. Publish the temporary Vision hostname for a lab session
+- Start long-running Vision live processes only inside tmux `Smartfactory:3:Development`.
+- Use `sf_lab.sh` for normal operation.
+- Use `sf_vision.sh` only for lower-level profile debugging.
 
-```bash
-./scripts/vision/publish_vision_mdns_alias.py
-```
-
-Default behavior:
-
-- publishes `smartfactory-vision.local -> <first LAN IPv4>` via Avahi/mDNS
-- runs in the foreground
-- withdraws the record when stopped with `Ctrl-C`
-- does **not** change `/etc/hosts`, hostname, router DHCP, or DNS
-
-Use this only for local/lab validation. Production should use router DHCP
-reservation plus DNS/mDNS hostname configuration:
-
-For dated lab DHCP/DNS handoff details, see
-[`docs/requests/main-vision-runtime-config-request-2026-06-19.md`](../docs/requests/main-vision-runtime-config-request-2026-06-19.md).
-Verify MAC/IP values before publishing externally or after DHCP/router changes.
-
-Dry check:
+## Most-used commands
 
 ```bash
-./scripts/vision/publish_vision_mdns_alias.py --print-only
+# Low-load start: GoPro full + tb3_1/tb3_2 PiCam WebRTC, lift_roi WebRTC off
+./scripts/vision/sf_lab.sh low-load
+
+# Full start: GoPro full+lift_roi + tb3_1/tb3_2 + AI Server + MJPEG fallback + mDNS
+./scripts/vision/sf_lab.sh all
+
+# Check status
+./scripts/vision/sf_lab.sh status
+
+# Print Main/browser URLs
+./scripts/vision/sf_lab.sh urls
+
+# Stop
+./scripts/vision/sf_lab.sh down
 ```
 
-### 2. Start the Main-compatible Vision bundle
+## What to run for each task
+
+| Task | Command | What it does |
+|---|---|---|
+| Start the low-load lab Vision bundle | `./scripts/vision/sf_lab.sh low-load` | Recommended for laptops/weaker PCs. Starts GoPro full + tb3_1/tb3_2 PiCam WebRTC; leaves lift_roi WebRTC off. |
+| Start the full lab Vision bundle | `./scripts/vision/sf_lab.sh all` | Use when lift_roi WebRTC is needed. Starts GoPro, PiCam, AI Server, WebRTC, MJPEG fallback, and mDNS helper. |
+| Check runtime status | `./scripts/vision/sf_lab.sh status` | Shows live processes and stream health. |
+| Print URLs | `./scripts/vision/sf_lab.sh urls low-load` | Shows active WebRTC URLs for the selected profile plus fallback URLs. |
+| Stop Vision processes | `./scripts/vision/sf_lab.sh down` | Stops the Vision live bundle. |
+| Check AI health | `./scripts/vision/sf_lab.sh api health` | Calls AI Server health. |
+| Check stream discovery | `./scripts/vision/sf_lab.sh api streams` | Prints the JSON Main should read. |
+| Show evidence request plan | `./scripts/vision/sf_lab.sh api evidence-plan PICKUP` | No hardware required. |
+| Show evidence mock response | `./scripts/vision/sf_lab.sh api evidence-mock DROPOFF` | No Main DB mutation. |
+| Call evaluation without a frame | `./scripts/vision/sf_lab.sh api evaluate-no-frame global_cam_01 lift_roi PICKUP` | Checks API response shape. |
+| Call quality evaluation | `./scripts/vision/sf_lab.sh api evaluate-quality global_cam_01 full` | Checks current quality/evaluation response. |
+
+## Robot Pi camera bringup
+
+Before running `sf_lab.sh all` on the Vision PC, start camera bringup on the robot SSH terminal you are using.
 
 ```bash
-VISION_MODEL_WORKER_ENABLED=false ./scripts/vision/run_d1_vision_multi_source_gateway_bundle.sh
+# tb3_1 camera
+ROS_DOMAIN_ID=2 ros2 launch turtlebot3_bringup camera_low_bandwidth.launch.py
+
+# tb3_2 camera when needed
+ROS_DOMAIN_ID=5 ros2 launch turtlebot3_bringup camera_low_bandwidth.launch.py
 ```
 
-The bundle starts:
+The robot Pi should only run camera bringup. WebRTC/AI work runs on the Vision PC.
+
+## Main dashboard
 
 ```text
-0.0.0.0:8100   AI Server
-0.0.0.0:8090   public HTTP/MJPEG Vision Stream Gateway
-127.0.0.1:18090 internal tb3_1 overlay bridge
-127.0.0.1:18091 internal tb3_2 overlay bridge
+http://smartfactory-main.local:8088/operate/control
 ```
 
-Current default callback settings:
-
-```env
-MAIN_SERVER_URL=http://smartfactory-main.local:8088
-WMS_VISION_EVENTS_PATH=/api/v1/vision/events
-WMS_EMIT_ENABLED=false
-```
-
-`WMS_EMIT_ENABLED=false` is intentional for safe default operation. Set it to
-`true` only when you explicitly want Vision to POST evidence events into Main.
-
-### 3. Smoke checks
+Use these commands to see what Main should consume:
 
 ```bash
-curl http://smartfactory-vision.local:8100/api/v1/health
-curl http://smartfactory-vision.local:8090/api/v1/vision/bridge/status
-curl http://smartfactory-main.local:8088/api/v1/vision/bridge/status
+./scripts/vision/sf_lab.sh urls
+./scripts/vision/sf_lab.sh urls low-load
+./scripts/vision/sf_lab.sh api streams
 ```
 
-Expected while robots/cameras are absent:
+If Main shows `MJPEG·poll`, check only these first:
 
-- services return HTTP `200`
-- `motion_command_allowed=false`
-- sources may show `no_frame` or offline/stale state until camera frames arrive
+```bash
+./scripts/vision/sf_lab.sh status
+./scripts/vision/sf_lab.sh urls
+./scripts/vision/sf_vision.sh logs gopro-adapter
+./scripts/vision/sf_vision.sh logs webrtc-sidecar
+```
 
-## Script groups and physical layout
+## Lower-level profile commands
 
-Root `scripts/` now contains documentation only. Runnable scripts live directly
-in purpose-specific subdirectories, and current docs/Makefile/systemd references
-point to those real paths directly.
+Normally not needed. Use these for profile checks/debugging.
 
-| Group | Runnable location | Examples |
-|---|---|---|
-| AI Server | `scripts/ai/` | `run_ai_server.sh`, `setup_ai_server_env.sh`, `setup_ai_server_model_env.sh`, `test_ai_server.sh` |
-| D1 Vision / Main integration | `scripts/vision/` | `publish_vision_mdns_alias.py`, `run_d1_vision_multi_source_gateway_bundle.sh`, `run_d1_vision_stream_gateway.py`, `smoke_main_dashboard_gateway.sh` |
-| Contracts / validation | `scripts/validate/` | `validate_contracts.py`, `validate_deployment_assets.py` |
-| Generated contract surfaces | `scripts/generate/` | `generate_source_registry_surfaces.py` |
-| Reports / Confluence assets | `scripts/reports/` | `create_sprint3_presentation_pptx.py`, `generate-drawio-architectures.py`, `render-scenario-sequence-diagrams.py` |
-| Ops checks | `scripts/ops/` | `check-confluence-env.sh` |
-| Shared shell helpers | `scripts/lib/` | `vision_bundle_common.sh` |
+```bash
+# List profiles
+./scripts/vision/sf_vision.sh profiles
 
-Placement rule:
+# Check low-load WebRTC profile
+./scripts/vision/sf_vision.sh check lab-gopro-tb3-low-load
 
-- Use the grouped script paths directly in new docs and automation.
-- Do not add root-level executable shims unless an external deployment requires a documented transition.
-- Keep implementation changes in the matching purpose directory.
+# Check full WebRTC profile
+./scripts/vision/sf_vision.sh check lab-gopro-tb3-ffmpeg-first
 
-## Notes
+# Start full WebRTC profile directly
+./scripts/vision/sf_vision.sh up lab-gopro-tb3-ffmpeg-first
 
-- Follow the active runbook/session evidence for where to keep live processes;
-  durable README files should not hard-code transient tmux pane/window IDs.
-- Keep robot motion, Nav2, teleop, and `/cmd_vel` outside these Vision scripts.
-- Do not commit generated `__pycache__` directories; they are local runtime cache.
+# Status/smoke/logs/stop
+./scripts/vision/sf_vision.sh status
+./scripts/vision/sf_vision.sh smoke
+./scripts/vision/sf_vision.sh logs
+./scripts/vision/sf_vision.sh down
+```
+
+## Make aliases
+
+```bash
+make vision-lab-all
+make vision-lab-status
+make vision-lab-urls
+make vision-lab-api-plan OPERATION=PICKUP
+make vision-lab-down
+```
+
+## Default profiles
+
+| Profile | When to use |
+|---|---|
+| `lab-gopro-tb3-low-load` | Recommended low-load mode. Runs GoPro full + tb3_1/tb3_2 PiCam WebRTC; leaves lift_roi WebRTC off. |
+| `lab-gopro-tb3-ffmpeg-first` | Full WebRTC mode. Runs GoPro full + lift ROI + tb3_1/tb3_2 WebRTC, with MJPEG fallback. |
+| `lab-gopro-tb3` | Use when checking the older MJPEG-stable path. |
+| `tb3-live-webrtc` | Use when testing only tb3_1 PiCam WebRTC without GoPro. |
+| `local-smoke` | Use when no hardware is available. |
+
+## Low-load WebRTC URLs
+
+```text
+http://smartfactory-vision.local:8889/global_cam_01_full/
+http://smartfactory-vision.local:8889/tb3_1_picam_full/
+http://smartfactory-vision.local:8889/tb3_2_picam_full/
+```
+
+## Full-mode extra WebRTC URLs
+
+```text
+http://smartfactory-vision.local:8889/global_cam_01_lift_roi/
+```
+
+## Default MJPEG fallback URLs
+
+```text
+http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?source=global_cam_01&view=full&max_fps=30
+http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?source=global_cam_01&view=lift_roi&max_fps=30
+http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?source=tb3_1_picam&view=full&max_fps=30
+http://smartfactory-vision.local:8090/api/v1/vision/overlay/stream?source=tb3_2_picam&view=full&max_fps=30
+```
+
+## mediamtx / ffmpeg checks
+
+```bash
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --check
+./scripts/vision/run_webrtc_sidecar_mediamtx.sh --status
+```
+
+If `mediamtx` is not on PATH, set it explicitly:
+
+```bash
+export MEDIAMTX_BIN=/absolute/path/to/mediamtx
+```

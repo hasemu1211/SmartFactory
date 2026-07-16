@@ -1,0 +1,12 @@
+{
+  "result": "ADVISORY",
+  "reason_code": "HUMAN_DETECTED",
+  "source": "tb3_1_picam",
+  "robot_id": "tb3_1",
+  "event_type": "HUMAN_DETECTED",
+  "task_id": 601,
+  "severity": "CRITICAL",
+  "confidence": 0.921,
+  "trusted": false,
+  "control_action": "none - Main decides HOLD/E-stop"
+}

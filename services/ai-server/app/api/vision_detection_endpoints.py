@@ -68,6 +68,7 @@ async def build_lift_roi_image_response(
     runtime_context: RuntimeContext,
     decode_image: Callable[[bytes], Any],
     lift_roi_segmenter: Callable[[], Any],
+    model_config_for_source: Callable[[str], Any],
     robot_id_for_source: Callable[[str], str | None],
     frame_id_for_source: Callable[[str], str],
     now_iso: Callable[[], str],
@@ -86,15 +87,18 @@ async def build_lift_roi_image_response(
     image_height, image_width = decoded_image.shape[:2]
     runtime_context.source_health.record_frame(source, at=now_dt())
     try:
+        model_config = model_config_for_source(source)
+        if model_config is None:
+            raise ModelAdapterError("vision model path is not configured")
         provider = lift_roi_segmenter()(
-            model_path=settings.vision_model_path,
-            task=settings.vision_model_task,
-            confidence=settings.vision_model_conf,
-            iou=settings.vision_model_iou,
-            image_size=settings.vision_model_imgsz,
-            device=settings.vision_model_device,
-            class_map_json=settings.vision_model_class_map_json,
-            unmapped_class=settings.vision_model_unmapped_class,
+            model_path=model_config.model_path,
+            task=model_config.task,
+            confidence=model_config.confidence,
+            iou=model_config.iou,
+            image_size=model_config.image_size,
+            device=model_config.device,
+            class_map_json=model_config.class_map_json,
+            unmapped_class=model_config.unmapped_class,
         )
         detector_results = tuple(provider.detect(decoded_image))
     except ModelAdapterError as exc:

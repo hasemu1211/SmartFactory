@@ -162,3 +162,33 @@ def test_streams_endpoint_includes_debug_stream_metrics_pointer_and_snapshot():
     assert sources["tb3_2_picam"]["stream_metrics"]["clients_total"] == 1
     assert sources["tb3_2_picam"]["stream_metrics"]["frames_sent_total"] == 1
     main_module.metrics.record_stream_client_closed(source="tb3_2_picam")
+
+
+def test_metrics_endpoint_reports_webrtc_offer_fallback_and_drop_counters():
+    main_module.metrics.reset()
+
+    main_module.metrics.record_webrtc_offer(
+        source="global_cam_01",
+        status="fallback_required",
+        reason="sidecar_not_configured",
+    )
+    main_module.metrics.record_webrtc_selected_transport(
+        source="global_cam_01",
+        transport="mjpeg",
+    )
+    main_module.metrics.record_webrtc_fallback(
+        source="global_cam_01",
+        reason="sidecar_not_configured",
+    )
+    main_module.metrics.record_webrtc_connection_drop(source="global_cam_01")
+
+    body = client.get("/api/v1/metrics").json()
+    webrtc = body["metrics"]["webrtc"]
+    assert webrtc["offers_total"] == 1
+    assert webrtc["offer_status_total"] == {"fallback_required": 1}
+    assert webrtc["offer_reason_total"] == {"sidecar_not_configured": 1}
+    assert webrtc["selected_transport_total"] == {"mjpeg": 1}
+    assert webrtc["fallback_total"] == 1
+    assert webrtc["fallback_reason_total"] == {"sidecar_not_configured": 1}
+    assert webrtc["connection_drop_total"] == 1
+    assert webrtc["connection_drop_by_source"] == {"global_cam_01": 1}

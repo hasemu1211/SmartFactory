@@ -1,5 +1,6 @@
 # Local credentials
 .env.confluence.local
+.envrc
 .venv-tools/
 docs/confluence/captures/
 # Python / local env
@@ -29,3 +30,35 @@ venv/
 # Generated packages
 dist/
 docs/confluence/qa/*.png
+
+# Agent/runtime local state
+.omx/
+.run/
+omx_wiki/
+
+# Local Confluence exports and draft-only artifacts
+docs/confluence/
+
+# Generated archives
+*.zip
+
+# ==========================================
+# EduWing Robotics Standard .gitignore Template
+# ==========================================
+
+# 1. ROS2 Build Artifacts (ROS2 빌드 생성물 제외)
+build/
+install/
+log/
+# 2. Python Temporary Files (파이썬 임시 파일 제외)
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+# 3. OS & IDE Metadata (운영체제 및 편집기 설정 파일 제외)
+.DS_Store
+.vscode/
+.idea/
+# MediaMTX accidental root-generated certificate artifacts
+auto.crt
+auto.key

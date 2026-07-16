@@ -1,10 +1,43 @@
 {
   "schema_version": "vision-sources.v1",
+  "all_source_ids": [
+    "global_cam_01",
+    "global_depth_01",
+    "tb3_1_picam",
+    "tb3_2_picam"
+  ],
   "source_ids": [
     "global_cam_01",
     "tb3_1_picam",
     "tb3_2_picam"
   ],
+  "source_views": {
+    "global_cam_01": [
+      "full",
+      "lift_roi",
+      "pallet_zoom"
+    ],
+    "global_depth_01": [
+      "full",
+      "pallet_zoom"
+    ],
+    "tb3_1_picam": [
+      "full"
+    ],
+    "tb3_2_picam": [
+      "full"
+    ]
+  },
+  "internal_color_indexing_allowed_views": {
+    "global_cam_01": [
+      "pallet_zoom"
+    ],
+    "global_depth_01": [
+      "pallet_zoom"
+    ],
+    "tb3_1_picam": [],
+    "tb3_2_picam": []
+  },
   "sources": [
     {
       "source_id": "global_cam_01",
@@ -13,7 +46,7 @@
       "frame_id": "global_camera_frame",
       "enabled": true,
       "target_fps": 10.0,
-      "notes": "overview/slot/zone evidence",
+      "notes": "GoPro/global RGB overview evidence with crop-first smart ROI views for lift/pallet analysis",
       "physical_input": {
         "topic": "/global_camera/image_raw",
         "message_type": "sensor_msgs/msg/Image",
@@ -29,7 +62,78 @@
         "image": "/sf/vision/sources/global_cam_01/image/compressed",
         "overlay": "/sf/vision/sources/global_cam_01/overlay/compressed"
       },
-      "evidence_event_topic": "/sf/vision/events"
+      "evidence_event_topic": "/sf/vision/events",
+      "budgets": {
+        "target_fps_semantics": "legacy_ai_ingest_default",
+        "preview_media_fps": 30.0,
+        "ai_monitor_fps": 5.0,
+        "evidence_imgsz": 960,
+        "browser_primary_transport_semantics": "legacy_internal_rosbridge_metadata"
+      },
+      "views": [
+        {
+          "view_id": "full",
+          "kind": "full_frame",
+          "can_confirm_internal_color_indexing": false
+        },
+        {
+          "view_id": "lift_roi",
+          "kind": "smart_tracked_roi_crop",
+          "can_confirm_internal_color_indexing": false,
+          "parent_view": "full"
+        },
+        {
+          "view_id": "pallet_zoom",
+          "kind": "tracked_roi_crop",
+          "can_confirm_internal_color_indexing": true,
+          "parent_view": "full"
+        }
+      ]
+    },
+    {
+      "source_id": "global_depth_01",
+      "kind": "realsense_rgbd",
+      "robot_id": null,
+      "frame_id": "global_depth_camera_frame",
+      "enabled": false,
+      "target_fps": 15.0,
+      "notes": "planned D435 global full/ROI crop views; disabled until mounted and calibrated",
+      "physical_input": {
+        "topic": null,
+        "message_type": "sensor_msgs/msg/Image",
+        "content_type": "image/raw",
+        "preferred_transport": "raw"
+      },
+      "browser": {
+        "legacy_topic": null,
+        "legacy_message_type": null,
+        "primary_transport": "http_mjpeg_gateway"
+      },
+      "normalized_topics": {
+        "image": "/sf/vision/sources/global_depth_01/image/compressed",
+        "overlay": "/sf/vision/sources/global_depth_01/overlay/compressed"
+      },
+      "evidence_event_topic": "/sf/vision/events",
+      "budgets": {
+        "target_fps_semantics": "planned_ingest_default",
+        "preview_media_fps": 15.0,
+        "ai_monitor_fps": 5.0,
+        "evidence_imgsz": null,
+        "browser_primary_transport_semantics": "disabled_planned_source_metadata"
+      },
+      "views": [
+        {
+          "view_id": "full",
+          "kind": "full_frame",
+          "can_confirm_internal_color_indexing": false
+        },
+        {
+          "view_id": "pallet_zoom",
+          "kind": "tracked_roi_crop",
+          "can_confirm_internal_color_indexing": true,
+          "parent_view": "full"
+        }
+      ]
     },
     {
       "source_id": "tb3_1_picam",
@@ -54,7 +158,21 @@
         "image": "/sf/vision/sources/tb3_1_picam/image/compressed",
         "overlay": "/sf/vision/sources/tb3_1_picam/overlay/compressed"
       },
-      "evidence_event_topic": "/sf/vision/events"
+      "evidence_event_topic": "/sf/vision/events",
+      "budgets": {
+        "target_fps_semantics": "legacy_ai_ingest_default",
+        "preview_media_fps": 30.0,
+        "ai_monitor_fps": 10.0,
+        "evidence_imgsz": null,
+        "browser_primary_transport_semantics": "legacy_internal_rosbridge_metadata"
+      },
+      "views": [
+        {
+          "view_id": "full",
+          "kind": "full_frame",
+          "can_confirm_internal_color_indexing": false
+        }
+      ]
     },
     {
       "source_id": "tb3_2_picam",
@@ -79,7 +197,21 @@
         "image": "/sf/vision/sources/tb3_2_picam/image/compressed",
         "overlay": "/sf/vision/sources/tb3_2_picam/overlay/compressed"
       },
-      "evidence_event_topic": "/sf/vision/events"
+      "evidence_event_topic": "/sf/vision/events",
+      "budgets": {
+        "target_fps_semantics": "legacy_ai_ingest_default",
+        "preview_media_fps": 30.0,
+        "ai_monitor_fps": 10.0,
+        "evidence_imgsz": null,
+        "browser_primary_transport_semantics": "legacy_internal_rosbridge_metadata"
+      },
+      "views": [
+        {
+          "view_id": "full",
+          "kind": "full_frame",
+          "can_confirm_internal_color_indexing": false
+        }
+      ]
     }
   ]
 }

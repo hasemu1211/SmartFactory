@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sprint 6 Vision Live Capture</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0f172a; --card:#111827; --line:#334155; --text:#e5e7eb; --muted:#94a3b8; --accent:#22d3ee; --ok:#22c55e; --warn:#f59e0b; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, sans-serif; background:var(--bg); color:var(--text); }
+    header { padding:18px 22px; border-bottom:1px solid var(--line); background:#020617; position:sticky; top:0; z-index:3; }
+    h1 { margin:0 0 6px; font-size:24px; }
+    h2 { margin:0 0 10px; font-size:18px; color:var(--accent); }
+    p { margin:6px 0; color:var(--muted); line-height:1.45; }
+    main { padding:18px; display:grid; gap:18px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; align-items:start; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+    img { width:100%; height:auto; border-radius:10px; border:1px solid var(--line); background:#000; image-rendering:auto; }
+    .json-panel {
+      width:100%;
+      min-height:360px;
+      max-height:520px;
+      overflow:auto;
+      box-sizing:border-box;
+      border:1px solid var(--line);
+      border-radius:10px;
+      background:#020617;
+      color:#d1fae5;
+      padding:12px;
+      white-space:pre-wrap;
+      word-break:break-word;
+      font:13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    .json-panel.error { color:#fecaca; background:#450a0a; }
+    code, a { color:#67e8f9; }
+    .badge { display:inline-block; padding:3px 8px; border-radius:999px; background:#064e3b; color:#bbf7d0; font-weight:700; font-size:12px; margin-right:6px; }
+    .links { display:flex; flex-wrap:wrap; gap:8px; }
+    .links a { display:inline-block; padding:8px 10px; border:1px solid var(--line); border-radius:8px; text-decoration:none; background:#0b1220; }
+    .small { font-size:13px; }
+    @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Sprint 6 Vision Live Capture</h1>
+  <p><span class="badge">LIVE</span> PiCam 사람 감지 API / Global Map ROI 발표 캡처용 페이지</p>
+  <p class="small">이미지는 1초마다 새로고침됩니다. JSON은 캡처용 로컬 프록시를 통해 어두운 배경의 읽기 쉬운 패널로 표시합니다.</p>
+</header>
+<main>
+  <section class="card">
+    <h2>바로 열기</h2>
+    <div class="links">
+      <a href="http://smartfactory-vision.local:8889/tb3_1_picam_full/" target="_blank">tb3_1 WebRTC</a>
+      <a href="http://smartfactory-vision.local:8889/global_cam_01_full/" target="_blank">Global Cam WebRTC</a>
+      <a href="http://smartfactory-vision.local:8100/api/v1/health" target="_blank">AI Server health</a>
+      <a href="http://smartfactory-vision.local:8100/api/v1/vision/hazards/person/latest?robot_id=tb3_1" target="_blank">Person Hazard API</a>
+      <a href="./capture-log-summary.md" target="_blank">캡처 로그 요약 MD</a>
+    </div>
+  </section>
+
+  <section class="grid">
+    <article class="card">
+      <h2>1. tb3_1 PiCam 실제 person detection overlay</h2>
+      <img id="tb3Overlay" alt="tb3_1 person detection overlay" src="http://smartfactory-vision.local:8100/api/v1/vision/overlay/latest/image?source=tb3_1_picam&view=full" />
+      <p>Pi 카메라 프레임에서 YOLO person을 감지하고, Main-facing API에는 bbox 대신 <code>ADVISORY / HUMAN_DETECTED</code> 중심의 판단 결과를 전달합니다.</p>
+    </article>
+    <article class="card">
+      <h2>2. Global Cam Map ROI + ArUco lock overlay</h2>
+      <img id="globalOverlay" alt="global map roi overlay" src="http://smartfactory-vision.local:8100/api/v1/vision/overlay/latest/image?source=global_cam_01&view=full" />
+      <p>ArUco 11/12를 기준으로 맵 영역을 잡고, marker 6과 12가 같은 프레임에 잡히면 ROI를 LOCK해 흔들림을 줄입니다.</p>
+    </article>
+  </section>
+
+  <section class="card">
+    <h2>3. Global Cam 정적 Zone ROI 초안</h2>
+    <img alt="global cam zone roi draft" src="./assets/03-global-zone-roi-draft.jpg" />
+    <p>초록색은 입고/출고/창고처럼 물건이 있어도 자연스러운 정적 구역입니다. 주황색 충전 구역은 로봇 기준 참고 구역이며, target item 정상 방치 구역으로는 우선 보지 않습니다. 주행 중 파레트는 Main/ROS 상태 기반 DynamicCarrierROI로 별도 추가합니다.</p>
+  </section>
+
+  <section class="grid">
+    <article class="card">
+      <h2>4. Person Hazard API 응답</h2>
+      <pre id="hazardJson" class="json-panel">loading...</pre>
+      <p class="small"><a href="http://smartfactory-vision.local:8100/api/v1/vision/hazards/person/latest?robot_id=tb3_1" target="_blank">원본 API 열기</a></p>
+    </article>
+    <article class="card">
+      <h2>5. tb3_1 overlay metadata / 실제 detection 로그</h2>
+      <pre id="metaJson" class="json-panel">loading...</pre>
+      <p class="small"><a href="http://smartfactory-vision.local:8100/api/v1/vision/overlay/metadata?source=tb3_1_picam&view=full&limit=5" target="_blank">원본 API 열기</a></p>
+    </article>
+  </section>
+
+  <section class="grid">
+    <article class="card">
+      <h2>6. AI Server health</h2>
+      <pre id="healthJson" class="json-panel">loading...</pre>
+      <p class="small"><a href="http://smartfactory-vision.local:8100/api/v1/health" target="_blank">원본 API 열기</a></p>
+    </article>
+    <article class="card">
+      <h2>7. Vision streams 상태</h2>
+      <pre id="streamsJson" class="json-panel">loading...</pre>
+      <p class="small"><a href="http://smartfactory-vision.local:8100/api/v1/vision/streams" target="_blank">원본 API 열기</a></p>
+    </article>
+  </section>
+</main>
+<script>
+  const stamp = () => Date.now();
+  const proxyPath = (path) => '/proxy?path=' + encodeURIComponent(path) + '&t=' + stamp();
+  function refreshImages() {
+    document.getElementById('tb3Overlay').src = 'http://smartfactory-vision.local:8100/api/v1/vision/overlay/latest/image?source=tb3_1_picam&view=full&t=' + stamp();
+    document.getElementById('globalOverlay').src = 'http://smartfactory-vision.local:8100/api/v1/vision/overlay/latest/image?source=global_cam_01&view=full&t=' + stamp();
+  }
+  async function loadJson(id, path) {
+    const el = document.getElementById(id);
+    try {
+      const response = await fetch(proxyPath(path), {cache: 'no-store'});
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const payload = await response.json();
+      el.classList.remove('error');
+      el.textContent = JSON.stringify(payload, null, 2);
+    } catch (error) {
+      el.classList.add('error');
+      el.textContent = 'JSON 로드 실패: ' + error.message + '\n\n캡처용 서버는 serve_live_capture.py로 실행해야 합니다.\n원본 링크를 새 탭으로 열어 확인할 수 있습니다.';
+    }
+  }
+  function refreshJson() {
+    loadJson('hazardJson', '/api/v1/vision/hazards/person/latest?robot_id=tb3_1');
+    loadJson('metaJson', '/api/v1/vision/overlay/metadata?source=tb3_1_picam&view=full&limit=5');
+    loadJson('healthJson', '/api/v1/health');
+    loadJson('streamsJson', '/api/v1/vision/streams');
+  }
+  refreshImages();
+  refreshJson();
+  setInterval(refreshImages, 1000);
+  setInterval(refreshJson, 3000);
+</script>
+</body>
+</html>

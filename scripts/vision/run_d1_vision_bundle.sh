@@ -37,6 +37,9 @@ Useful environment overrides:
   VISION_MODEL_PATH                     default: ./yolov8n.pt
   VISION_MODEL_IMGSZ                    default: 224
   VISION_MODEL_CONF                     default: 0.35
+                                          Defaults are a lightweight smoke/comparator
+                                          profile. GoPro segment-overlay proof should
+                                          override task/path/imgsz to segment/best.pt/640.
   VISION_SOURCE_ID                      default: tb3_1_picam
   VISION_IMAGE_TOPIC                    default: /camera/image_raw/compressed
   VISION_GATEWAY_PERIOD_SEC             default: 0.033333
@@ -64,12 +67,19 @@ set_defaults() {
   fi
 
   export VISION_MODEL_WORKER_ENABLED="${VISION_MODEL_WORKER_ENABLED:-true}"
+  # Lightweight default for laptop smoke/TurtleBot comparator runs. Do not treat
+  # this as the GoPro segment-overlay proof profile; that proof must explicitly
+  # set VISION_MODEL_TASK=segment, the segment best.pt path, and imgsz=640.
   export VISION_MODEL_PATH="${VISION_MODEL_PATH:-${ROOT_DIR}/yolov8n.pt}"
   export VISION_MODEL_TASK="${VISION_MODEL_TASK:-detect}"
   export VISION_MODEL_DEVICE="${VISION_MODEL_DEVICE:-0}"
   export VISION_MODEL_IMGSZ="${VISION_MODEL_IMGSZ:-224}"
   export VISION_MODEL_CONF="${VISION_MODEL_CONF:-0.35}"
-  export VISION_MODEL_CLASS_MAP_JSON="${VISION_MODEL_CLASS_MAP_JSON:-{\"bottle\":\"box\",\"person\":\"person\"}}"
+  if [ -z "${VISION_MODEL_CLASS_MAP_JSON:-}" ]; then
+    export VISION_MODEL_CLASS_MAP_JSON='{"bottle":"box","person":"person"}'
+  else
+    export VISION_MODEL_CLASS_MAP_JSON
+  fi
   export VISION_MODEL_UNMAPPED_CLASS="${VISION_MODEL_UNMAPPED_CLASS:-unknown}"
 
   export VISION_SOURCE_ID="${VISION_SOURCE_ID:-tb3_1_picam}"
@@ -78,6 +88,12 @@ set_defaults() {
   export VISION_GATEWAY_FRAME_PROCESS_PATH="${VISION_GATEWAY_FRAME_PROCESS_PATH:-/api/v1/vision/frame/process}"
   export VISION_GATEWAY_PERIOD_SEC="${VISION_GATEWAY_PERIOD_SEC:-0.033333}"
   export VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC="${VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC:-0.02}"
+  VISION_GATEWAY_REQUEST_TIMEOUT_SEC="$(sf_ros_double "${VISION_GATEWAY_REQUEST_TIMEOUT_SEC}")"
+  VISION_GATEWAY_PERIOD_SEC="$(sf_ros_double "${VISION_GATEWAY_PERIOD_SEC}")"
+  VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC="$(sf_ros_double "${VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC}")"
+  export VISION_GATEWAY_REQUEST_TIMEOUT_SEC
+  export VISION_GATEWAY_PERIOD_SEC
+  export VISION_GATEWAY_PUBLISH_OUTPUT_PERIOD_SEC
   export VISION_GATEWAY_IMAGE_QOS_RELIABILITY="${VISION_GATEWAY_IMAGE_QOS_RELIABILITY:-reliable}"
   export VISION_GATEWAY_IMAGE_QOS_DEPTH="${VISION_GATEWAY_IMAGE_QOS_DEPTH:-1}"
   export VISION_GATEWAY_OVERLAY_PUB_QOS_RELIABILITY="${VISION_GATEWAY_OVERLAY_PUB_QOS_RELIABILITY:-reliable}"
@@ -112,6 +128,9 @@ check_prereqs() {
   if [ "${VISION_MODEL_WORKER_ENABLED}" = "true" ] && [ ! -f "${VISION_MODEL_PATH}" ]; then
     echo "ERROR: VISION_MODEL_PATH does not exist: ${VISION_MODEL_PATH}" >&2
     return 1
+  fi
+  if [ "${VISION_MODEL_WORKER_ENABLED}" = "true" ] && [ -n "${VISION_MODEL_SOURCE_CONFIG_JSON:-}" ]; then
+    sf_validate_vision_model_source_config_json "${VISION_MODEL_SOURCE_CONFIG_JSON}"
   fi
   (
     # shellcheck disable=SC1090

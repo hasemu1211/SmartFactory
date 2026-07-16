@@ -1,3 +1,4 @@
+import ast
 import json
 from pathlib import Path
 
@@ -12,6 +13,21 @@ SERVICE_DIR = ROOT / "services" / "ai-server"
 client = TestClient(app)
 
 
+def test_main_dashboard_origin_is_allowed_by_cors():
+    response = client.options(
+        "/api/v1/vision/streams",
+        headers={
+            "Origin": "http://smartfactory-main.local:8088",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == (
+        "http://smartfactory-main.local:8088"
+    )
+
+
 def test_factory_creates_runtime_app_without_generator_bridge():
     from app.service_metadata import SERVICE_VERSION
 
@@ -22,6 +38,7 @@ def test_factory_creates_runtime_app_without_generator_bridge():
     assert factory_app.version == SERVICE_VERSION
     assert "/api/v1/health" in route_paths
     assert "/api/v1/vision/streams" in route_paths
+    assert "/api/v1/vision/streams/{source}/webrtc/offer" in route_paths
 
 
 def test_source_registry_generator_uses_factory_seam_not_main_app_import():
@@ -125,6 +142,49 @@ def test_app_main_is_only_runtime_entrypoint_wrapper():
     assert "app = create_app()" in main_source
 
 
+def test_vision_read_model_import_boundary_uses_facade_and_one_way_core():
+    api_dir = SERVICE_DIR / "app" / "api"
+    vision_tree = ast.parse((api_dir / "vision.py").read_text(encoding="utf-8"))
+    facade_tree = ast.parse((api_dir / "vision_read_models.py").read_text(encoding="utf-8"))
+    ros_core_tree = ast.parse((api_dir / "vision_read_model_ros.py").read_text(encoding="utf-8"))
+
+    vision_imports = {
+        node.module
+        for node in ast.walk(vision_tree)
+        if isinstance(node, ast.ImportFrom)
+    }
+    assert "vision_read_models" in vision_imports
+    assert not any(
+        module and module.startswith("vision_read_model_")
+        for module in vision_imports
+    )
+
+    facade_imports = {
+        node.module
+        for node in ast.walk(facade_tree)
+        if isinstance(node, ast.ImportFrom)
+    }
+    assert {
+        "vision_read_model_debug",
+        "vision_read_model_metrics",
+        "vision_read_model_ros",
+        "vision_read_model_streams",
+        "vision_read_model_worker",
+    }.issubset(facade_imports)
+
+    ros_core_imports = {
+        node.module
+        for node in ast.walk(ros_core_tree)
+        if isinstance(node, ast.ImportFrom)
+    }
+    assert not {
+        "vision_read_model_debug",
+        "vision_read_model_metrics",
+        "vision_read_model_streams",
+        "vision_read_model_worker",
+    } & ros_core_imports
+
+
 def test_vision_bundle_scripts_share_common_shell_helpers():
     common = ROOT / "scripts" / "lib" / "vision_bundle_common.sh"
     common_source = common.read_text(encoding="utf-8")
@@ -143,6 +203,65 @@ def test_vision_bundle_scripts_share_common_shell_helpers():
         assert "$(sf_lan_ip" in script_source
 
 
+def test_vision_bundle_scripts_preserve_operator_model_class_map_json():
+    for script_name in (
+        "run_d1_vision_multi_source_gateway_bundle.sh",
+        "run_d1_vision_bundle.sh",
+    ):
+        script_source = (ROOT / "scripts" / "vision" / script_name).read_text(encoding="utf-8")
+        assert 'VISION_MODEL_CLASS_MAP_JSON="${VISION_MODEL_CLASS_MAP_JSON:-' not in script_source
+        assert "export VISION_MODEL_CLASS_MAP_JSON='{\"bottle\":\"box\",\"person\":\"person\"}'" in script_source
+        assert "export VISION_MODEL_CLASS_MAP_JSON\n" in script_source
+
+
+def test_health_model_status_reports_invalid_class_map_as_error():
+    from app.api.health import _vision_model_status
+    from app.config import Settings
+
+    settings = Settings(
+        vision_model_path="/tmp/model.pt",
+        vision_model_task="segment",
+        vision_model_class_map_json='{"bottle":"box"}}',
+    )
+
+    assert _vision_model_status(settings) == "error"
+
+
+def test_health_model_status_reports_invalid_source_config_as_error():
+    from app.api.health import _vision_model_status
+    from app.config import Settings
+
+    settings = Settings(
+        vision_model_path="/tmp/model.pt",
+        vision_model_task="detect",
+        vision_model_class_map_json='{"bottle":"box"}',
+        vision_model_source_config_json='{"tb3_1_picam": false}',
+    )
+
+    assert _vision_model_status(settings) == "error"
+
+
+def test_health_model_status_rejects_invalid_source_override_fields():
+    from app.api.health import _vision_model_status
+    from app.config import Settings
+
+    invalid_task = Settings(
+        vision_model_path="/tmp/model.pt",
+        vision_model_task="detect",
+        vision_model_class_map_json='{"bottle":"box"}',
+        vision_model_source_config_json='{"global_cam_01": {"task": "seg", "imgsz": 640}}',
+    )
+    invalid_class_map = Settings(
+        vision_model_path="/tmp/model.pt",
+        vision_model_task="detect",
+        vision_model_class_map_json='{"bottle":"box"}',
+        vision_model_source_config_json='{"global_cam_01": {"task": "segment", "class_map": false}}',
+    )
+
+    assert _vision_model_status(invalid_task) == "error"
+    assert _vision_model_status(invalid_class_map) == "error"
+
+
 
 def test_health_matches_api_contract_fields():
     response = client.get("/api/v1/health")
@@ -158,6 +277,9 @@ def test_health_matches_api_contract_fields():
     assert body["models"]["marker"]["name"] == "opencv-marker-detector"
     assert body["models"]["lift_roi"]["status"] in {"loaded", "disabled", "error"}
     assert body["models"]["lift_roi"]["task"] in {"segment", "detect"}
+    assert isinstance(body["models"]["lift_roi"]["class_map_valid"], bool)
+    assert isinstance(body["models"]["lift_roi"]["source_config_valid"], bool)
+    assert isinstance(body["models"]["lift_roi"]["source_overrides"], list)
     assert body["source_summary"]["configured"] == 3
 
 
@@ -229,10 +351,44 @@ def test_openapi_exposes_lane_b_overlay_debug_surfaces():
     assert "/api/v1/vision/debug/sources" in schema["paths"]
     assert "/api/v1/vision/ros/topics" in schema["paths"]
     assert "/api/v1/vision/streams" in schema["paths"]
+    assert "/api/v1/vision/streams/{source}/webrtc/offer" in schema["paths"]
+    assert "/api/v1/vision/webrtc/demo" in schema["paths"]
+    assert "/api/v1/vision/overlay/metadata" in schema["paths"]
+    overlay_metadata_schema = schema["paths"]["/api/v1/vision/overlay/metadata"]["get"][
+        "responses"
+    ]["200"]["content"]["application/json"]["schema"]
+    assert overlay_metadata_schema["required"] == [
+        "generated_at",
+        "requested_source",
+        "requested_view",
+        "sync",
+        "overlay",
+        "metadata_plane",
+        "events",
+    ]
+    assert overlay_metadata_schema["properties"]["metadata_plane"]["properties"][
+        "render_target"
+    ] == {
+        "const": "diagnostic_canvas_only_public_stream_is_burned_overlay",
+        "type": "string",
+    }
+    assert overlay_metadata_schema["properties"]["metadata_plane"]["properties"][
+        "client_rendering"
+    ] == {
+        "const": "diagnostic_only_not_required_for_main_streaming",
+        "type": "string",
+    }
+    assert overlay_metadata_schema["properties"]["events"]["items"]["properties"][
+        "metadata"
+    ]["properties"]["frame_seq"]["minimum"] == 1
     stream_schema = schema["paths"]["/api/v1/vision/streams"]["get"]["responses"]["200"][
         "content"
     ]["application/json"]["schema"]
     assert stream_schema["properties"]["primary_stream_plane"] == {
+        "const": "webrtc",
+        "type": "string",
+    }
+    assert stream_schema["properties"]["fallback_stream_plane"] == {
         "const": "http_mjpeg_gateway",
         "type": "string",
     }

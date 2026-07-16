@@ -1,0 +1,60 @@
+{
+  "session_id": "narrow_space_drive_validation_20260703",
+  "topic": "Narrow-space ROS2/Nav2 drive validation and tuning protocol",
+  "created_at": "2026-07-03T14:35:00+09:00",
+  "updated_at": "2026-07-03T14:35:00+09:00",
+  "status": "PHASE_7_OUTPUT",
+  "current_phase": 7,
+  "requirements": {
+    "focus": [
+      "latency measurement",
+      "bag-based regression",
+      "TF/localization validation",
+      "controller smoothness",
+      "collision monitor safety",
+      "route/speed/keepout policy"
+    ],
+    "output_format": "modular technical protocol",
+    "audience": "SmartFactory drive/Nav-Movement developers",
+    "sources": {
+      "preferred": [
+        "official ROS2/Nav2 docs",
+        "local robot probe",
+        "local SmartFactory docs"
+      ]
+    }
+  },
+  "plan": {
+    "subtopics": [
+      "instrumentation",
+      "test ladder",
+      "A/B experiment matrix",
+      "pass/fail gates",
+      "release deliverables"
+    ]
+  },
+  "progress": {
+    "phase_1": "completed",
+    "phase_2": "completed",
+    "phase_3": "completed",
+    "phase_4": "completed",
+    "phase_5": "completed",
+    "phase_6": "completed",
+    "phase_7": "completed"
+  },
+  "sources_count": 24,
+  "artifacts": {
+    "report": "/home/codelab/Desktop/Project/SmartFactory/docs/technical/narrow-space-drive-validation-tuning-protocol-2026-07-03.md",
+    "research_session": "/home/codelab/Desktop/Project/SmartFactory/RESEARCH/narrow_space_drive_validation_20260703"
+  },
+  "errors": [],
+  "verification": {
+    "passed": true,
+    "signature": "4de2570b35bc68d52a17031fdce70c4699fad4a6fcd67e755bebcd6e1ab932e2",
+    "verified_count": 2,
+    "unresolved_count": 0,
+    "refuted_count": 0,
+    "checked_at": "2026-07-03T05:27:43.521242+00:00",
+    "checker": "validate_ledger.py"
+  }
+}
